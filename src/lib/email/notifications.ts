@@ -1,0 +1,106 @@
+import { getResend } from './resend';
+import { formatCurrency } from '@/types';
+
+const FROM = 'Mayells <notifications@mayells.com>';
+
+export async function sendOutbidNotification(params: {
+  email: string;
+  lotTitle: string;
+  lotUrl: string;
+  currentBid: number;
+  yourBid: number;
+}) {
+  const resend = getResend();
+  await resend.emails.send({
+    from: FROM,
+    to: params.email,
+    subject: `You've been outbid on "${params.lotTitle}"`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #272D35; font-size: 24px;">You've Been Outbid</h1>
+        <p>Another bidder has placed a higher bid on <strong>${params.lotTitle}</strong>.</p>
+        <table style="margin: 20px 0; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Your bid:</td>
+            <td style="padding: 8px 16px; font-weight: bold;">${formatCurrency(params.yourBid)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Current bid:</td>
+            <td style="padding: 8px 16px; font-weight: bold; color: #c33;">${formatCurrency(params.currentBid)}</td>
+          </tr>
+        </table>
+        <a href="${params.lotUrl}" style="display: inline-block; background: #D4C5A0; color: #272D35; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 4px;">
+          Place a New Bid
+        </a>
+        <p style="margin-top: 30px; font-size: 12px; color: #999;">
+          Mayells — The Auction House of the Future
+        </p>
+      </div>
+    `,
+  });
+}
+
+export async function sendInvoiceNotification(params: {
+  email: string;
+  lotTitle: string;
+  invoiceNumber: string;
+  totalAmount: number;
+  dueDate: Date;
+}) {
+  const resend = getResend();
+  await resend.emails.send({
+    from: FROM,
+    to: params.email,
+    subject: `Invoice ${params.invoiceNumber} — Congratulations on your purchase!`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #272D35; font-size: 24px;">Congratulations!</h1>
+        <p>You've won <strong>${params.lotTitle}</strong>. Your invoice is ready.</p>
+        <table style="margin: 20px 0; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Invoice:</td>
+            <td style="padding: 8px 16px; font-weight: bold;">${params.invoiceNumber}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Total:</td>
+            <td style="padding: 8px 16px; font-weight: bold; font-size: 20px;">${formatCurrency(params.totalAmount)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Due by:</td>
+            <td style="padding: 8px 16px;">${params.dueDate.toLocaleDateString()}</td>
+          </tr>
+        </table>
+        <a href="${process.env.NEXT_PUBLIC_APP_URL}/invoices" style="display: inline-block; background: #D4C5A0; color: #272D35; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 4px;">
+          Pay Invoice
+        </a>
+        <p style="margin-top: 30px; font-size: 12px; color: #999;">
+          Mayells — The Auction House of the Future
+        </p>
+      </div>
+    `,
+  });
+}
+
+export async function sendPaymentConfirmation(params: {
+  email: string;
+  lotTitle: string;
+  invoiceNumber: string;
+  totalAmount: number;
+}) {
+  const resend = getResend();
+  await resend.emails.send({
+    from: FROM,
+    to: params.email,
+    subject: `Payment received for ${params.invoiceNumber}`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #272D35; font-size: 24px;">Payment Confirmed</h1>
+        <p>Thank you! We've received your payment of <strong>${formatCurrency(params.totalAmount)}</strong> for <strong>${params.lotTitle}</strong>.</p>
+        <p>We'll begin preparing your item for shipment. You'll receive tracking information once it ships.</p>
+        <p style="margin-top: 30px; font-size: 12px; color: #999;">
+          Mayells — The Auction House of the Future
+        </p>
+      </div>
+    `,
+  });
+}

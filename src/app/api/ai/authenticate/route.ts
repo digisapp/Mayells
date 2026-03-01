@@ -1,0 +1,35 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { db } from '@/db';
+import { users } from '@/db/schema';
+import { eq } from 'drizzle-orm';
+import { authenticateLot } from '@/lib/ai/authentication';
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    if (!profile || profile.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { imageUrls, ...metadata } = body;
+
+    if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
+      return NextResponse.json({ error: 'imageUrls array required' }, { status: 400 });
+    }
+
+    const result = await authenticateLot({ imageUrls, ...metadata });
+
+    return NextResponse.json({ data: result });
+  } catch (error) {
+    console.error('AI authenticate error:', error);
+    return NextResponse.json({ error: 'AI authentication failed' }, { status: 500 });
+  }
+}
