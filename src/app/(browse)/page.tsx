@@ -1,6 +1,13 @@
+export const dynamic = 'force-dynamic';
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Sparkles, Shield, Zap } from 'lucide-react';
+import { db } from '@/db';
+import { auctions, lots } from '@/db/schema';
+import { inArray, desc, eq } from 'drizzle-orm';
+import { AuctionCard } from '@/components/auctions/AuctionCard';
+import { LotCard } from '@/components/lots/LotCard';
 
 const categories = [
   { name: 'Art', slug: 'art', description: 'Contemporary, Modern & Old Masters' },
@@ -25,7 +32,22 @@ const jsonLd = {
   },
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  const [upcomingAuctions, featuredLots] = await Promise.all([
+    db
+      .select()
+      .from(auctions)
+      .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
+      .orderBy(desc(auctions.createdAt))
+      .limit(6),
+    db
+      .select()
+      .from(lots)
+      .where(eq(lots.isFeatured, true))
+      .orderBy(desc(lots.createdAt))
+      .limit(8),
+  ]);
+
   return (
     <div>
       <script
@@ -35,13 +57,10 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="relative bg-charcoal text-white overflow-hidden min-h-[85vh] flex items-center">
-        {/* Background pattern */}
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
           backgroundSize: '40px 40px',
         }} />
-
-        {/* Gradient accent */}
         <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-champagne/[0.05] to-transparent pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-champagne/[0.03] rounded-full blur-3xl pointer-events-none" />
 
@@ -78,6 +97,50 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Upcoming Auctions */}
+      {upcomingAuctions.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+          <div className="flex items-end justify-between mb-12">
+            <div>
+              <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Auctions</span>
+              <h2 className="font-display text-display-md mt-2">Upcoming Sales</h2>
+            </div>
+            <Link href="/auctions" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:flex items-center gap-1.5 group">
+              View all auctions
+              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {upcomingAuctions.map((auction) => (
+              <AuctionCard key={auction.id} auction={auction} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Featured Lots */}
+      {featuredLots.length > 0 && (
+        <section className="bg-secondary/40 py-20 md:py-28">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-end justify-between mb-12">
+              <div>
+                <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Curated</span>
+                <h2 className="font-display text-display-md mt-2">Featured Lots</h2>
+              </div>
+              <Link href="/lots" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:flex items-center gap-1.5 group">
+                Browse all lots
+                <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+              {featuredLots.map((lot) => (
+                <LotCard key={lot.id} lot={lot} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Categories */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
         <div className="flex items-end justify-between mb-12">
@@ -98,10 +161,7 @@ export default function HomePage() {
               href={`/categories/${cat.slug}`}
               className="group relative aspect-[3/4] bg-charcoal rounded-xl overflow-hidden flex items-end p-5 shadow-luxury hover:shadow-luxury-hover transition-all duration-500"
             >
-              {/* Animated gradient on hover */}
               <div className="absolute inset-0 bg-gradient-to-t from-charcoal via-charcoal/60 to-charcoal/30 group-hover:via-charcoal/40 transition-all duration-700" />
-
-              {/* Champagne accent line */}
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-champagne/0 to-transparent group-hover:via-champagne transition-all duration-500" />
 
               <div className="relative z-10">
