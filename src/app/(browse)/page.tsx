@@ -32,21 +32,30 @@ const jsonLd = {
   },
 };
 
+async function getHomeData() {
+  try {
+    const [upcomingAuctions, featuredLots] = await Promise.all([
+      db
+        .select()
+        .from(auctions)
+        .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
+        .orderBy(desc(auctions.createdAt))
+        .limit(6),
+      db
+        .select()
+        .from(lots)
+        .where(eq(lots.isFeatured, true))
+        .orderBy(desc(lots.createdAt))
+        .limit(8),
+    ]);
+    return { upcomingAuctions, featuredLots };
+  } catch {
+    return { upcomingAuctions: [], featuredLots: [] };
+  }
+}
+
 export default async function HomePage() {
-  const [upcomingAuctions, featuredLots] = await Promise.all([
-    db
-      .select()
-      .from(auctions)
-      .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
-      .orderBy(desc(auctions.createdAt))
-      .limit(6),
-    db
-      .select()
-      .from(lots)
-      .where(eq(lots.isFeatured, true))
-      .orderBy(desc(lots.createdAt))
-      .limit(8),
-  ]);
+  const { upcomingAuctions, featuredLots } = await getHomeData();
 
   return (
     <div>
