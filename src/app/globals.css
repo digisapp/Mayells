@@ -173,3 +173,59 @@
     line-height: 1.3;
   }
 }
+
+/* Luxury Shadows */
+@layer utilities {
+  .shadow-luxury {
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.04),
+      0 4px 12px rgba(0,0,0,0.06),
+      0 12px 40px rgba(0,0,0,0.04);
+  }
+  .shadow-luxury-hover {
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.06),
+      0 8px 24px rgba(0,0,0,0.1),
+      0 20px 60px rgba(0,0,0,0.06);
+  }
+  .shadow-gold {
+    box-shadow:
+      0 0 0 1px oklch(0.82 0.06 80 / 0.15),
+      0 4px 16px oklch(0.82 0.06 80 / 0.08);
+  }
+}
+
+/* Premium Animations */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out forwards;
+  }
+  .animate-slide-up {
+    animation: slideUp 0.6s ease-out forwards;
+  }
+  .animate-glow-pulse {
+    animation: glowPulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 8px oklch(0.82 0.06 80 / 0.2); }
+  50% { box-shadow: 0 0 20px oklch(0.82 0.06 80 / 0.4); }
+}
+
+/* Countdown urgency gradient */
+@keyframes urgencyPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.animate-urgency {
+  animation: urgencyPulse 1.5s ease-in-out infinite;
+}

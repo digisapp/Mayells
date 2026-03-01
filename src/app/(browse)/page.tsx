@@ -1,14 +1,14 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Sparkles, Shield, Zap } from 'lucide-react';
 
 const categories = [
-  { name: 'Art', slug: 'art', description: 'Contemporary, Modern, and Old Masters' },
-  { name: 'Antiques', slug: 'antiques', description: 'Fine antiques and period furniture' },
-  { name: 'Luxury', slug: 'luxury', description: 'Watches, cars, and rare collectibles' },
-  { name: 'Fashion', slug: 'fashion', description: 'Haute couture, vintage, and accessories' },
-  { name: 'Jewelry', slug: 'jewelry', description: 'Fine jewelry and precious stones' },
-  { name: 'Design', slug: 'design', description: 'Furniture, lighting, and objects' },
+  { name: 'Art', slug: 'art', description: 'Contemporary, Modern & Old Masters' },
+  { name: 'Antiques', slug: 'antiques', description: 'Fine antiques & period furniture' },
+  { name: 'Luxury', slug: 'luxury', description: 'Watches, cars & rare collectibles' },
+  { name: 'Fashion', slug: 'fashion', description: 'Haute couture & vintage' },
+  { name: 'Jewelry', slug: 'jewelry', description: 'Fine jewelry & precious stones' },
+  { name: 'Design', slug: 'design', description: 'Furniture, lighting & objects' },
 ];
 
 const jsonLd = {
@@ -32,63 +32,85 @@ export default function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+
       {/* Hero */}
-      <section className="relative bg-charcoal text-white overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
+      <section className="relative bg-charcoal text-white overflow-hidden min-h-[85vh] flex items-center">
+        {/* Background pattern */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{
+          backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
+          backgroundSize: '40px 40px',
+        }} />
+
+        {/* Gradient accent */}
+        <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-champagne/[0.05] to-transparent pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-champagne/[0.03] rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 w-full">
           <div className="max-w-2xl">
-            <h1 className="font-display text-display-xl md:text-[4.5rem] leading-[1.05] tracking-tight">
+            <div className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/10 rounded-full px-4 py-1.5 mb-8">
+              <Sparkles className="h-3.5 w-3.5 text-champagne" />
+              <span className="text-[13px] text-white/70 tracking-wide">AI-Powered Auction Platform</span>
+            </div>
+
+            <h1 className="font-display text-display-xl md:text-[5rem] leading-[1.02] tracking-tight">
               The Auction House
               <br />
               <span className="text-champagne">of the Future</span>
             </h1>
-            <p className="mt-6 text-lg text-white/70 max-w-lg">
-              AI-powered luxury auctions for art, antiques, fashion, jewelry, and design.
-              Discover extraordinary objects from around the world.
+            <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
+              Discover extraordinary objects from around the world. AI-powered cataloging,
+              authentication, and appraisal for art, antiques, fashion, jewelry, and design.
             </p>
-            <div className="mt-8 flex flex-wrap gap-4">
+            <div className="mt-10 flex flex-wrap gap-4">
               <Link href="/auctions">
-                <Button size="lg" className="bg-champagne text-charcoal hover:bg-champagne/90">
+                <Button variant="champagne" size="xl">
                   Browse Auctions
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/signup">
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10">
+                <Button variant="champagne-outline" size="xl">
                   Create Account
                 </Button>
               </Link>
             </div>
           </div>
         </div>
-        {/* Decorative gradient */}
-        <div className="absolute inset-0 bg-gradient-to-r from-charcoal via-charcoal/95 to-charcoal/70 pointer-events-none" />
       </section>
 
       {/* Categories */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-        <div className="flex items-end justify-between mb-10">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+        <div className="flex items-end justify-between mb-12">
           <div>
-            <h2 className="font-display text-display-md">Browse by Category</h2>
-            <p className="text-muted-foreground mt-2">Explore our curated collections</p>
+            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Explore</span>
+            <h2 className="font-display text-display-md mt-2">Browse by Category</h2>
           </div>
-          <Link href="/lots" className="text-sm text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
-            View all lots <ArrowRight className="inline h-4 w-4 ml-1" />
+          <Link href="/lots" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:flex items-center gap-1.5 group">
+            View all lots
+            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {categories.map((cat) => (
             <Link
               key={cat.slug}
               href={`/categories/${cat.slug}`}
-              className="group relative aspect-[3/4] bg-muted rounded-lg overflow-hidden flex items-end p-4"
+              className="group relative aspect-[3/4] bg-charcoal rounded-xl overflow-hidden flex items-end p-5 shadow-luxury hover:shadow-luxury-hover transition-all duration-500"
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-charcoal/80 via-charcoal/20 to-transparent" />
+              {/* Animated gradient on hover */}
+              <div className="absolute inset-0 bg-gradient-to-t from-charcoal via-charcoal/60 to-charcoal/30 group-hover:via-charcoal/40 transition-all duration-700" />
+
+              {/* Champagne accent line */}
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-champagne/0 to-transparent group-hover:via-champagne transition-all duration-500" />
+
               <div className="relative z-10">
-                <h3 className="font-display text-lg text-white group-hover:text-champagne transition-colors">
+                <h3 className="font-display text-lg text-white group-hover:text-champagne transition-colors duration-300">
                   {cat.name}
                 </h3>
-                <p className="text-xs text-white/60 mt-0.5 hidden sm:block">{cat.description}</p>
+                <p className="text-[11px] text-white/40 mt-0.5 hidden sm:block group-hover:text-white/60 transition-colors duration-300">
+                  {cat.description}
+                </p>
               </div>
             </Link>
           ))}
@@ -96,29 +118,38 @@ export default function HomePage() {
       </section>
 
       {/* How It Works */}
-      <section className="bg-ivory dark:bg-card py-16 md:py-24">
+      <section className="bg-secondary/40 py-20 md:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="font-display text-display-md text-center mb-12">How Mayells Works</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+          <div className="text-center mb-16">
+            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Process</span>
+            <h2 className="font-display text-display-md mt-2">How Mayells Works</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-5xl mx-auto">
             {[
               {
                 step: '01',
+                icon: Sparkles,
                 title: 'Discover',
-                description: 'Browse curated auctions across art, antiques, fashion, jewelry, and design. AI-powered recommendations surface lots you will love.',
+                description: 'Browse curated auctions across art, antiques, fashion, jewelry, and design. AI-powered recommendations surface lots you\'ll love.',
               },
               {
                 step: '02',
+                icon: Zap,
                 title: 'Bid',
-                description: 'Place bids in real-time on timed online auctions. Set maximum bids and our system bids for you. Anti-snipe protection ensures fair endings.',
+                description: 'Place bids in real-time on timed online auctions or live streams. Set maximum bids and our system bids for you automatically.',
               },
               {
                 step: '03',
+                icon: Shield,
                 title: 'Collect',
-                description: 'Win your lot, pay securely via Stripe, and receive your item with insured shipping. Build your collection with confidence.',
+                description: 'Win your lot, pay securely via Stripe, and receive your item with insured shipping. Every piece AI-authenticated.',
               },
             ].map((item) => (
-              <div key={item.step} className="text-center">
-                <span className="font-display text-display-lg text-champagne">{item.step}</span>
+              <div key={item.step} className="text-center group">
+                <div className="w-16 h-16 rounded-2xl bg-champagne/10 flex items-center justify-center mx-auto mb-6 group-hover:bg-champagne/20 transition-colors duration-300">
+                  <item.icon className="h-7 w-7 text-champagne" />
+                </div>
+                <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">{item.step}</span>
                 <h3 className="font-display text-xl mt-2 mb-3">{item.title}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
               </div>
@@ -127,18 +158,39 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Stats */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+          {[
+            { value: 'AI', label: 'Powered Cataloging' },
+            { value: 'Live', label: 'Streaming Auctions' },
+            { value: '24/7', label: 'Online Bidding' },
+            { value: '100%', label: 'Secure Payments' },
+          ].map((stat) => (
+            <div key={stat.label} className="text-center">
+              <p className="font-display text-display-md text-champagne">{stat.value}</p>
+              <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* CTA */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24 text-center">
-        <h2 className="font-display text-display-md mb-4">Ready to Consign?</h2>
-        <p className="text-muted-foreground max-w-lg mx-auto mb-8">
-          Have an extraordinary item to sell? Our AI-powered appraisal system provides instant estimates. Submit your item for consignment today.
-        </p>
-        <Link href="/consign/new">
-          <Button size="lg" className="bg-champagne text-charcoal hover:bg-champagne/90">
-            Submit for Consignment
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
-        </Link>
+      <section className="bg-charcoal text-white py-20 md:py-28">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Consignment</span>
+          <h2 className="font-display text-display-md text-white mt-2 mb-4">Ready to Sell?</h2>
+          <p className="text-white/50 max-w-lg mx-auto mb-10 text-[15px] leading-relaxed">
+            Have an extraordinary item? Our AI appraisal system provides instant estimates.
+            Submit your piece for consignment and reach collectors worldwide.
+          </p>
+          <Link href="/consign/new">
+            <Button variant="champagne" size="xl">
+              Submit for Consignment
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </section>
     </div>
   );

@@ -20,11 +20,11 @@ export function PublicNav() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50">
+    <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Top bar */}
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="font-display text-2xl tracking-wider">
+          <Link href="/" className="font-display text-2xl tracking-[0.15em]">
             MAYELLS
           </Link>
 
@@ -34,34 +34,34 @@ export function PublicNav() {
               <Link
                 key={cat.href}
                 href={cat.href}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                className="text-[13px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors duration-300"
               >
                 {cat.label}
               </Link>
             ))}
           </nav>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Link href="/search">
-              <Button variant="ghost" size="icon" className="text-muted-foreground">
-                <Search className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+                <Search className="h-4.5 w-4.5" />
               </Button>
             </Link>
 
             {isAuthenticated ? (
               <Link href="/dashboard">
-                <Button variant="ghost" size="sm" className="gap-2">
+                <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
                   <User className="h-4 w-4" />
-                  <span className="hidden sm:inline">{profile?.displayName || profile?.fullName || 'Account'}</span>
+                  <span className="hidden sm:inline text-[13px]">{profile?.displayName || profile?.fullName || 'Account'}</span>
                 </Button>
               </Link>
             ) : (
               <div className="flex items-center gap-2">
                 <Link href="/login">
-                  <Button variant="ghost" size="sm">Sign In</Button>
+                  <Button variant="ghost" size="sm" className="text-[13px]">Sign In</Button>
                 </Link>
                 <Link href="/signup">
-                  <Button size="sm">Register</Button>
+                  <Button variant="champagne" size="sm" className="text-[13px]">Register</Button>
                 </Link>
               </div>
             )}
@@ -79,24 +79,26 @@ export function PublicNav() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <nav className="md:hidden pb-4 space-y-1">
+          <nav className="md:hidden pb-4 pt-2 border-t border-border/30 space-y-0.5 animate-fade-in">
             {categories.map((cat) => (
               <Link
                 key={cat.href}
                 href={cat.href}
-                className="block py-2 text-sm text-muted-foreground hover:text-foreground"
+                className="block py-2.5 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
                 onClick={() => setMobileOpen(false)}
               >
                 {cat.label}
               </Link>
             ))}
-            <Link
-              href="/auctions"
-              className="block py-2 text-sm font-medium"
-              onClick={() => setMobileOpen(false)}
-            >
-              All Auctions
-            </Link>
+            <div className="border-t border-border/30 mt-2 pt-2">
+              <Link
+                href="/auctions"
+                className="block py-2.5 px-2 text-sm font-medium hover:bg-muted/50 rounded-lg"
+                onClick={() => setMobileOpen(false)}
+              >
+                All Auctions
+              </Link>
+            </div>
           </nav>
         )}
       </div>
