@@ -8,6 +8,7 @@ import { auctions, lots } from '@/db/schema';
 import { inArray, desc, eq, and } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { LotCard } from '@/components/lots/LotCard';
+import { ServicesBar } from '@/components/home/ServicesBar';
 
 const categories = [
   { name: 'Art', slug: 'art', description: 'Contemporary, Modern & Old Masters' },
@@ -111,6 +112,9 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Services / Free Appraisals */}
+      <ServicesBar />
 
       {/* Upcoming Auctions */}
       {upcomingAuctions.length > 0 && (
