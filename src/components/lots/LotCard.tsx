@@ -12,12 +12,19 @@ interface LotCardProps {
   lot: Lot;
   auctionSlug?: string;
   showBidInfo?: boolean;
+  isGallery?: boolean;
 }
 
-export function LotCard({ lot, auctionSlug, showBidInfo = true }: LotCardProps) {
-  const href = auctionSlug
-    ? `/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`
-    : `/lots/${lot.slug || lot.id}`;
+export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: LotCardProps) {
+  const galleryMode = isGallery || lot.saleType === 'gallery';
+  const privateMode = lot.saleType === 'private';
+  const href = privateMode
+    ? `/private-sales/${lot.slug || lot.id}`
+    : galleryMode
+      ? `/gallery/${lot.slug || lot.id}`
+      : auctionSlug
+        ? `/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`
+        : `/lots/${lot.slug || lot.id}`;
 
   return (
     <Link href={href} className="group block">
@@ -73,7 +80,22 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true }: LotCardProps) 
             <p className="text-sm text-muted-foreground">{lot.artist}</p>
           )}
 
-          {showBidInfo && lot.status === 'in_auction' && lot.currentBidAmount > 0 ? (
+          {privateMode ? (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <p className="text-[11px] text-champagne font-medium uppercase tracking-wider">
+                Inquire for Price
+              </p>
+            </div>
+          ) : galleryMode && lot.buyNowPrice ? (
+            <div className="pt-2 border-t border-border/50 mt-2">
+              <p className="text-sm font-semibold tracking-tight">
+                {formatCurrency(lot.buyNowPrice)}
+              </p>
+              <p className="text-[11px] text-champagne font-medium uppercase tracking-wider">
+                Buy Now
+              </p>
+            </div>
+          ) : showBidInfo && lot.status === 'in_auction' && lot.currentBidAmount > 0 ? (
             <div className="pt-2 border-t border-border/50 mt-2">
               <p className="text-sm font-semibold tracking-tight">
                 {formatCurrency(lot.currentBidAmount)}

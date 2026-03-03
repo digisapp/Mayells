@@ -30,6 +30,18 @@ export function PublicNav() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-8">
+            <Link
+              href="/gallery"
+              className="text-[13px] uppercase tracking-wider text-champagne hover:text-champagne/80 font-semibold transition-colors duration-300"
+            >
+              Gallery
+            </Link>
+            <Link
+              href="/private-sales"
+              className="text-[13px] uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors duration-300"
+            >
+              Private Sales
+            </Link>
             {categories.map((cat) => (
               <Link
                 key={cat.href}
@@ -80,6 +92,20 @@ export function PublicNav() {
         {/* Mobile menu */}
         {mobileOpen && (
           <nav className="md:hidden pb-4 pt-2 border-t border-border/30 space-y-0.5 animate-fade-in">
+            <Link
+              href="/gallery"
+              className="block py-2.5 px-2 text-sm font-semibold text-champagne hover:bg-muted/50 rounded-lg transition-colors"
+              onClick={() => setMobileOpen(false)}
+            >
+              Gallery
+            </Link>
+            <Link
+              href="/private-sales"
+              className="block py-2.5 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+              onClick={() => setMobileOpen(false)}
+            >
+              Private Sales
+            </Link>
             {categories.map((cat) => (
               <Link
                 key={cat.href}

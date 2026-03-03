@@ -21,7 +21,11 @@ export async function GET(req: NextRequest) {
       conditions.push(eq(lots.categoryId, category));
     }
     if (status) {
-      conditions.push(eq(lots.status, status as 'draft' | 'in_auction' | 'sold'));
+      conditions.push(eq(lots.status, status as 'draft' | 'in_auction' | 'sold' | 'for_sale'));
+    }
+    const saleType = searchParams.get('saleType');
+    if (saleType) {
+      conditions.push(eq(lots.saleType, saleType as 'auction' | 'gallery' | 'private'));
     }
     if (search) {
       conditions.push(ilike(lots.title, `%${search}%`));

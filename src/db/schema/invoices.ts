@@ -16,7 +16,7 @@ export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   invoiceNumber: text('invoice_number').unique().notNull(),
   buyerId: uuid('buyer_id').references(() => users.id).notNull(),
-  auctionId: uuid('auction_id').references(() => auctions.id).notNull(),
+  auctionId: uuid('auction_id').references(() => auctions.id),
   lotId: uuid('lot_id').references(() => lots.id).notNull(),
 
   // Pricing (all in cents)

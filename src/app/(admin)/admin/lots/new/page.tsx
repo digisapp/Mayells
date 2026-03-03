@@ -33,6 +33,7 @@ export default function NewLotPage() {
     subtitle: '',
     description: '',
     categoryId: '',
+    saleType: 'auction' as 'auction' | 'gallery' | 'private',
     artist: '',
     maker: '',
     period: '',
@@ -48,6 +49,7 @@ export default function NewLotPage() {
     estimateHigh: '',
     reservePrice: '',
     startingBid: '',
+    buyNowPrice: '',
   });
 
   useEffect(() => {
@@ -71,6 +73,7 @@ export default function NewLotPage() {
           estimateHigh: form.estimateHigh ? Math.round(parseFloat(form.estimateHigh) * 100) : undefined,
           reservePrice: form.reservePrice ? Math.round(parseFloat(form.reservePrice) * 100) : undefined,
           startingBid: form.startingBid ? Math.round(parseFloat(form.startingBid) * 100) : undefined,
+          buyNowPrice: form.buyNowPrice ? Math.round(parseFloat(form.buyNowPrice) * 100) : undefined,
           condition: form.condition || undefined,
         }),
       });
@@ -135,6 +138,42 @@ export default function NewLotPage() {
                 </SelectContent>
               </Select>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sale Type</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>How will this lot be sold? *</Label>
+              <Select value={form.saleType} onValueChange={(v) => update('saleType', v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auction">Auction</SelectItem>
+                  <SelectItem value="gallery">Gallery (Buy Now)</SelectItem>
+                  <SelectItem value="private">Private Sale (Inquire)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {form.saleType === 'gallery' && (
+              <div className="space-y-2">
+                <Label>Buy Now Price (USD) *</Label>
+                <Input
+                  type="number"
+                  value={form.buyNowPrice}
+                  onChange={(e) => update('buyNowPrice', e.target.value)}
+                  placeholder="$"
+                  required
+                />
+              </div>
+            )}
+            {form.saleType === 'private' && (
+              <p className="text-sm text-muted-foreground">
+                Price will not be shown publicly. Interested buyers will submit an inquiry to discuss pricing.
+              </p>
+            )}
           </CardContent>
         </Card>
 

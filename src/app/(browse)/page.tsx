@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Sparkles, Shield, Zap } from 'lucide-react';
 import { db } from '@/db';
 import { auctions, lots } from '@/db/schema';
-import { inArray, desc, eq } from 'drizzle-orm';
+import { inArray, desc, eq, and } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { LotCard } from '@/components/lots/LotCard';
 
@@ -34,7 +34,7 @@ const jsonLd = {
 
 async function getHomeData() {
   try {
-    const [upcomingAuctions, featuredLots] = await Promise.all([
+    const [upcomingAuctions, featuredLots, galleryLots] = await Promise.all([
       db
         .select()
         .from(auctions)
@@ -47,15 +47,21 @@ async function getHomeData() {
         .where(eq(lots.isFeatured, true))
         .orderBy(desc(lots.createdAt))
         .limit(8),
+      db
+        .select()
+        .from(lots)
+        .where(and(eq(lots.saleType, 'gallery'), eq(lots.status, 'for_sale')))
+        .orderBy(desc(lots.createdAt))
+        .limit(4),
     ]);
-    return { upcomingAuctions, featuredLots };
+    return { upcomingAuctions, featuredLots, galleryLots };
   } catch {
-    return { upcomingAuctions: [], featuredLots: [] };
+    return { upcomingAuctions: [], featuredLots: [], galleryLots: [] };
   }
 }
 
 export default async function HomePage() {
-  const { upcomingAuctions, featuredLots } = await getHomeData();
+  const { upcomingAuctions, featuredLots, galleryLots } = await getHomeData();
 
   return (
     <div>
@@ -146,6 +152,27 @@ export default async function HomePage() {
                 <LotCard key={lot.id} lot={lot} />
               ))}
             </div>
+          </div>
+        </section>
+      )}
+
+      {/* Shop the Gallery */}
+      {galleryLots.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+          <div className="flex items-end justify-between mb-12">
+            <div>
+              <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Buy Now</span>
+              <h2 className="font-display text-display-md mt-2">Shop the Gallery</h2>
+            </div>
+            <Link href="/gallery" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:flex items-center gap-1.5 group">
+              View all
+              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {galleryLots.map((lot) => (
+              <LotCard key={lot.id} lot={lot} isGallery />
+            ))}
           </div>
         </section>
       )}

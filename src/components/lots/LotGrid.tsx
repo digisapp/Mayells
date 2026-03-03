@@ -5,9 +5,10 @@ interface LotGridProps {
   lots: Lot[];
   auctionSlug?: string;
   columns?: 2 | 3 | 4;
+  isGallery?: boolean;
 }
 
-export function LotGrid({ lots, auctionSlug, columns = 4 }: LotGridProps) {
+export function LotGrid({ lots, auctionSlug, columns = 4, isGallery }: LotGridProps) {
   const gridCols = {
     2: 'grid-cols-1 sm:grid-cols-2',
     3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
@@ -25,7 +26,7 @@ export function LotGrid({ lots, auctionSlug, columns = 4 }: LotGridProps) {
   return (
     <div className={`grid ${gridCols[columns]} gap-6`}>
       {lots.map((lot) => (
-        <LotCard key={lot.id} lot={lot} auctionSlug={auctionSlug} />
+        <LotCard key={lot.id} lot={lot} auctionSlug={auctionSlug} isGallery={isGallery} />
       ))}
     </div>
   );

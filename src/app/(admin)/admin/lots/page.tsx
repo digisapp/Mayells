@@ -33,8 +33,9 @@ export default async function AdminLotsPage() {
             <TableRow>
               <TableHead>Title</TableHead>
               <TableHead>Category</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Estimate</TableHead>
+              <TableHead>Price / Estimate</TableHead>
               <TableHead>Current Bid</TableHead>
               <TableHead>Bids</TableHead>
             </TableRow>
@@ -49,14 +50,21 @@ export default async function AdminLotsPage() {
                 </TableCell>
                 <TableCell className="text-muted-foreground">{category?.name ?? '—'}</TableCell>
                 <TableCell>
-                  <Badge variant={lot.status === 'in_auction' ? 'default' : 'secondary'}>
+                  <Badge variant={lot.saleType === 'auction' ? 'secondary' : 'outline'}>
+                    {lot.saleType === 'gallery' ? 'Gallery' : lot.saleType === 'private' ? 'Private' : 'Auction'}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={lot.status === 'in_auction' || lot.status === 'for_sale' ? 'default' : 'secondary'}>
                     {lot.status}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
-                  {lot.estimateLow && lot.estimateHigh
-                    ? `${formatCurrency(lot.estimateLow)} — ${formatCurrency(lot.estimateHigh)}`
-                    : '—'}
+                  {lot.saleType === 'gallery' && lot.buyNowPrice
+                    ? formatCurrency(lot.buyNowPrice)
+                    : lot.estimateLow && lot.estimateHigh
+                      ? `${formatCurrency(lot.estimateLow)} — ${formatCurrency(lot.estimateHigh)}`
+                      : '—'}
                 </TableCell>
                 <TableCell>{lot.currentBidAmount > 0 ? formatCurrency(lot.currentBidAmount) : '—'}</TableCell>
                 <TableCell>{lot.bidCount}</TableCell>
@@ -64,7 +72,7 @@ export default async function AdminLotsPage() {
             ))}
             {allLots.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                   No lots yet. Create your first lot.
                 </TableCell>
               </TableRow>

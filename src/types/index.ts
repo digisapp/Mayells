@@ -15,10 +15,13 @@ export type LotStatus =
   | 'draft'
   | 'pending_review'
   | 'approved'
+  | 'for_sale'
   | 'in_auction'
   | 'sold'
   | 'unsold'
   | 'withdrawn';
+
+export type SaleType = 'auction' | 'gallery' | 'private';
 
 export type BidType = 'manual' | 'auto' | 'phone' | 'auctioneer';
 

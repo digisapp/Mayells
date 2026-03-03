@@ -32,6 +32,8 @@ export const lotSchema = z.object({
   estimateHigh: z.number().int().positive().optional(),
   reservePrice: z.number().int().positive().optional(),
   startingBid: z.number().int().positive().optional(),
+  saleType: z.enum(['auction', 'gallery', 'private']).default('auction'),
+  buyNowPrice: z.number().int().positive().optional(),
 });
 
 export const auctionSchema = z.object({

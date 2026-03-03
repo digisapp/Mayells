@@ -7,11 +7,14 @@ export const lotStatusEnum = pgEnum('lot_status', [
   'draft',
   'pending_review',
   'approved',
+  'for_sale',
   'in_auction',
   'sold',
   'unsold',
   'withdrawn',
 ]);
+
+export const saleTypeEnum = pgEnum('sale_type', ['auction', 'gallery', 'private']);
 
 export const conditionEnum = pgEnum('lot_condition', [
   'mint',
@@ -51,10 +54,12 @@ export const lots = pgTable('lots', {
   literature: text('literature'),
   exhibited: text('exhibited'),
 
-  // Status
+  // Status & sale type
   status: lotStatusEnum('status').default('draft').notNull(),
+  saleType: saleTypeEnum('sale_type').default('auction').notNull(),
 
   // Estimates & pricing (all in cents)
+  buyNowPrice: integer('buy_now_price'),
   estimateLow: integer('estimate_low'),
   estimateHigh: integer('estimate_high'),
   reservePrice: integer('reserve_price'),
@@ -100,6 +105,7 @@ export const lots = pgTable('lots', {
   index('lots_featured_idx').on(table.isFeatured, table.status),
   index('lots_slug_idx').on(table.slug),
   index('lots_current_bid_idx').on(table.currentBidAmount),
+  index('lots_sale_type_idx').on(table.saleType, table.status),
 ]);
 
 export const lotsRelations = relations(lots, ({ one, many }) => ({
