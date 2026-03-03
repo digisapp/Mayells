@@ -15,11 +15,23 @@ async function runSeed() {
   console.log('Executing seed SQL...');
   try {
     await client.unsafe(sql);
-    console.log('Seed complete!');
+    console.log('Seed data complete!');
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('ERROR:', message);
-    // If multi-statement doesn't work, try statement by statement with proper parsing
+    throw err;
+  }
+
+  // Run images seed
+  const imagesSqlPath = join(__dirname, 'seed-images.sql');
+  const imagesSql = readFileSync(imagesSqlPath, 'utf-8');
+  console.log('Adding images...');
+  try {
+    await client.unsafe(imagesSql);
+    console.log('Images complete!');
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('Images ERROR:', message);
     throw err;
   }
 
