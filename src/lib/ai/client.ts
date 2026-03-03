@@ -1,5 +1,6 @@
 import { openai } from '@ai-sdk/openai';
 import { anthropic } from '@ai-sdk/anthropic';
+import { xai } from '@ai-sdk/xai';
 
 const provider = process.env.AI_PROVIDER || 'openai';
 
@@ -32,4 +33,11 @@ export function getVisionModel() {
     return anthropic('claude-sonnet-4-20250514');
   }
   return openai('gpt-4o');
+}
+
+/**
+ * Get the xAI Grok model for the public chat widget.
+ */
+export function getChatModel() {
+  return xai('grok-3-fast');
 }
