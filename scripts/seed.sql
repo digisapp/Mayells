@@ -56,7 +56,12 @@ DELETE FROM lots WHERE id IN (
   '40000001-0000-0000-0000-000000000001',
   '40000001-0000-0000-0000-000000000002',
   '40000001-0000-0000-0000-000000000003',
-  '40000001-0000-0000-0000-000000000004'
+  '40000001-0000-0000-0000-000000000004',
+  '20000001-0000-0000-0000-000000000009',
+  '20000001-0000-0000-0000-000000000010',
+  '20000001-0000-0000-0000-000000000011',
+  '20000001-0000-0000-0000-000000000012',
+  '20000001-0000-0000-0000-000000000013'
 );
 
 DELETE FROM auctions WHERE id IN (
@@ -495,7 +500,47 @@ INSERT INTO lots (id, title, subtitle, description, category_id, artist, period,
  'A finely cast and patinated Japanese bronze vase of archaic form, decorated in high relief with cranes in flight above stylized waves and a large turtle — symbols of longevity and good fortune. The dark chocolate patina is rich and undisturbed.',
  'c0000001-0000-0000-0000-000000000002', NULL, 'Edo Period', 'circa 1850', 'Japan', 'Patinated bronze', '18 inches (45.7 cm) height', 'very_good', 'Fine original patina. Minor surface abrasions consistent with age. Base signed with seal mark.', 'Private Collection, New York; Acquired from Sotheby''s, 2010',
  'for_sale', 'gallery', 420000, 300000, 550000, false,
- 'japanese-edo-bronze-vase-crane', '2026-02-20 00:00:00');
+ 'japanese-edo-bronze-vase-crane', '2026-02-20 00:00:00'),
+
+('20000001-0000-0000-0000-000000000009',
+ 'Vintage Hermès Silk Scarf',
+ 'Les Cavaliers d''Or, 90cm',
+ 'A collectible Hermès silk twill scarf in the beloved Les Cavaliers d''Or pattern, featuring equestrian motifs in rich gold and burgundy tones on a navy ground. Hand-rolled edges. A wearable work of art from the world''s most iconic scarf maker.',
+ 'c0000001-0000-0000-0000-000000000004', 'Hermès', 'Vintage', 'circa 2005', 'France', 'Silk twill', '90 x 90 cm (36 x 36 inches)', 'excellent', 'Excellent pre-owned condition. Colors vibrant. No pulls or stains. Original box included.', 'Private Collection, Palm Beach',
+ 'for_sale', 'gallery', 120000, 80000, 150000, false,
+ 'vintage-hermes-scarf-cavaliers', '2026-02-22 00:00:00'),
+
+('20000001-0000-0000-0000-000000000010',
+ 'Art Deco Silver Cocktail Shaker',
+ 'Mappin & Webb, London, circa 1935',
+ 'A stylish Art Deco silver-plated cocktail shaker of stepped cylindrical form with geometric banding and a built-in strainer. The streamlined silhouette epitomizes the glamour of 1930s entertaining.',
+ 'c0000001-0000-0000-0000-000000000002', 'Mappin & Webb', 'Art Deco', 'circa 1935', 'England', 'Silver plate', '10 inches (25.4 cm) height', 'very_good', 'Good plate with minor wear to high points. Strainer intact. No dents. Maker''s marks to base.', 'Estate sale, Greenwich, CT',
+ 'for_sale', 'gallery', 180000, 120000, 250000, false,
+ 'art-deco-cocktail-shaker-mappin-webb', '2026-02-23 00:00:00'),
+
+('20000001-0000-0000-0000-000000000011',
+ 'Signed Contemporary Lithograph',
+ 'Abstract Composition No. 12, Edition 45/150',
+ 'A vibrant signed and numbered lithograph by an emerging contemporary artist, featuring bold geometric forms in cerulean blue and vermillion red. Printed on archival Hahnemühle paper with deckled edges.',
+ 'c0000001-0000-0000-0000-000000000001', 'Amara Osei', 'Contemporary', '2024', 'United States', 'Lithograph on archival paper', '24 x 18 inches (61 x 45.7 cm)', 'mint', 'Pristine. Never framed. Signed and numbered in pencil lower margin.', 'Acquired directly from the artist, 2024',
+ 'for_sale', 'gallery', 250000, 180000, 350000, false,
+ 'signed-lithograph-osei-abstract-12', '2026-02-24 00:00:00'),
+
+('20000001-0000-0000-0000-000000000012',
+ 'Antique Leather-Bound Library Set',
+ 'The Complete Works of Shakespeare, 12 Volumes',
+ 'A handsome set of twelve leather-bound volumes of Shakespeare''s complete works published by The Nonesuch Press, London. Bound in full morocco leather with gilt tooling, marbled endpapers, and top edges gilt. A distinguished addition to any library.',
+ 'c0000001-0000-0000-0000-000000000002', NULL, 'Edwardian', 'circa 1910', 'England', 'Morocco leather, gilt, laid paper', '9 x 6 inches each (23 x 15 cm)', 'very_good', 'Bindings tight with minor rubbing to extremities. Interiors clean with occasional foxing to endpapers. A very attractive set.', 'Library of a Connecticut estate',
+ 'for_sale', 'gallery', 150000, 100000, 200000, false,
+ 'shakespeare-complete-works-leather', '2026-02-25 00:00:00'),
+
+('20000001-0000-0000-0000-000000000013',
+ 'Vintage Lalique Crystal Bowl',
+ 'Pinsons Pattern, Opalescent',
+ 'A beautiful opalescent crystal bowl by René Lalique in the Pinsons (Finches) pattern, featuring birds perched among leafy branches in molded relief. The signature blue opalescence appears when light passes through the pressed glass.',
+ 'c0000001-0000-0000-0000-000000000006', 'René Lalique', 'Art Deco', 'circa 1933', 'France', 'Opalescent pressed glass', '9.5 inches (24 cm) diameter', 'excellent', 'No chips or cracks. Light surface scratches to base. Acid-etched R. LALIQUE FRANCE mark.', 'Private Collection, Boca Raton',
+ 'for_sale', 'gallery', 320000, 250000, 400000, false,
+ 'lalique-pinsons-bowl-opalescent', '2026-02-26 00:00:00');
 
 
 -- ============================================
@@ -516,7 +561,7 @@ INSERT INTO lots (id, title, subtitle, description, category_id, artist, period,
  'Approximately 15.80 Carats, Unheated',
  'An extraordinary cushion-cut Kashmir sapphire of approximately 15.80 carats, unheated, of the finest cornflower blue color, flanked by half-moon cut diamonds in a platinum mounting. Kashmir sapphires of this size, quality, and provenance appear at auction only a few times per decade.',
  'c0000001-0000-0000-0000-000000000005', NULL, 'Contemporary', '2018', 'Kashmir / India', 'Platinum, Kashmir sapphire, diamonds', 'Ring size 5.5', 'mint', 'Unworn. Accompanied by certificates from Gübelin, SSEF, and AGL confirming Kashmir origin and no thermal enhancement.', 'Acquired privately from a renowned Geneva jeweler, 2018. Full provenance disclosed to qualified buyers.',
- 'for_sale', 'private', 100000000, 150000000, true,
+ 'for_sale', 'private', 65000000, 85000000, true,
  'kashmir-sapphire-ring-unheated', '2026-01-15 00:00:00'),
 
 ('30000001-0000-0000-0000-000000000003',
@@ -524,7 +569,7 @@ INSERT INTO lots (id, title, subtitle, description, category_id, artist, period,
  'Matching Numbers, Ferrari Classiche Certified',
  'An exceptional and highly original example of the legendary Ferrari 275 GTB/4, widely considered one of the most beautiful grand tourers ever produced. This matching-numbers example retains its original Colombo V12 engine with six Weber carburetors, producing 300 horsepower. Finished in the original Rosso Chiaro over Nero leather.',
  'c0000001-0000-0000-0000-000000000003', 'Ferrari', 'Classic', '1967', 'Italy', 'Steel body, aluminum alloy engine', 'Wheelbase: 2400mm', 'excellent', 'Excellent condition throughout. Sympathetic restoration completed 2019. Ferrari Classiche Red Book certification. Complete tool roll and jack.', 'Two owners from new. Extensive documented history. Full ownership chain available to qualified buyers.',
- 'for_sale', 'private', 300000000, 400000000, true,
+ 'for_sale', 'private', 75000000, 95000000, true,
  'ferrari-275-gtb4-1967-matching', '2026-02-01 00:00:00');
 
 

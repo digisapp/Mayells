@@ -36,6 +36,33 @@ async function verify() {
     console.log(`  ${row.name}: ${row.c}`);
   }
 
+  // Price range analysis
+  console.log('\n--- Price Range (in dollars) ---');
+
+  const galleryPrices = await client`SELECT title, buy_now_price FROM lots WHERE sale_type = 'gallery' AND buy_now_price IS NOT NULL ORDER BY buy_now_price ASC`;
+  console.log('\nGallery (Buy Now):');
+  for (const row of galleryPrices) {
+    console.log(`  $${(Number(row.buy_now_price) / 100).toLocaleString()} — ${row.title}`);
+  }
+
+  const auctionPrices = await client`SELECT title, hammer_price, estimate_low, estimate_high FROM lots WHERE sale_type = 'auction' AND hammer_price IS NOT NULL ORDER BY hammer_price ASC`;
+  console.log('\nAuction (Hammer Prices):');
+  for (const row of auctionPrices) {
+    console.log(`  $${(Number(row.hammer_price) / 100).toLocaleString()} — ${row.title}`);
+  }
+
+  const privatePrices = await client`SELECT title, estimate_low, estimate_high FROM lots WHERE sale_type = 'private' ORDER BY estimate_low ASC`;
+  console.log('\nPrivate Sales (Estimates):');
+  for (const row of privatePrices) {
+    console.log(`  $${(Number(row.estimate_low) / 100).toLocaleString()} – $${(Number(row.estimate_high) / 100).toLocaleString()} — ${row.title}`);
+  }
+
+  const upcoming = await client`SELECT title, estimate_low, estimate_high FROM lots WHERE status = 'in_auction' ORDER BY estimate_low ASC`;
+  console.log('\nUpcoming Auctions (Estimates):');
+  for (const row of upcoming) {
+    console.log(`  $${(Number(row.estimate_low) / 100).toLocaleString()} – $${(Number(row.estimate_high) / 100).toLocaleString()} — ${row.title}`);
+  }
+
   process.exit(0);
 }
 
