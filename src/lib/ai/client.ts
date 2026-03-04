@@ -37,7 +37,8 @@ export function getVisionModel() {
 
 /**
  * Get the xAI Grok model for the public chat widget.
+ * Uses grok-4-1-fast-non-reasoning for vision support (image uploads).
  */
 export function getChatModel() {
-  return xai('grok-3-fast');
+  return xai('grok-4-1-fast-non-reasoning');
 }

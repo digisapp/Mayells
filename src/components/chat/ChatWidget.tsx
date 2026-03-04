@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Camera, ImageIcon } from 'lucide-react';
 
 const transport = new DefaultChatTransport({
   api: '/api/ai/chat',
@@ -12,7 +12,10 @@ const transport = new DefaultChatTransport({
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { messages, sendMessage, status } = useChat({ transport });
 
@@ -23,9 +26,39 @@ export function ChatWidget() {
   }, [messages]);
 
   const handleSend = (text: string) => {
-    if (!text.trim() || isLoading) return;
+    if ((!text.trim() && !imageFile) || isLoading) return;
+
+    const files = imageFile
+      ? [new File([imageFile], imageFile.name, { type: imageFile.type })]
+      : undefined;
+
     setInput('');
-    sendMessage({ text });
+    setImagePreview(null);
+    setImageFile(null);
+
+    if (files) {
+      const fileList = new DataTransfer();
+      files.forEach((f) => fileList.items.add(f));
+      sendMessage({
+        text: text.trim() || 'What can you tell me about this item?',
+        files: fileList.files,
+      });
+    } else {
+      sendMessage({ text });
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 20 * 1024 * 1024) return; // 20MB limit
+
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -37,7 +70,7 @@ export function ChatWidget() {
           <div className="bg-charcoal text-white px-5 py-4 flex items-center justify-between flex-shrink-0">
             <div>
               <h3 className="font-display text-base">Mayells Concierge</h3>
-              <p className="text-[11px] text-white/50">Ask us anything</p>
+              <p className="text-[11px] text-white/50">Ask us anything — or upload a photo</p>
             </div>
             <button
               onClick={() => setOpen(false)}
@@ -57,7 +90,7 @@ export function ChatWidget() {
                 <div className="space-y-2">
                   {[
                     'How do I get a free appraisal?',
-                    'How does consignment work?',
+                    'What upcoming auctions do you have?',
                     'What do you buy?',
                   ].map((q) => (
                     <button
@@ -68,16 +101,30 @@ export function ChatWidget() {
                       {q}
                     </button>
                   ))}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-2 w-full text-left text-xs bg-champagne/20 hover:bg-champagne/40 text-charcoal px-3 py-2 rounded-lg transition-colors"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+                    Upload a photo for a quick assessment
+                  </button>
                 </div>
               </div>
             )}
 
             {messages.map((m) => {
-              const text = m.parts
-                ?.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-                .map((p) => p.text)
-                .join('') || '';
-              if (!text) return null;
+              const textParts = m.parts?.filter(
+                (p): p is { type: 'text'; text: string } => p.type === 'text',
+              );
+              const text = textParts?.map((p) => p.text).join('') || '';
+
+              // Check for image parts in user messages
+              const fileParts = m.parts?.filter(
+                (p) => p.type === 'file',
+              );
+
+              if (!text && (!fileParts || fileParts.length === 0)) return null;
+
               return (
                 <div
                   key={m.id}
@@ -90,6 +137,12 @@ export function ChatWidget() {
                         : 'bg-ivory text-charcoal rounded-bl-md'
                     }`}
                   >
+                    {fileParts && fileParts.length > 0 && (
+                      <div className="mb-2 flex items-center gap-1.5 text-xs opacity-70">
+                        <ImageIcon className="h-3 w-3" />
+                        Photo attached
+                      </div>
+                    )}
                     {text}
                   </div>
                 </div>
@@ -107,6 +160,27 @@ export function ChatWidget() {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Image Preview */}
+          {imagePreview && (
+            <div className="px-4 py-2 border-t border-black/5 flex items-center gap-2">
+              <img
+                src={imagePreview}
+                alt="Upload preview"
+                className="h-12 w-12 object-cover rounded-lg border border-black/10"
+              />
+              <span className="text-xs text-gray-500 flex-1">Photo ready to send</span>
+              <button
+                onClick={() => {
+                  setImagePreview(null);
+                  setImageFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {/* Input */}
           <form
             onSubmit={(e) => {
@@ -116,14 +190,29 @@ export function ChatWidget() {
             className="border-t border-black/5 px-4 py-3 flex items-center gap-2 flex-shrink-0"
           >
             <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="text-gray-400 hover:text-champagne transition-colors flex-shrink-0"
+              title="Upload a photo"
+            >
+              <Camera className="h-5 w-5" />
+            </button>
+            <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about appraisals, consignment..."
+              placeholder={imageFile ? 'Add a message (optional)...' : 'Ask about appraisals, consignment...'}
               className="flex-1 text-sm bg-transparent outline-none placeholder:text-gray-400 text-charcoal"
             />
             <button
               type="submit"
-              disabled={!input.trim() || isLoading}
+              disabled={(!input.trim() && !imageFile) || isLoading}
               className="bg-champagne text-charcoal rounded-full p-2 hover:bg-champagne/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Send className="h-4 w-4" />
