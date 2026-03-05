@@ -9,3 +9,4 @@ export * from './payments';
 export * from './consignments';
 export * from './watchlist';
 export * from './bid-increments';
+export * from './outreach';

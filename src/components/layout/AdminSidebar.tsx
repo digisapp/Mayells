@@ -13,6 +13,7 @@ import {
   Package,
   Brain,
   Radio,
+  Mail,
   Settings,
 } from 'lucide-react';
 
@@ -25,6 +26,7 @@ const adminLinks = [
   { href: '/admin/live', label: 'Live Auctions', icon: Radio },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/invoices', label: 'Invoices', icon: FileText },
+  { href: '/admin/outreach', label: 'Outreach', icon: Mail },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
@@ -45,7 +47,7 @@ export function AdminSidebar() {
             href={link.href}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-              pathname === link.href
+              (link.href === '/admin' ? pathname === '/admin' : pathname.startsWith(link.href))
                 ? 'bg-accent/20 text-foreground font-medium'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/10',
             )}

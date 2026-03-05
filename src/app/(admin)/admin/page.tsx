@@ -2,10 +2,10 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { db } from '@/db';
-import { lots, auctions, users } from '@/db/schema';
+import { lots, auctions, users, outreachContacts } from '@/db/schema';
 import { sql } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Gavel, Image, Users, FileText, Package, BarChart3, Plus } from 'lucide-react';
+import { Gavel, Image, Users, FileText, Package, BarChart3, Mail, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default async function AdminDashboardPage() {
@@ -14,6 +14,8 @@ export default async function AdminDashboardPage() {
   const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users);
   const [activeLots] = await db.select({ count: sql<number>`count(*) filter (where ${lots.status} in ('for_sale', 'in_auction'))` }).from(lots);
   const [activeAuctions] = await db.select({ count: sql<number>`count(*) filter (where ${auctions.status} in ('open', 'live', 'preview'))` }).from(auctions);
+  const [outreachCount] = await db.select({ count: sql<number>`count(*)` }).from(outreachContacts);
+  const [outreachFollowUp] = await db.select({ count: sql<number>`count(*) filter (where ${outreachContacts.status} in ('new', 'follow_up'))` }).from(outreachContacts);
 
   const stats = [
     { label: 'Total Lots', value: Number(lotCount.count) },
@@ -21,6 +23,7 @@ export default async function AdminDashboardPage() {
     { label: 'Total Auctions', value: Number(auctionCount.count) },
     { label: 'Active Auctions', value: Number(activeAuctions.count) },
     { label: 'Users', value: Number(userCount.count) },
+    { label: 'Outreach Leads', value: Number(outreachCount.count) },
   ];
 
   return (
@@ -64,6 +67,7 @@ export default async function AdminDashboardPage() {
           { href: '/admin/consignments', label: 'Consignments', icon: Package, desc: 'Review consignment submissions' },
           { href: '/admin/users', label: 'Users', icon: Users, desc: 'Manage buyer and seller accounts' },
           { href: '/admin/invoices', label: 'Invoices', icon: FileText, desc: 'View and manage invoices' },
+          { href: '/admin/outreach', label: 'Outreach', icon: Mail, desc: `Marketing leads & follow-ups (${Number(outreachFollowUp.count)} need attention)` },
           { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, desc: 'Platform analytics and reports' },
         ].map((item) => (
           <Link key={item.href} href={item.href}>
