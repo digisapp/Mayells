@@ -48,7 +48,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-charcoal via-charcoal/95 to-graphite flex items-center justify-center">
-              <span className="font-display text-3xl text-white/20 tracking-[0.2em]">MAYELLS</span>
+              <span className="font-logo text-3xl text-white/20">MAYELLS</span>
             </div>
           )}
 

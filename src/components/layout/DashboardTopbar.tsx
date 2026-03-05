@@ -18,7 +18,7 @@ export function DashboardTopbar() {
   return (
     <header className="h-16 border-b border-border/50 bg-background flex items-center justify-between px-6">
       <div className="lg:hidden">
-        <Link href="/" className="font-display text-xl tracking-wider">
+        <Link href="/" className="font-logo text-xl">
           MAYELLS
         </Link>
       </div>

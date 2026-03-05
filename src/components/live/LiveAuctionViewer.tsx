@@ -36,7 +36,7 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
       {/* Top bar */}
       <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="font-display text-lg tracking-wider text-champagne">MAYELLS</span>
+          <span className="font-logo text-lg text-champagne">MAYELLS</span>
           <Badge className="bg-red-600 text-white">LIVE</Badge>
           <span className="text-white/60 text-sm">{auction.title}</span>
         </div>

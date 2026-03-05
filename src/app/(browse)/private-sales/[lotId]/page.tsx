@@ -48,7 +48,7 @@ export default async function PrivateSaleDetailPage({
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                  <span className="font-display text-lg tracking-widest text-muted-foreground/40">MAYELLS</span>
+                  <span className="font-logo text-lg text-muted-foreground/40">MAYELLS</span>
                 </div>
               )}
             </div>

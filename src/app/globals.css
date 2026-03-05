@@ -156,6 +156,11 @@
     font-family: var(--font-playfair), Georgia, serif;
     letter-spacing: -0.02em;
   }
+  .font-logo {
+    font-family: var(--font-cinzel), 'Times New Roman', serif;
+    letter-spacing: 0.2em;
+    font-weight: 500;
+  }
   .text-display-xl {
     font-size: 3.5rem;
     line-height: 1.1;

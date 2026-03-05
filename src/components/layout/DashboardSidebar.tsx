@@ -38,7 +38,7 @@ export function DashboardSidebar() {
 
   return (
     <aside className="w-64 border-r border-border/50 bg-background min-h-screen p-4 hidden lg:block">
-      <Link href="/" className="font-display text-xl tracking-wider block mb-8">
+      <Link href="/" className="font-logo text-xl block mb-8">
         MAYELLS
       </Link>
 

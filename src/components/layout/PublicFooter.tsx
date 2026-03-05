@@ -6,7 +6,7 @@ export function PublicFooter() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
           <div>
-            <h3 className="font-display text-xl tracking-[0.15em] mb-4">MAYELLS</h3>
+            <h3 className="font-logo text-xl mb-4">MAYELLS</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
               The auction house of the future. AI-powered luxury auctions for art, antiques, fashion, jewelry, and design.
             </p>

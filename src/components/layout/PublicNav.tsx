@@ -22,7 +22,7 @@ export function PublicNav() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Top bar */}
         <div className="flex items-center justify-between h-16">
-          <Link href="/" className="font-display text-2xl tracking-[0.15em]">
+          <Link href="/" className="font-logo text-2xl">
             MAYELLS
           </Link>
 

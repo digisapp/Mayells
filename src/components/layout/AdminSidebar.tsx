@@ -33,7 +33,7 @@ export function AdminSidebar() {
 
   return (
     <aside className="w-64 border-r border-border/50 bg-background min-h-screen p-4">
-      <Link href="/" className="font-display text-xl tracking-wider block mb-2">
+      <Link href="/" className="font-logo text-xl block mb-2">
         MAYELLS
       </Link>
       <p className="text-xs text-muted-foreground mb-8 px-1">Admin Panel</p>
