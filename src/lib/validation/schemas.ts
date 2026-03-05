@@ -64,9 +64,30 @@ export const consignmentSchema = z.object({
   estimatedValue: z.number().int().positive().optional(),
 });
 
+export const lotUpdateSchema = lotSchema.partial().extend({
+  status: z.enum(['draft', 'pending_review', 'approved', 'for_sale', 'in_auction', 'sold', 'unsold', 'withdrawn']).optional(),
+  isFeatured: z.boolean().optional(),
+  isHighlight: z.boolean().optional(),
+  primaryImageUrl: z.string().optional(),
+});
+
+export const auctionUpdateSchema = auctionSchema.partial().extend({
+  status: z.enum(['draft', 'scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed', 'cancelled']).optional(),
+  isFeatured: z.boolean().optional(),
+  coverImageUrl: z.string().optional(),
+  bannerImageUrl: z.string().optional(),
+});
+
+export const assignLotSchema = z.object({
+  lotId: z.string().uuid(),
+  lotNumber: z.number().int().positive(),
+});
+
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type LotInput = z.infer<typeof lotSchema>;
+export type LotUpdateInput = z.infer<typeof lotUpdateSchema>;
 export type AuctionInput = z.infer<typeof auctionSchema>;
+export type AuctionUpdateInput = z.infer<typeof auctionUpdateSchema>;
 export type BidInput = z.infer<typeof bidSchema>;
 export type ConsignmentInput = z.infer<typeof consignmentSchema>;

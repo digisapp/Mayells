@@ -7,8 +7,19 @@ import { desc, eq } from 'drizzle-orm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 import { formatCurrency } from '@/types';
+
+const statusColors: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-800',
+  pending_review: 'bg-yellow-100 text-yellow-800',
+  approved: 'bg-blue-100 text-blue-800',
+  for_sale: 'bg-green-100 text-green-800',
+  in_auction: 'bg-purple-100 text-purple-800',
+  sold: 'bg-emerald-100 text-emerald-800',
+  unsold: 'bg-red-100 text-red-800',
+  withdrawn: 'bg-gray-100 text-gray-600',
+};
 
 export default async function AdminLotsPage() {
   const allLots = await db
@@ -31,18 +42,26 @@ export default async function AdminLotsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]"></TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Category</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Price / Estimate</TableHead>
-              <TableHead>Current Bid</TableHead>
               <TableHead>Bids</TableHead>
+              <TableHead className="w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {allLots.map(({ lot, category }) => (
               <TableRow key={lot.id}>
+                <TableCell>
+                  {lot.primaryImageUrl ? (
+                    <img src={lot.primaryImageUrl} alt="" className="w-10 h-10 object-cover rounded" />
+                  ) : (
+                    <div className="w-10 h-10 bg-muted rounded" />
+                  )}
+                </TableCell>
                 <TableCell>
                   <Link href={`/admin/lots/${lot.id}`} className="font-medium hover:underline">
                     {lot.title}
@@ -55,8 +74,8 @@ export default async function AdminLotsPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={lot.status === 'in_auction' || lot.status === 'for_sale' ? 'default' : 'secondary'}>
-                    {lot.status}
+                  <Badge className={statusColors[lot.status] || ''}>
+                    {lot.status.replace('_', ' ')}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground">
@@ -66,13 +85,17 @@ export default async function AdminLotsPage() {
                       ? `${formatCurrency(lot.estimateLow)} — ${formatCurrency(lot.estimateHigh)}`
                       : '—'}
                 </TableCell>
-                <TableCell>{lot.currentBidAmount > 0 ? formatCurrency(lot.currentBidAmount) : '—'}</TableCell>
-                <TableCell>{lot.bidCount}</TableCell>
+                <TableCell>{lot.bidCount > 0 ? `${lot.bidCount} (${formatCurrency(lot.currentBidAmount)})` : '—'}</TableCell>
+                <TableCell>
+                  <Link href={`/admin/lots/${lot.id}`}>
+                    <Button variant="ghost" size="sm"><Pencil className="h-3.5 w-3.5" /></Button>
+                  </Link>
+                </TableCell>
               </TableRow>
             ))}
             {allLots.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                   No lots yet. Create your first lot.
                 </TableCell>
               </TableRow>

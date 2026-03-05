@@ -1,11 +1,28 @@
-'use client';
+export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
+import { db } from '@/db';
+import { lots, auctions, users } from '@/db/schema';
+import { sql } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Gavel, Image, Users, FileText, Package, BarChart3, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export default function AdminDashboardPage() {
+export default async function AdminDashboardPage() {
+  const [lotCount] = await db.select({ count: sql<number>`count(*)` }).from(lots);
+  const [auctionCount] = await db.select({ count: sql<number>`count(*)` }).from(auctions);
+  const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users);
+  const [activeLots] = await db.select({ count: sql<number>`count(*) filter (where ${lots.status} in ('for_sale', 'in_auction'))` }).from(lots);
+  const [activeAuctions] = await db.select({ count: sql<number>`count(*) filter (where ${auctions.status} in ('open', 'live', 'preview'))` }).from(auctions);
+
+  const stats = [
+    { label: 'Total Lots', value: Number(lotCount.count) },
+    { label: 'Active Lots', value: Number(activeLots.count) },
+    { label: 'Total Auctions', value: Number(auctionCount.count) },
+    { label: 'Active Auctions', value: Number(activeAuctions.count) },
+    { label: 'Users', value: Number(userCount.count) },
+  ];
+
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -27,6 +44,17 @@ export default function AdminDashboardPage() {
             </Button>
           </Link>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
+        {stats.map((stat) => (
+          <Card key={stat.label}>
+            <CardContent className="pt-6">
+              <p className="text-2xl font-semibold">{stat.value}</p>
+              <p className="text-sm text-muted-foreground">{stat.label}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
