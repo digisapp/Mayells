@@ -777,19 +777,20 @@ async function seed() {
   console.log(`Seeding ${leads.length} outreach leads...`);
 
   for (const lead of leads) {
+    const l = lead as Record<string, string>;
     await db.insert(outreachContacts).values({
-      companyName: lead.companyName,
-      contactName: lead.contactName || null,
-      title: lead.title || null,
-      email: lead.email || null,
-      phone: lead.phone || null,
-      website: lead.website || null,
-      category: lead.category,
-      source: lead.source,
-      address: lead.address || null,
-      city: lead.city || null,
-      state: lead.state || null,
-      notes: lead.notes || null,
+      companyName: l.companyName,
+      contactName: l.contactName || null,
+      title: l.title || null,
+      email: l.email || null,
+      phone: l.phone || null,
+      website: l.website || null,
+      category: l.category as any,
+      source: l.source,
+      address: l.address || null,
+      city: l.city || null,
+      state: l.state || null,
+      notes: l.notes || null,
     });
   }
 
