@@ -6,6 +6,9 @@ import { Heart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/types';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
+import { useState } from 'react';
 import type { Lot } from '@/db/schema/lots';
 
 interface LotCardProps {
@@ -13,9 +16,13 @@ interface LotCardProps {
   auctionSlug?: string;
   showBidInfo?: boolean;
   isGallery?: boolean;
+  isWatchlisted?: boolean;
 }
 
-export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: LotCardProps) {
+export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, isWatchlisted = false }: LotCardProps) {
+  const { isAuthenticated } = useAuth();
+  const [saved, setSaved] = useState(isWatchlisted);
+  const [loading, setLoading] = useState(false);
   const galleryMode = isGallery || lot.saleType === 'gallery' || lot.saleType === 'private';
   const href = galleryMode
     ? `/gallery/${lot.slug || lot.id}`
@@ -23,10 +30,34 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
       ? `/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`
       : `/lots/${lot.slug || lot.id}`;
 
+  async function toggleWatchlist(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAuthenticated) {
+      toast.error('Sign in to save items to your watchlist');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: saved ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lotId: lot.id }),
+      });
+      if (res.ok) {
+        setSaved(!saved);
+        toast.success(saved ? 'Removed from watchlist' : 'Added to watchlist');
+      }
+    } catch {
+      toast.error('Failed to update watchlist');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <Link href={href} className="group block">
       <div className="rounded-xl overflow-hidden shadow-luxury transition-all duration-500 hover:shadow-luxury-hover hover:-translate-y-1 bg-card">
-        {/* Image */}
         <div className="relative aspect-[3/4] bg-muted overflow-hidden">
           {lot.primaryImageUrl ? (
             <Image
@@ -42,7 +73,6 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
             </div>
           )}
 
-          {/* Subtle gradient overlay at bottom */}
           <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
 
           {lot.isFeatured && (
@@ -55,15 +85,13 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
             variant="ghost"
             size="icon"
             className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm hover:bg-white h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-sm"
-            onClick={(e) => {
-              e.preventDefault();
-            }}
+            onClick={toggleWatchlist}
+            disabled={loading}
           >
-            <Heart className="h-3.5 w-3.5 text-charcoal" />
+            <Heart className={`h-3.5 w-3.5 ${saved ? 'fill-red-500 text-red-500' : 'text-charcoal'}`} />
           </Button>
         </div>
 
-        {/* Details */}
         <div className="p-4 space-y-1.5">
           {lot.lotNumber && (
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">

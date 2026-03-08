@@ -3,23 +3,39 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Phone, CheckCircle, ArrowRight } from 'lucide-react';
+import { toast } from 'sonner';
+import { BUSINESS } from '@/lib/config';
 
 export function ServicesBar() {
   const [form, setForm] = useState({ name: '', phone: '', items: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In production: POST to API, send email, store in DB
-    console.log('Appraisal request:', form);
-    setSubmitted(true);
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/appraisal-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (res.ok) {
+        setSubmitted(true);
+      } else {
+        toast.error('Failed to submit. Please try again.');
+      }
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <section className="bg-charcoal text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-          {/* Left: messaging */}
           <div>
             <div className="inline-block bg-champagne text-charcoal text-[11px] sm:text-xs font-bold uppercase tracking-[0.2em] px-3 py-1.5 rounded mb-6">
               Complimentary Service
@@ -48,17 +64,16 @@ export function ServicesBar() {
 
             <div className="mt-8 flex items-center gap-3">
               <a
-                href="tel:+15551234567"
+                href={BUSINESS.phoneHref}
                 className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-5 py-3 transition-colors"
               >
                 <Phone className="h-4 w-4 text-champagne" />
-                <span className="font-semibold text-sm">(555) 123-4567</span>
+                <span className="font-semibold text-sm">{BUSINESS.phone}</span>
               </a>
               <span className="text-[12px] text-white/40">Call or text anytime</span>
             </div>
           </div>
 
-          {/* Right: quick form */}
           <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-6 sm:p-8">
             {submitted ? (
               <div className="text-center py-8">
@@ -75,38 +90,32 @@ export function ServicesBar() {
                   Tell us what you have — we&apos;ll get back to you within 24 hours.
                 </p>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="Your Name"
-                      required
-                      value={form.name}
-                      onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="tel"
-                      placeholder="Phone Number"
-                      required
-                      value={form.phone}
-                      onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                      className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
-                    />
-                  </div>
-                  <div>
-                    <textarea
-                      placeholder="What items do you have? (e.g., jewelry collection, estate furniture, art collection...)"
-                      rows={3}
-                      value={form.items}
-                      onChange={(e) => setForm({ ...form, items: e.target.value })}
-                      className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
-                    />
-                  </div>
-                  <Button type="submit" variant="champagne" size="lg" className="w-full">
-                    Get My Free Appraisal
-                    <ArrowRight className="ml-2 h-4 w-4" />
+                  <input
+                    type="text"
+                    placeholder="Your Name"
+                    required
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone Number"
+                    required
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+                  />
+                  <textarea
+                    placeholder="What items do you have? (e.g., jewelry collection, estate furniture, art collection...)"
+                    rows={3}
+                    value={form.items}
+                    onChange={(e) => setForm({ ...form, items: e.target.value })}
+                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
+                  />
+                  <Button type="submit" variant="champagne" size="lg" className="w-full" disabled={submitting}>
+                    {submitting ? 'Submitting...' : 'Get My Free Appraisal'}
+                    {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
                   </Button>
                   <p className="text-[11px] text-white/30 text-center">
                     No obligation. Completely confidential.

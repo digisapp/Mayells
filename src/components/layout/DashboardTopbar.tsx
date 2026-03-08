@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, ExternalLink } from 'lucide-react';
 
 export function DashboardTopbar() {
   const { profile } = useAuth();
@@ -23,7 +23,15 @@ export function DashboardTopbar() {
         </Link>
       </div>
 
-      <div className="flex-1" />
+      <div className="hidden lg:flex items-center">
+        <Link
+          href="/"
+          className="text-[13px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Back to site
+        </Link>
+      </div>
 
       <div className="flex items-center gap-3">
         <Link href="/search">
@@ -34,9 +42,11 @@ export function DashboardTopbar() {
         <Button variant="ghost" size="icon" className="text-muted-foreground">
           <Bell className="h-5 w-5" />
         </Button>
-        <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-accent/20 text-xs">{initials}</AvatarFallback>
-        </Avatar>
+        <Link href="/settings">
+          <Avatar className="h-8 w-8 cursor-pointer">
+            <AvatarFallback className="bg-accent/20 text-xs">{initials}</AvatarFallback>
+          </Avatar>
+        </Link>
       </div>
     </header>
   );

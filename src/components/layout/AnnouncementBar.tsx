@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Phone } from 'lucide-react';
+import { BUSINESS } from '@/lib/config';
 
 export function AnnouncementBar() {
   return (
@@ -16,11 +17,11 @@ export function AnnouncementBar() {
         </div>
         <div className="flex items-center gap-4">
           <a
-            href="tel:+15551234567"
+            href={BUSINESS.phoneHref}
             className="flex items-center gap-1.5 text-[12px] sm:text-[13px] font-bold hover:text-charcoal/70 transition-colors"
           >
             <Phone className="h-3.5 w-3.5" />
-            <span>(555) 123-4567</span>
+            <span>{BUSINESS.phone}</span>
           </a>
           <Link
             href="/consign"

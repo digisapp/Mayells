@@ -4,6 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Phone, ArrowRight, CheckCircle, FileText, TrendingUp, Home, Briefcase } from 'lucide-react';
+import { toast } from 'sonner';
+import { BUSINESS } from '@/lib/config';
 
 const services = [
   {
@@ -67,11 +69,27 @@ const serviceOptions = [
 export default function ServicesPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', service: '', message: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Services inquiry:', form);
-    setSubmitted(true);
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/appraisal-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (res.ok) {
+        setSubmitted(true);
+      } else {
+        toast.error('Failed to submit. Please try again.');
+      }
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -98,11 +116,11 @@ export default function ServicesPage() {
             </p>
             <div className="mt-8 flex items-center gap-3">
               <a
-                href="tel:+15551234567"
+                href={BUSINESS.phoneHref}
                 className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-5 py-3 transition-colors"
               >
                 <Phone className="h-4 w-4 text-champagne" />
-                <span className="font-semibold text-sm">(555) 123-4567</span>
+                <span className="font-semibold text-sm">{BUSINESS.phone}</span>
               </a>
               <span className="text-[12px] text-white/40">Call or text anytime</span>
             </div>
@@ -190,14 +208,14 @@ export default function ServicesPage() {
               <div className="mt-10 space-y-6">
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.15em] text-white/40 mb-1">Phone</p>
-                  <a href="tel:+15551234567" className="text-lg font-semibold hover:text-champagne transition-colors">
-                    (555) 123-4567
+                  <a href={BUSINESS.phoneHref} className="text-lg font-semibold hover:text-champagne transition-colors">
+                    {BUSINESS.phone}
                   </a>
                 </div>
                 <div>
                   <p className="text-[11px] uppercase tracking-[0.15em] text-white/40 mb-1">Email</p>
-                  <a href="mailto:services@mayells.com" className="text-lg font-semibold hover:text-champagne transition-colors">
-                    services@mayells.com
+                  <a href={`mailto:${BUSINESS.servicesEmail}`} className="text-lg font-semibold hover:text-champagne transition-colors">
+                    {BUSINESS.servicesEmail}
                   </a>
                 </div>
                 <div>
@@ -268,9 +286,9 @@ export default function ServicesPage() {
                       onChange={(e) => setForm({ ...form, message: e.target.value })}
                       className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
                     />
-                    <Button type="submit" variant="champagne" size="lg" className="w-full">
-                      Submit Inquiry
-                      <ArrowRight className="ml-2 h-4 w-4" />
+                    <Button type="submit" variant="champagne" size="lg" className="w-full" disabled={submitting}>
+                      {submitting ? 'Submitting...' : 'Submit Inquiry'}
+                      {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
                     </Button>
                     <p className="text-[11px] text-white/30 text-center">
                       Confidential. No obligation.

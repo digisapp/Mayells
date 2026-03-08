@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { auctions } from '@/db/schema';
+import { auctions, users } from '@/db/schema';
 import { eq, desc, and, inArray } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { auctionSchema } from '@/lib/validation/schemas';
@@ -37,6 +37,10 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    if (!profile || profile.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const body = await req.json();

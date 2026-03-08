@@ -1,6 +1,12 @@
 export const dynamic = 'force-dynamic';
 
+import type { Metadata } from 'next';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: 'Mayells — The Auction House of the Future',
+  description: 'AI-powered luxury auctions for art, antiques, fashion, jewelry, and design. Free appraisals, estate evaluations, and live streaming auctions.',
+};
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Sparkles } from 'lucide-react';
 import { db } from '@/db';

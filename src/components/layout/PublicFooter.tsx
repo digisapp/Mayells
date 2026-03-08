@@ -12,22 +12,11 @@ export function PublicFooter() {
             </p>
           </div>
           <div>
-            <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-4">Categories</h4>
+            <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-4">Browse</h4>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href="/categories/art" className="hover:text-foreground transition-colors duration-300">Art</Link></li>
-              <li><Link href="/categories/antiques" className="hover:text-foreground transition-colors duration-300">Antiques</Link></li>
-              <li><Link href="/categories/luxury" className="hover:text-foreground transition-colors duration-300">Luxury</Link></li>
-              <li><Link href="/categories/fashion" className="hover:text-foreground transition-colors duration-300">Fashion</Link></li>
-              <li><Link href="/categories/jewelry" className="hover:text-foreground transition-colors duration-300">Jewelry</Link></li>
-              <li><Link href="/categories/design" className="hover:text-foreground transition-colors duration-300">Design</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-4">Buying</h4>
-            <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href="/auctions" className="hover:text-foreground transition-colors duration-300">Current Auctions</Link></li>
+              <li><Link href="/auctions" className="hover:text-foreground transition-colors duration-300">Auctions</Link></li>
+              <li><Link href="/gallery" className="hover:text-foreground transition-colors duration-300">Gallery</Link></li>
               <li><Link href="/lots" className="hover:text-foreground transition-colors duration-300">Browse Lots</Link></li>
-              <li><Link href="/about" className="hover:text-foreground transition-colors duration-300">How to Bid</Link></li>
             </ul>
           </div>
           <div>
@@ -38,14 +27,21 @@ export function PublicFooter() {
               <li><Link href="/about" className="hover:text-foreground transition-colors duration-300">About Mayells</Link></li>
             </ul>
           </div>
+          <div>
+            <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-4">Legal</h4>
+            <ul className="space-y-2.5 text-sm text-muted-foreground">
+              <li><Link href="/terms" className="hover:text-foreground transition-colors duration-300">Terms of Service</Link></li>
+              <li><Link href="/privacy" className="hover:text-foreground transition-colors duration-300">Privacy Policy</Link></li>
+            </ul>
+          </div>
         </div>
         <div className="border-t border-border/40 mt-12 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-[13px] text-muted-foreground">
             &copy; {new Date().getFullYear()} Mayells. All rights reserved.
           </p>
           <div className="flex gap-6 text-[13px] text-muted-foreground">
-            <Link href="/about" className="hover:text-foreground transition-colors duration-300">Terms</Link>
-            <Link href="/about" className="hover:text-foreground transition-colors duration-300">Privacy</Link>
+            <Link href="/terms" className="hover:text-foreground transition-colors duration-300">Terms</Link>
+            <Link href="/privacy" className="hover:text-foreground transition-colors duration-300">Privacy</Link>
           </div>
         </div>
       </div>
