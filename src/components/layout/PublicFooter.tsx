@@ -33,7 +33,7 @@ export function PublicFooter() {
           <div>
             <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-4">Selling & Services</h4>
             <ul className="space-y-2.5 text-sm text-muted-foreground">
-              <li><Link href="/consign/new" className="hover:text-foreground transition-colors duration-300">Consign an Item</Link></li>
+              <li><Link href="/consign" className="hover:text-foreground transition-colors duration-300">Consign an Item</Link></li>
               <li><Link href="/services" className="hover:text-foreground transition-colors duration-300">Professional Services</Link></li>
               <li><Link href="/about" className="hover:text-foreground transition-colors duration-300">About Mayells</Link></li>
             </ul>

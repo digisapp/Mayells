@@ -48,7 +48,7 @@ export default function ConsignPage() {
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-8">
         <h1 className="font-display text-display-sm">Consignments</h1>
-        <Link href="/consign/new">
+        <Link href="/consign">
           <Button className="gap-2 bg-champagne text-charcoal hover:bg-champagne/90">
             <Plus className="h-4 w-4" /> New Consignment
           </Button>
@@ -66,7 +66,7 @@ export default function ConsignPage() {
           <CardContent className="py-12 text-center">
             <Package className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">No consignment submissions yet.</p>
-            <Link href="/consign/new" className="text-sm text-champagne hover:underline mt-2 inline-block">
+            <Link href="/consign" className="text-sm text-champagne hover:underline mt-2 inline-block">
               Submit an item for review
             </Link>
           </CardContent>

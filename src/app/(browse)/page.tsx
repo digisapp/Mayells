@@ -198,7 +198,7 @@ export default async function HomePage() {
             Have an extraordinary item? Our AI appraisal system provides instant estimates.
             Submit your piece for consignment and reach collectors worldwide.
           </p>
-          <Link href="/consign/new">
+          <Link href="/consign">
             <Button variant="champagne" size="xl">
               Submit for Consignment
               <ArrowRight className="ml-2 h-4 w-4" />

@@ -27,7 +27,7 @@ const buyerLinks = [
 ];
 
 const sellerLinks = [
-  { href: '/consign', label: 'Consignments', icon: Package },
+  { href: '/dashboard/consignments', label: 'Consignments', icon: Package },
   { href: '/payouts', label: 'Payouts', icon: DollarSign },
 ];
 
