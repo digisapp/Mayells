@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display, Cinzel } from 'next/font/google';
+import { Inter, Playfair_Display, Bebas_Neue } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/context/AuthContext';
@@ -17,11 +17,11 @@ const playfair = Playfair_Display({
   display: 'swap',
 });
 
-const cinzel = Cinzel({
-  variable: '--font-cinzel',
+const bebasNeue = Bebas_Neue({
+  variable: '--font-bebas',
   subsets: ['latin'],
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
+  weight: '400',
 });
 
 export const metadata: Metadata = {
@@ -43,7 +43,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${playfair.variable} ${cinzel.variable} font-sans`}>
+      <body className={`${inter.variable} ${playfair.variable} ${bebasNeue.variable} font-sans`}>
         <AuthProvider>
           <TooltipProvider>
             {children}

@@ -157,9 +157,9 @@
     letter-spacing: -0.02em;
   }
   .font-logo {
-    font-family: var(--font-cinzel), 'Times New Roman', serif;
-    letter-spacing: 0.2em;
-    font-weight: 500;
+    font-family: var(--font-bebas), 'Arial Narrow', sans-serif;
+    letter-spacing: 0.15em;
+    font-weight: 400;
   }
   .text-display-xl {
     font-size: 3.5rem;
