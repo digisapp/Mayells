@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 
 const appraisalSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   phone: z.string().min(1, 'Phone is required'),
   items: z.string().optional(),
-  email: z.string().email().optional(),
+  email: z.string().email().optional().or(z.literal('')),
   service: z.string().optional(),
   message: z.string().optional(),
 });
@@ -18,9 +19,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    // TODO: Store in DB and/or send notification email
-    // For now, log and return success
-    console.log('Appraisal/service request:', parsed.data);
+    // Send notification email to admin (fire and forget)
+    sendAppraisalRequestNotification(parsed.data).catch((err) =>
+      console.error('Failed to send appraisal notification:', err),
+    );
 
     return NextResponse.json(
       { data: { message: 'Request submitted successfully' } },

@@ -30,6 +30,20 @@ export async function GET(req: NextRequest) {
     if (search) {
       conditions.push(ilike(lots.title, `%${search}%`));
     }
+    const minPrice = searchParams.get('minPrice');
+    const maxPrice = searchParams.get('maxPrice');
+    if (minPrice) {
+      const min = parseInt(minPrice);
+      if (!isNaN(min)) {
+        conditions.push(sql`COALESCE(${lots.buyNowPrice}, ${lots.estimateLow}, ${lots.currentBidAmount}) >= ${min}`);
+      }
+    }
+    if (maxPrice) {
+      const max = parseInt(maxPrice);
+      if (!isNaN(max)) {
+        conditions.push(sql`COALESCE(${lots.buyNowPrice}, ${lots.estimateHigh}, ${lots.currentBidAmount}) <= ${max}`);
+      }
+    }
 
     const orderBy = sort === 'price_asc'
       ? asc(lots.currentBidAmount)

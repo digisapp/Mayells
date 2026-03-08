@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { consignments } from '@/db/schema';
+import { consignments, users } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { consignmentSchema } from '@/lib/validation/schemas';
+import { sendConsignmentNotification } from '@/lib/email/notifications';
 
 export async function GET() {
   try {
@@ -47,6 +48,18 @@ export async function POST(request: NextRequest) {
         ...parsed.data,
       })
       .returning();
+
+    // Send notification emails (fire and forget)
+    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    if (profile) {
+      sendConsignmentNotification({
+        sellerName: profile.fullName || 'Unknown',
+        sellerEmail: profile.email,
+        title: parsed.data.title,
+        description: parsed.data.description || '',
+        category: parsed.data.categorySlug,
+      }).catch((err) => console.error('Failed to send consignment notification:', err));
+    }
 
     return NextResponse.json({ data: entry }, { status: 201 });
   } catch (error) {

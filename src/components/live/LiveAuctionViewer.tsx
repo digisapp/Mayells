@@ -32,7 +32,7 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
   const activeLot = lots[activeLotIndex];
 
   return (
-    <div className="min-h-screen bg-[#0E1117] text-white">
+    <div className="min-h-screen dark bg-background text-foreground">
       {/* Top bar */}
       <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">

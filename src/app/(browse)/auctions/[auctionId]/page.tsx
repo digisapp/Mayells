@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { auctions, auctionLots, lots } from '@/db/schema';
@@ -9,6 +10,43 @@ import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { Calendar, Clock, Gavel } from 'lucide-react';
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
+async function getAuction(auctionId: string) {
+  let [auction] = await db.select().from(auctions).where(eq(auctions.slug, auctionId)).limit(1);
+  if (!auction) {
+    [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
+  }
+  return auction;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ auctionId: string }> }): Promise<Metadata> {
+  const { auctionId } = await params;
+  const auction = await getAuction(auctionId);
+  if (!auction) return {};
+
+  const title = `${auction.title} | Mayells Auctions`;
+  const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayells.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title: auction.title,
+      description,
+      type: 'website',
+      url: `${BASE_URL}/auctions/${auction.slug}`,
+      images: auction.coverImageUrl ? [{ url: auction.coverImageUrl, width: 1200, height: 630, alt: auction.title }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: auction.title,
+      description,
+      images: auction.coverImageUrl ? [auction.coverImageUrl] : undefined,
+    },
+  };
+}
+
 export default async function AuctionDetailPage({
   params,
 }: {
@@ -16,11 +54,7 @@ export default async function AuctionDetailPage({
 }) {
   const { auctionId } = await params;
 
-  // Find by slug or ID
-  let [auction] = await db.select().from(auctions).where(eq(auctions.slug, auctionId)).limit(1);
-  if (!auction) {
-    [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
-  }
+  const auction = await getAuction(auctionId);
   if (!auction) notFound();
 
   const auctionLotsResult = await db
@@ -35,7 +69,23 @@ export default async function AuctionDetailPage({
     lotNumber: auctionLot.lotNumber,
   }));
 
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    name: auction.title,
+    description: auction.description || `${auction.title} at Mayells`,
+    url: `${BASE_URL}/auctions/${auction.slug}`,
+    image: auction.coverImageUrl || undefined,
+    organizer: { '@type': 'Organization', name: 'Mayells', url: BASE_URL },
+    ...(auction.biddingStartsAt ? { startDate: new Date(auction.biddingStartsAt).toISOString() } : {}),
+    ...(auction.biddingEndsAt ? { endDate: new Date(auction.biddingEndsAt).toISOString() } : {}),
+    eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
+    eventStatus: auction.status === 'cancelled' ? 'https://schema.org/EventCancelled' : 'https://schema.org/EventScheduled',
+  };
+
   return (
+    <>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
       <div className="mb-10">
@@ -78,5 +128,6 @@ export default async function AuctionDetailPage({
       {/* Lots grid */}
       <LotGrid lots={lotsData} auctionSlug={auction.slug} />
     </div>
+    </>
   );
 }

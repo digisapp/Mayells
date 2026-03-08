@@ -37,7 +37,7 @@ export function LiveChat({ auctionId, className }: LiveChatProps) {
   }
 
   return (
-    <div className={cn('flex flex-col h-full bg-[#0E1117] rounded-lg border border-white/10', className)}>
+    <div className={cn('flex flex-col h-full bg-background rounded-lg border border-white/10', className)}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <h3 className="text-white font-medium text-sm">Live Chat</h3>

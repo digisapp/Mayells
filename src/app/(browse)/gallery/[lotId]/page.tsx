@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import { db } from '@/db';
@@ -10,6 +11,44 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
+async function getLot(lotId: string) {
+  let [lot] = await db.select().from(lots).where(eq(lots.slug, lotId)).limit(1);
+  if (!lot) {
+    [lot] = await db.select().from(lots).where(eq(lots.id, lotId)).limit(1);
+  }
+  return lot;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ lotId: string }> }): Promise<Metadata> {
+  const { lotId } = await params;
+  const lot = await getLot(lotId);
+  if (!lot) return {};
+
+  const price = lot.buyNowPrice ? formatCurrency(lot.buyNowPrice) : undefined;
+  const title = `${lot.title}${price ? ` — ${price}` : ''} | Mayells Gallery`;
+  const description = lot.description?.slice(0, 160) || `${lot.title} available at Mayells Gallery.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title: lot.title,
+      description,
+      type: 'website',
+      url: `${BASE_URL}/gallery/${lot.slug || lot.id}`,
+      images: lot.primaryImageUrl ? [{ url: lot.primaryImageUrl, width: 1200, height: 630, alt: lot.title }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: lot.title,
+      description,
+      images: lot.primaryImageUrl ? [lot.primaryImageUrl] : undefined,
+    },
+  };
+}
+
 export default async function GalleryDetailPage({
   params,
 }: {
@@ -17,11 +56,7 @@ export default async function GalleryDetailPage({
 }) {
   const { lotId } = await params;
 
-  // Find lot by slug or ID
-  let [lot] = await db.select().from(lots).where(eq(lots.slug, lotId)).limit(1);
-  if (!lot) {
-    [lot] = await db.select().from(lots).where(eq(lots.id, lotId)).limit(1);
-  }
+  const lot = await getLot(lotId);
   if (!lot || lot.saleType !== 'gallery') notFound();
 
   // Get images
@@ -31,7 +66,31 @@ export default async function GalleryDetailPage({
     .where(eq(lotImages.lotId, lot.id))
     .orderBy(lotImages.sortOrder);
 
+  // JSON-LD Product structured data
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: lot.title,
+    description: lot.description,
+    image: lot.primaryImageUrl || undefined,
+    url: `${BASE_URL}/gallery/${lot.slug || lot.id}`,
+    brand: { '@type': 'Organization', name: 'Mayells' },
+    ...(lot.buyNowPrice ? {
+      offers: {
+        '@type': 'Offer',
+        price: (lot.buyNowPrice / 100).toFixed(2),
+        priceCurrency: 'USD',
+        availability: lot.status === 'for_sale' ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+        url: `${BASE_URL}/gallery/${lot.slug || lot.id}`,
+      },
+    } : {}),
+    ...(lot.artist ? { creator: { '@type': 'Person', name: lot.artist } } : {}),
+    ...(lot.condition ? { itemCondition: `https://schema.org/${lot.condition === 'mint' ? 'NewCondition' : 'UsedCondition'}` } : {}),
+  };
+
   return (
+    <>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left: Images + Details */}
@@ -154,5 +213,6 @@ export default async function GalleryDetailPage({
         </div>
       </div>
     </div>
+    </>
   );
 }

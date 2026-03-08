@@ -1,8 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { outreachContacts, users } from '@/db/schema';
 import { eq, desc, asc, sql } from 'drizzle-orm';
+
+const CATEGORIES = [
+  'estate_attorney', 'trust_estate_planning', 'elder_law', 'wealth_management',
+  'family_office', 'cpa_tax', 'divorce_attorney', 'insurance',
+  'estate_liquidator', 'real_estate', 'art_advisor', 'bank_trust', 'other',
+] as const;
+
+const STATUSES = [
+  'new', 'contacted', 'follow_up', 'interested',
+  'converted', 'not_interested', 'do_not_contact',
+] as const;
+
+const createContactSchema = z.object({
+  companyName: z.string().min(1, 'Company name is required').max(300),
+  contactName: z.string().max(200).optional().nullable(),
+  title: z.string().max(200).optional().nullable(),
+  email: z.string().email().max(300).optional().nullable().or(z.literal('')),
+  phone: z.string().max(50).optional().nullable(),
+  website: z.string().url().max(500).optional().nullable().or(z.literal('')),
+  category: z.enum(CATEGORIES).optional().default('other'),
+  source: z.string().max(200).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(50).optional().nullable(),
+  notes: z.string().max(5000).optional().nullable(),
+  nextFollowUpAt: z.string().datetime().optional().nullable(),
+});
+
+const updateContactSchema = z.object({
+  id: z.string().uuid('Invalid contact ID'),
+  companyName: z.string().min(1).max(300).optional(),
+  contactName: z.string().max(200).optional().nullable(),
+  title: z.string().max(200).optional().nullable(),
+  email: z.string().email().max(300).optional().nullable().or(z.literal('')),
+  phone: z.string().max(50).optional().nullable(),
+  website: z.string().url().max(500).optional().nullable().or(z.literal('')),
+  category: z.enum(CATEGORIES).optional(),
+  status: z.enum(STATUSES).optional(),
+  source: z.string().max(200).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(50).optional().nullable(),
+  notes: z.string().max(5000).optional().nullable(),
+  lastContactedAt: z.string().datetime().optional().nullable(),
+  nextFollowUpAt: z.string().datetime().optional().nullable(),
+});
+
+const filterSchema = z.object({
+  status: z.enum(STATUSES).optional(),
+  category: z.enum(CATEGORIES).optional(),
+});
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -19,15 +71,21 @@ export async function GET(req: NextRequest) {
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status');
-    const category = searchParams.get('category');
+    const parsed = filterSchema.safeParse({
+      status: searchParams.get('status') || undefined,
+      category: searchParams.get('category') || undefined,
+    });
+
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid filter parameters', details: parsed.error.flatten() }, { status: 400 });
+    }
 
     const conditions = [];
-    if (status) {
-      conditions.push(eq(outreachContacts.status, status as 'new' | 'contacted' | 'follow_up' | 'interested' | 'converted' | 'not_interested' | 'do_not_contact'));
+    if (parsed.data.status) {
+      conditions.push(eq(outreachContacts.status, parsed.data.status));
     }
-    if (category) {
-      conditions.push(eq(outreachContacts.category, category as 'estate_attorney' | 'trust_estate_planning' | 'elder_law' | 'wealth_management' | 'family_office' | 'cpa_tax' | 'divorce_attorney' | 'insurance' | 'estate_liquidator' | 'real_estate' | 'art_advisor' | 'bank_trust' | 'other'));
+    if (parsed.data.category) {
+      conditions.push(eq(outreachContacts.category, parsed.data.category));
     }
 
     const where = conditions.length > 0 ? sql`${sql.join(conditions, sql` AND `)}` : undefined;
@@ -52,27 +110,20 @@ export async function POST(req: NextRequest) {
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await req.json();
-    const { companyName, contactName, title, email, phone, website, category, source, address, city, state, notes, nextFollowUpAt } = body;
+    const parsed = createContactSchema.safeParse(body);
 
-    if (!companyName) {
-      return NextResponse.json({ error: 'Company name is required' }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
+
+    const { nextFollowUpAt, email, website, ...rest } = parsed.data;
 
     const [contact] = await db
       .insert(outreachContacts)
       .values({
-        companyName,
-        contactName: contactName || null,
-        title: title || null,
+        ...rest,
         email: email || null,
-        phone: phone || null,
         website: website || null,
-        category: category || 'other',
-        source: source || null,
-        address: address || null,
-        city: city || null,
-        state: state || null,
-        notes: notes || null,
         nextFollowUpAt: nextFollowUpAt ? new Date(nextFollowUpAt) : null,
       })
       .returning();
@@ -90,19 +141,19 @@ export async function PATCH(req: NextRequest) {
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const body = await req.json();
-    const { id, ...updates } = body;
+    const parsed = updateContactSchema.safeParse(body);
 
-    if (!id) {
-      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    // Convert date strings to Date objects
-    if (typeof updates.lastContactedAt === 'string') {
-      updates.lastContactedAt = new Date(updates.lastContactedAt);
-    }
-    if (typeof updates.nextFollowUpAt === 'string') {
-      updates.nextFollowUpAt = new Date(updates.nextFollowUpAt);
-    }
+    const { id, lastContactedAt, nextFollowUpAt, email, website, ...rest } = parsed.data;
+
+    const updates: Record<string, unknown> = { ...rest };
+    if (email !== undefined) updates.email = email || null;
+    if (website !== undefined) updates.website = website || null;
+    if (lastContactedAt !== undefined) updates.lastContactedAt = lastContactedAt ? new Date(lastContactedAt) : null;
+    if (nextFollowUpAt !== undefined) updates.nextFollowUpAt = nextFollowUpAt ? new Date(nextFollowUpAt) : null;
 
     const [updated] = await db
       .update(outreachContacts)
@@ -126,12 +177,14 @@ export async function DELETE(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { id } = await req.json();
-    if (!id) {
-      return NextResponse.json({ error: 'id is required' }, { status: 400 });
+    const body = await req.json();
+    const parsed = z.object({ id: z.string().uuid() }).safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Valid UUID id is required' }, { status: 400 });
     }
 
-    await db.delete(outreachContacts).where(eq(outreachContacts.id, id));
+    await db.delete(outreachContacts).where(eq(outreachContacts.id, parsed.data.id));
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Outreach delete error:', error);

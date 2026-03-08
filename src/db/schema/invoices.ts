@@ -48,6 +48,7 @@ export const invoices = pgTable('invoices', {
   index('invoices_status_idx').on(table.status),
   index('invoices_auction_idx').on(table.auctionId),
   index('invoices_lot_idx').on(table.lotId),
+  index('invoices_due_date_idx').on(table.dueDate),
 ]);
 
 export const invoicesRelations = relations(invoices, ({ one }) => ({

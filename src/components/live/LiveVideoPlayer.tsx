@@ -43,7 +43,7 @@ export function LiveVideoPlayer({ auctionId, className }: LiveVideoPlayerProps) 
 
   if (error) {
     return (
-      <div className={cn('bg-[#0E1117] rounded-lg flex items-center justify-center', className)}>
+      <div className={cn('bg-background rounded-lg flex items-center justify-center', className)}>
         <p className="text-white/50">{error}</p>
       </div>
     );
@@ -51,7 +51,7 @@ export function LiveVideoPlayer({ auctionId, className }: LiveVideoPlayerProps) 
 
   if (!token || !roomName) {
     return (
-      <div className={cn('bg-[#0E1117] rounded-lg flex items-center justify-center', className)}>
+      <div className={cn('bg-background rounded-lg flex items-center justify-center', className)}>
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-champagne border-t-transparent rounded-full animate-spin" />
           <p className="text-white/50 text-sm">Connecting to live stream...</p>
@@ -64,7 +64,7 @@ export function LiveVideoPlayer({ auctionId, className }: LiveVideoPlayerProps) 
     <LiveKitRoom
       token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-      className={cn('bg-[#0E1117] rounded-lg overflow-hidden', className)}
+      className={cn('bg-background rounded-lg overflow-hidden', className)}
       connect={true}
     >
       <LiveVideoContent />
@@ -96,7 +96,7 @@ function LiveVideoContent() {
 
   if (!videoTrack) {
     return (
-      <div className="aspect-video flex items-center justify-center bg-gradient-to-b from-[#0E1117] to-[#1a1f2e]">
+      <div className="aspect-video flex items-center justify-center bg-gradient-to-b from-background to-secondary">
         <div className="text-center">
           <div className="w-16 h-16 rounded-full bg-champagne/10 flex items-center justify-center mx-auto mb-3">
             <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
