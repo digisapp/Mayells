@@ -147,7 +147,7 @@ export const chatTools = {
               ? formatPrice(l.currentBid)
               : undefined,
           bids: l.bidCount || undefined,
-          url: l.saleType === 'private' ? `/private-sales/${l.slug}` : `/lots/${l.slug}`,
+          url: (l.saleType === 'private' || l.saleType === 'gallery') ? `/gallery/${l.slug}` : `/lots/${l.slug}`,
         })),
       };
     },

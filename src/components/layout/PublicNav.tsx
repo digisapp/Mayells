@@ -9,7 +9,6 @@ import { useState } from 'react';
 const navLinks = [
   { label: 'Auctions', href: '/auctions' },
   { label: 'Gallery', href: '/gallery' },
-  { label: 'Private Sales', href: '/private-sales' },
   { label: 'Services', href: '/services' },
   { label: 'Consign', href: '/consign' },
 ];

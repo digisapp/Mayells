@@ -16,15 +16,12 @@ interface LotCardProps {
 }
 
 export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: LotCardProps) {
-  const galleryMode = isGallery || lot.saleType === 'gallery';
-  const privateMode = lot.saleType === 'private';
-  const href = privateMode
-    ? `/private-sales/${lot.slug || lot.id}`
-    : galleryMode
-      ? `/gallery/${lot.slug || lot.id}`
-      : auctionSlug
-        ? `/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`
-        : `/lots/${lot.slug || lot.id}`;
+  const galleryMode = isGallery || lot.saleType === 'gallery' || lot.saleType === 'private';
+  const href = galleryMode
+    ? `/gallery/${lot.slug || lot.id}`
+    : auctionSlug
+      ? `/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`
+      : `/lots/${lot.slug || lot.id}`;
 
   return (
     <Link href={href} className="group block">
@@ -80,7 +77,7 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
             <p className="text-sm text-muted-foreground">{lot.artist}</p>
           )}
 
-          {privateMode ? (
+          {lot.saleType === 'private' && !lot.buyNowPrice ? (
             <div className="pt-2 border-t border-border/50 mt-2">
               <p className="text-[11px] text-champagne font-medium uppercase tracking-wider">
                 Inquire for Price
