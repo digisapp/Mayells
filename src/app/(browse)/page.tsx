@@ -2,22 +2,13 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Sparkles, Shield, Zap } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { db } from '@/db';
 import { auctions, lots } from '@/db/schema';
 import { inArray, desc, eq, and } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { LotCard } from '@/components/lots/LotCard';
 import { ServicesBar } from '@/components/home/ServicesBar';
-
-const categories = [
-  { name: 'Art', slug: 'art', description: 'Contemporary, Modern & Old Masters' },
-  { name: 'Antiques', slug: 'antiques', description: 'Fine antiques & period furniture' },
-  { name: 'Luxury', slug: 'luxury', description: 'Watches, cars & rare collectibles' },
-  { name: 'Fashion', slug: 'fashion', description: 'Haute couture & vintage' },
-  { name: 'Jewelry', slug: 'jewelry', description: 'Fine jewelry & precious stones' },
-  { name: 'Design', slug: 'design', description: 'Furniture, lighting & objects' },
-];
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -180,83 +171,6 @@ export default async function HomePage() {
           </div>
         </section>
       )}
-
-      {/* Categories */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
-        <div className="flex items-end justify-between mb-12">
-          <div>
-            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Explore</span>
-            <h2 className="font-display text-display-md mt-2">Browse by Category</h2>
-          </div>
-          <Link href="/lots" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:flex items-center gap-1.5 group">
-            View all lots
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          {categories.map((cat) => (
-            <Link
-              key={cat.slug}
-              href={`/categories/${cat.slug}`}
-              className="group relative aspect-[3/4] bg-charcoal rounded-xl overflow-hidden flex items-end p-5 shadow-luxury hover:shadow-luxury-hover transition-all duration-500"
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-charcoal via-charcoal/60 to-charcoal/30 group-hover:via-charcoal/40 transition-all duration-700" />
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-champagne/0 to-transparent group-hover:via-champagne transition-all duration-500" />
-
-              <div className="relative z-10">
-                <h3 className="font-display text-lg text-white group-hover:text-champagne transition-colors duration-300">
-                  {cat.name}
-                </h3>
-                <p className="text-[11px] text-white/40 mt-0.5 hidden sm:block group-hover:text-white/60 transition-colors duration-300">
-                  {cat.description}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* How It Works */}
-      <section className="bg-secondary/40 py-20 md:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Process</span>
-            <h2 className="font-display text-display-md mt-2">How Mayells Works</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-12 max-w-5xl mx-auto">
-            {[
-              {
-                step: '01',
-                icon: Sparkles,
-                title: 'Discover',
-                description: 'Browse curated auctions across art, antiques, fashion, jewelry, and design. AI-powered recommendations surface lots you\'ll love.',
-              },
-              {
-                step: '02',
-                icon: Zap,
-                title: 'Bid',
-                description: 'Place bids in real-time on timed online auctions or live streams. Set maximum bids and our system bids for you automatically.',
-              },
-              {
-                step: '03',
-                icon: Shield,
-                title: 'Collect',
-                description: 'Win your lot, pay securely via Stripe, and receive your item with insured shipping. Every piece AI-authenticated.',
-              },
-            ].map((item) => (
-              <div key={item.step} className="text-center group">
-                <div className="w-16 h-16 rounded-2xl bg-champagne/10 flex items-center justify-center mx-auto mb-6 group-hover:bg-champagne/20 transition-colors duration-300">
-                  <item.icon className="h-7 w-7 text-champagne" />
-                </div>
-                <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">{item.step}</span>
-                <h3 className="font-display text-xl mt-2 mb-3">{item.title}</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* Stats */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
