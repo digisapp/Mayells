@@ -87,7 +87,7 @@ export default async function HomePage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 md:py-20 w-full">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
             <div>
-              <h1 className="font-display text-[2.5rem] sm:text-display-xl md:text-[5rem] leading-[1.05] tracking-tight">
+              <h1 className="font-display text-[2rem] sm:text-[2.75rem] md:text-[3.5rem] leading-[1.05] tracking-tight">
                 Fine Art. Antiques.
                 <br />
                 <span className="text-shimmer">Jewelry. Collectibles.</span>
