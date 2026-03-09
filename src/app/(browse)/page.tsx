@@ -93,8 +93,8 @@ export default async function HomePage() {
                 <span className="text-shimmer">Jewelry. Collectibles.</span>
               </h1>
               <p className="mt-4 sm:mt-6 text-[15px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
-                Discover rare and remarkable pieces from around the world. Expert cataloging,
-                authentication, and appraisal for art, antiques, fashion, jewelry, and design.
+                Discover fine art, antiques, jewelry, design, and remarkable collectibles sourced from estates and private collections worldwide.
+                Our specialists provide expert cataloging, authentication, and appraisal services for collectors and consignors.
               </p>
               <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <Link href="/consign" className="w-full sm:w-auto">
@@ -135,18 +135,18 @@ export default async function HomePage() {
                 {[
                   {
                     step: '01',
-                    title: 'Free Appraisal',
-                    desc: 'Send us photos of your items. Our specialists evaluate and provide auction estimates — completely free, no obligation.',
+                    title: 'Free In-Person or Online Appraisal',
+                    desc: 'Send us photos or schedule a free house call. Our team in Boca Raton and Tribeca, NYC can come to you for appraisals and pickup.',
                   },
                   {
                     step: '02',
-                    title: 'We Catalog & Photograph',
-                    desc: 'Once you consign, we handle professional photography, detailed cataloging, and marketing to attract the right buyers.',
+                    title: 'We Handle Everything',
+                    desc: 'From same-day estate cleanouts to professional photography and cataloging — we pick up your items and prepare them for sale.',
                   },
                   {
                     step: '03',
-                    title: 'Auction on LiveAuctioneers',
-                    desc: 'Your items go live to millions of registered bidders worldwide. We manage the entire sale and send you payment.',
+                    title: 'Live Online Auction',
+                    desc: 'Your items go live to millions of bidders worldwide. We manage the entire auction and send you payment.',
                   },
                 ].map((s) => (
                   <div key={s.step} className="flex items-start gap-5">
@@ -166,9 +166,6 @@ export default async function HomePage() {
                   </Button>
                 </Link>
               </div>
-              <p className="mt-3 text-sm text-charcoal/70">
-                35% seller&apos;s commission · Payment within 35 business days
-              </p>
             </div>
           </div>
 
