@@ -13,3 +13,4 @@ export * from './outreach';
 export * from './estate-visits';
 export * from './newsletter';
 export * from './auction-reminders';
+export * from './ai-chat-settings';

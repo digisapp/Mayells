@@ -2,8 +2,10 @@ import { streamText, stepCountIs } from 'ai';
 import { webSearch, xSearch } from '@ai-sdk/xai';
 import { getChatModel } from '@/lib/ai/client';
 import { chatTools } from '@/lib/ai/chat-tools';
+import { db } from '@/db';
+import { aiChatSettings } from '@/db/schema';
 
-const SYSTEM_PROMPT = `You are a helpful concierge for Mayell, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
+const BASE_PROMPT = `You are a helpful concierge for Mayell, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
 
 Key information about Mayell:
 - We offer FREE appraisals and estate evaluations — no obligation, completely confidential
@@ -42,12 +44,39 @@ Image assessment:
 - Encourage them to request a FREE appraisal through the website or by calling us
 - Never give a specific dollar value from just a photo — say something like "items like this typically range from X to Y at auction" and recommend our free appraisal service`;
 
+async function getSystemPrompt(): Promise<{ prompt: string; enabled: boolean }> {
+  try {
+    const [settings] = await db.select().from(aiChatSettings).limit(1);
+    if (!settings) return { prompt: BASE_PROMPT, enabled: true };
+    if (!settings.enabled) return { prompt: '', enabled: false };
+
+    const parts = [BASE_PROMPT];
+    if (settings.personality) parts.push(`\nTone & personality: ${settings.personality}`);
+    if (settings.customKnowledge) parts.push(`\nAdditional business knowledge: ${settings.customKnowledge}`);
+    if (settings.upsellItems) parts.push(`\nPromote these when naturally relevant: ${settings.upsellItems}`);
+    if (settings.disallowedTopics) parts.push(`\nIMPORTANT restrictions — do NOT: ${settings.disallowedTopics}`);
+
+    return { prompt: parts.join('\n'), enabled: true };
+  } catch {
+    return { prompt: BASE_PROMPT, enabled: true };
+  }
+}
+
 export async function POST(req: Request) {
+  const { prompt, enabled } = await getSystemPrompt();
+
+  if (!enabled) {
+    return new Response(
+      'data: {"type":"start"}\ndata: {"type":"start-step"}\ndata: {"type":"text-start","id":"disabled"}\ndata: {"type":"text-delta","id":"disabled","delta":"Our chat is currently unavailable. Please call us or submit an appraisal request through the website."}\ndata: {"type":"finish-step"}\ndata: {"type":"finish","finishReason":"stop"}\ndata: [DONE]\n',
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    );
+  }
+
   const { messages } = await req.json();
 
   const result = streamText({
     model: getChatModel(),
-    system: SYSTEM_PROMPT,
+    system: prompt,
     messages,
     tools: {
       webSearch: webSearch(),

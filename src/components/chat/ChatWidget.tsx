@@ -15,16 +15,31 @@ export function ChatWidget() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [showLabel, setShowLabel] = useState(true);
+  const [greeting, setGreeting] = useState('Welcome to Mayell! How can we help you today?');
+  const [chatEnabled, setChatEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { messages, sendMessage, status } = useChat({ transport });
+
+  // Fetch custom greeting and enabled status
+  useEffect(() => {
+    fetch('/api/ai/chat-greeting')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.greeting) setGreeting(data.greeting);
+        if (data.enabled === false) setChatEnabled(false);
+      })
+      .catch(() => {});
+  }, []);
 
   // Hide the text label after 8 seconds to reduce visual noise
   useEffect(() => {
     const timer = setTimeout(() => setShowLabel(false), 8000);
     return () => clearTimeout(timer);
   }, []);
+
+  if (!chatEnabled) return null;
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
@@ -104,7 +119,7 @@ export function ChatWidget() {
                 {messages.length === 0 && (
                   <div className="text-center py-8">
                     <p className="text-base text-gray-500">
-                      Welcome to Mayell! How can we help you today?
+                      {greeting}
                     </p>
                   </div>
                 )}
