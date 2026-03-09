@@ -157,9 +157,9 @@
     letter-spacing: -0.02em;
   }
   .font-logo {
-    font-family: var(--font-alte-haas), 'Helvetica Neue', 'Arial', sans-serif;
-    letter-spacing: 0.12em;
-    font-weight: 400;
+    font-family: var(--font-cormorant), 'Didot', 'Bodoni MT', Georgia, serif;
+    letter-spacing: 0.1em;
+    font-weight: 600;
   }
   .text-display-xl {
     font-size: 3.5rem;
