@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, Playfair_Display, Cormorant_Garamond } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/context/AuthContext';
@@ -46,6 +48,9 @@ export const metadata: Metadata = {
   alternates: {
     canonical: BASE_URL,
   },
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
+  },
 };
 
 export default function RootLayout({
@@ -62,6 +67,8 @@ export default function RootLayout({
           </TooltipProvider>
         </AuthProvider>
         <Toaster position="top-right" />
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

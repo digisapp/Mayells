@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import { db } from '@/db';
@@ -9,6 +10,45 @@ import { BidPanel } from '@/components/bidding/BidPanel';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
+
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+
+async function getLot(lotId: string) {
+  let [lot] = await db.select().from(lots).where(eq(lots.slug, lotId)).limit(1);
+  if (!lot) {
+    [lot] = await db.select().from(lots).where(eq(lots.id, lotId)).limit(1);
+  }
+  return lot;
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ auctionId: string; lotId: string }> }): Promise<Metadata> {
+  const { lotId } = await params;
+  const lot = await getLot(lotId);
+  if (!lot) return {};
+
+  const estimate = lot.estimateLow && lot.estimateHigh
+    ? `Est. ${formatCurrency(lot.estimateLow)} – ${formatCurrency(lot.estimateHigh)}`
+    : undefined;
+  const description = lot.description?.slice(0, 160) || `${lot.title}${estimate ? ` ${estimate}` : ''} at Mayell Auctions.`;
+
+  return {
+    title: lot.title,
+    description,
+    openGraph: {
+      title: lot.title,
+      description,
+      type: 'website',
+      url: `${BASE_URL}/auctions/${lot.id}/lots/${lot.slug || lot.id}`,
+      images: lot.primaryImageUrl ? [{ url: lot.primaryImageUrl, width: 1200, height: 630, alt: lot.title }] : undefined,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: lot.title,
+      description,
+      images: lot.primaryImageUrl ? [lot.primaryImageUrl] : undefined,
+    },
+  };
+}
 
 export default async function LotDetailPage({
   params,
@@ -55,7 +95,40 @@ export default async function LotDetailPage({
     .orderBy(desc(bids.createdAt))
     .limit(20);
 
+  // Product JSON-LD for Google rich results
+  const currentPrice = lot.currentBidAmount || lot.startingBid || lot.estimateLow;
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: lot.title,
+    description: lot.description,
+    image: lot.primaryImageUrl || undefined,
+    url: `${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`,
+    brand: { '@type': 'Organization', name: 'Mayell Auctions' },
+    offers: {
+      '@type': 'Offer',
+      price: currentPrice ? (currentPrice / 100).toFixed(2) : undefined,
+      priceCurrency: 'USD',
+      availability: lot.status === 'sold'
+        ? 'https://schema.org/SoldOut'
+        : 'https://schema.org/InStock',
+      url: `${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`,
+      ...(lot.estimateLow && lot.estimateHigh ? {
+        priceSpecification: {
+          '@type': 'PriceSpecification',
+          minPrice: (lot.estimateLow / 100).toFixed(2),
+          maxPrice: (lot.estimateHigh / 100).toFixed(2),
+          priceCurrency: 'USD',
+        },
+      } : {}),
+    },
+    ...(lot.artist ? { creator: { '@type': 'Person', name: lot.artist } } : {}),
+    ...(lot.condition ? { itemCondition: `https://schema.org/${lot.condition === 'mint' ? 'NewCondition' : 'UsedCondition'}` } : {}),
+  };
+
   return (
+    <>
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left: Images + Details */}
@@ -199,5 +272,6 @@ export default async function LotDetailPage({
         </div>
       </div>
     </div>
+    </>
   );
 }
