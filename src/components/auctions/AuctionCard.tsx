@@ -72,14 +72,14 @@ export function AuctionCard({ auction }: AuctionCardProps) {
         </div>
 
         {/* Details */}
-        <div className="p-5 space-y-2">
-          <h3 className="font-display text-xl leading-tight group-hover:text-champagne transition-colors duration-300">
+        <div className="p-4 sm:p-5 space-y-1.5 sm:space-y-2">
+          <h3 className="font-display text-lg sm:text-xl leading-tight group-hover:text-champagne transition-colors duration-300">
             {auction.title}
           </h3>
           {auction.subtitle && (
-            <p className="text-sm text-muted-foreground line-clamp-1">{auction.subtitle}</p>
+            <p className="text-[13px] sm:text-sm text-muted-foreground line-clamp-1">{auction.subtitle}</p>
           )}
-          <div className="flex items-center gap-4 text-[13px] text-muted-foreground pt-1">
+          <div className="flex items-center gap-3 sm:gap-4 text-[12px] sm:text-[13px] text-muted-foreground pt-1">
             {auction.biddingStartsAt && (
               <span className="flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5" />

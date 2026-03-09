@@ -5,7 +5,7 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { users } from '../src/db/schema/users';
 
-const EMAIL = 'admin@mayells.com';
+const EMAIL = 'admin@mayellauctions.com';
 const PASSWORD = 'Test#123';
 const FULL_NAME = 'Mayell Admin';
 

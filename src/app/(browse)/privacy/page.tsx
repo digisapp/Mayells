@@ -32,7 +32,7 @@ export default function PrivacyPage() {
         <h2 className="font-display text-lg text-foreground">5. Contact</h2>
         <p>
           For privacy inquiries, contact us at{' '}
-          <a href="mailto:info@mayells.com" className="text-champagne hover:underline">info@mayells.com</a>.
+          <a href="mailto:info@mayellauctions.com" className="text-champagne hover:underline">info@mayellauctions.com</a>.
         </p>
       </div>
     </div>

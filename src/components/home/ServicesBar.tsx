@@ -34,8 +34,8 @@ export function ServicesBar() {
 
   return (
     <section className="bg-charcoal text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 md:py-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           <div>
             <div className="inline-block bg-champagne text-charcoal text-[11px] sm:text-xs font-bold uppercase tracking-[0.2em] px-3 py-1.5 rounded mb-6">
               Complimentary Service
@@ -62,10 +62,10 @@ export function ServicesBar() {
               ))}
             </div>
 
-            <div className="mt-8 flex items-center gap-3">
+            <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
               <a
                 href={BUSINESS.phoneHref}
-                className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-5 py-3 transition-colors"
+                className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-4 sm:px-5 py-3 transition-colors"
               >
                 <Phone className="h-4 w-4 text-champagne" />
                 <span className="font-semibold text-sm">{BUSINESS.phone}</span>
@@ -74,7 +74,7 @@ export function ServicesBar() {
             </div>
           </div>
 
-          <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-6 sm:p-8">
+          <div className="bg-white/[0.04] border border-white/10 rounded-xl sm:rounded-2xl p-5 sm:p-8">
             {submitted ? (
               <div className="text-center py-8">
                 <CheckCircle className="h-12 w-12 text-champagne mx-auto mb-4" />

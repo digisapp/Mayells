@@ -2,7 +2,7 @@ import { getResend } from './resend';
 import { formatCurrency } from '@/types';
 import { BUSINESS } from '@/lib/config';
 
-const FROM = 'Mayell <notifications@mayells.com>';
+const FROM = 'Mayell <notifications@mayellauctions.com>';
 const ADMIN_EMAIL = BUSINESS.email;
 
 export async function sendOutbidNotification(params: {
@@ -134,7 +134,7 @@ export async function sendAppraisalRequestNotification(params: {
         <h1 style="color: #272D35; font-size: 24px;">New Service / Appraisal Request</h1>
         <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">${rows}</table>
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
-          Submitted via mayells.com
+          Submitted via mayellauctions.com
         </p>
       </div>
     `,
@@ -167,7 +167,7 @@ export async function sendConsignmentNotification(params: {
         <a href="${process.env.NEXT_PUBLIC_APP_URL}/admin/consignments" style="display: inline-block; background: #D4C5A0; color: #272D35; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 4px;">
           Review in Admin
         </a>
-        <p style="margin-top: 30px; font-size: 12px; color: #999;">Submitted via mayells.com</p>
+        <p style="margin-top: 30px; font-size: 12px; color: #999;">Submitted via mayellauctions.com</p>
       </div>
     `,
   });

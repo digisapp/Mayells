@@ -38,22 +38,22 @@ export function PublicNav() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <Link href="/search">
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-10 w-10">
                 <Search className="h-4.5 w-4.5" />
               </Button>
             </Link>
 
             {isAuthenticated ? (
-              <Link href="/dashboard">
+              <Link href="/dashboard" className="hidden sm:block">
                 <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
                   <User className="h-4 w-4" />
-                  <span className="hidden sm:inline text-[13px]">{profile?.displayName || profile?.fullName || 'Account'}</span>
+                  <span className="text-[13px]">{profile?.displayName || profile?.fullName || 'Account'}</span>
                 </Button>
               </Link>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-2">
                 <Link href="/login">
                   <Button variant="ghost" size="sm" className="text-[13px]">Sign In</Button>
                 </Link>
@@ -66,7 +66,7 @@ export function PublicNav() {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="md:hidden h-10 w-10"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -76,17 +76,40 @@ export function PublicNav() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <nav className="md:hidden pb-4 pt-2 border-t border-border/30 space-y-0.5 animate-fade-in">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="block py-2.5 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
-                onClick={() => setMobileOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
+          <nav className="md:hidden pb-5 pt-3 border-t border-border/30 animate-fade-in">
+            <div className="space-y-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="block py-3 px-3 text-[15px] text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+            <div className="mt-4 pt-4 border-t border-border/30 px-3">
+              {isAuthenticated ? (
+                <Link
+                  href="/dashboard"
+                  className="flex items-center gap-2 py-3 text-[15px] text-muted-foreground hover:text-foreground"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <User className="h-4 w-4" />
+                  {profile?.displayName || profile?.fullName || 'My Account'}
+                </Link>
+              ) : (
+                <div className="flex gap-3">
+                  <Link href="/login" className="flex-1" onClick={() => setMobileOpen(false)}>
+                    <Button variant="outline" size="lg" className="w-full text-[14px]">Sign In</Button>
+                  </Link>
+                  <Link href="/signup" className="flex-1" onClick={() => setMobileOpen(false)}>
+                    <Button variant="champagne" size="lg" className="w-full text-[14px]">Register</Button>
+                  </Link>
+                </div>
+              )}
+            </div>
           </nav>
         )}
       </div>

@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     const resend = getResend();
 
     await resend.emails.send({
-      from: `${BUSINESS.name} <notifications@mayells.com>`,
+      from: `${BUSINESS.name} <notifications@mayellauctions.com>`,
       to: recipientEmail,
       subject: `${BUSINESS.name} — Consignment Agreement for Your Review`,
       html: `

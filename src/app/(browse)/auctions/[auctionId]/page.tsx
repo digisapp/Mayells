@@ -10,7 +10,7 @@ import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { Calendar, Clock, Gavel } from 'lucide-react';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
 
 async function getAuction(auctionId: string) {
   let [auction] = await db.select().from(auctions).where(eq(auctions.slug, auctionId)).limit(1);

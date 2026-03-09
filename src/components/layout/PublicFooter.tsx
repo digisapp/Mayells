@@ -2,11 +2,11 @@ import Link from 'next/link';
 
 export function PublicFooter() {
   return (
-    <footer className="relative border-t border-border/40 bg-secondary/30 mt-20">
+    <footer className="relative border-t border-border/40 bg-secondary/30 mt-12 sm:mt-20">
       <div className="absolute top-0 left-0 right-0 gradient-line" />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-          <div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-16">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-10">
+          <div className="col-span-2 sm:col-span-2 lg:col-span-1">
             <h3 className="font-logo text-xl mb-1">MAYELL</h3>
             <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-3">Fine Art Antiques Design Fashion Collectibles</p>
             <p className="text-sm text-muted-foreground leading-relaxed">
@@ -37,8 +37,8 @@ export function PublicFooter() {
             </ul>
           </div>
         </div>
-        <div className="border-t border-border/40 mt-12 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[13px] text-muted-foreground">
+        <div className="border-t border-border/40 mt-8 sm:mt-12 pt-6 sm:pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+          <p className="text-[12px] sm:text-[13px] text-muted-foreground">
             &copy; {new Date().getFullYear()} Mayell. All rights reserved.
           </p>
           <div className="flex gap-6 text-[13px] text-muted-foreground">

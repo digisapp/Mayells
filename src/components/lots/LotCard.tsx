@@ -84,7 +84,7 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, isWat
           <Button
             variant="ghost"
             size="icon"
-            className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm hover:bg-white h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-sm"
+            className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-white/90 backdrop-blur-sm hover:bg-white h-8 w-8 rounded-full sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 shadow-sm"
             onClick={toggleWatchlist}
             disabled={loading}
           >
@@ -92,46 +92,46 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, isWat
           </Button>
         </div>
 
-        <div className="p-4 space-y-1.5">
+        <div className="p-3 sm:p-4 space-y-1 sm:space-y-1.5">
           {lot.lotNumber && (
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+            <span className="text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
               Lot {lot.lotNumber}
             </span>
           )}
-          <h3 className="font-display text-[15px] leading-snug group-hover:text-champagne transition-colors duration-300 line-clamp-2">
+          <h3 className="font-display text-[13px] sm:text-[15px] leading-snug group-hover:text-champagne transition-colors duration-300 line-clamp-2">
             {lot.title}
           </h3>
           {lot.artist && (
-            <p className="text-sm text-muted-foreground">{lot.artist}</p>
+            <p className="text-[12px] sm:text-sm text-muted-foreground line-clamp-1">{lot.artist}</p>
           )}
 
           {lot.saleType === 'private' && !lot.buyNowPrice ? (
-            <div className="pt-2 border-t border-border/50 mt-2">
-              <p className="text-[11px] text-champagne font-medium uppercase tracking-wider">
+            <div className="pt-1.5 sm:pt-2 border-t border-border/50 mt-1.5 sm:mt-2">
+              <p className="text-[10px] sm:text-[11px] text-champagne font-medium uppercase tracking-wider">
                 Inquire for Price
               </p>
             </div>
           ) : galleryMode && lot.buyNowPrice ? (
-            <div className="pt-2 border-t border-border/50 mt-2">
-              <p className="text-sm font-semibold tracking-tight">
+            <div className="pt-1.5 sm:pt-2 border-t border-border/50 mt-1.5 sm:mt-2">
+              <p className="text-[13px] sm:text-sm font-semibold tracking-tight">
                 {formatCurrency(lot.buyNowPrice)}
               </p>
-              <p className="text-[11px] text-champagne font-medium uppercase tracking-wider">
+              <p className="text-[10px] sm:text-[11px] text-champagne font-medium uppercase tracking-wider">
                 Buy Now
               </p>
             </div>
           ) : showBidInfo && lot.status === 'in_auction' && lot.currentBidAmount > 0 ? (
-            <div className="pt-2 border-t border-border/50 mt-2">
-              <p className="text-sm font-semibold tracking-tight">
+            <div className="pt-1.5 sm:pt-2 border-t border-border/50 mt-1.5 sm:mt-2">
+              <p className="text-[13px] sm:text-sm font-semibold tracking-tight">
                 {formatCurrency(lot.currentBidAmount)}
               </p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[10px] sm:text-[11px] text-muted-foreground">
                 {lot.bidCount} bid{lot.bidCount !== 1 ? 's' : ''}
               </p>
             </div>
           ) : (
             lot.estimateLow && lot.estimateHigh && (
-              <p className="text-[13px] text-muted-foreground pt-2 border-t border-border/50 mt-2">
+              <p className="text-[11px] sm:text-[13px] text-muted-foreground pt-1.5 sm:pt-2 border-t border-border/50 mt-1.5 sm:mt-2">
                 Est. {formatCurrency(lot.estimateLow)} — {formatCurrency(lot.estimateHigh)}
               </p>
             )
