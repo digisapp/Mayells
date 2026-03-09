@@ -8,7 +8,7 @@ import { eq, asc } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
-import { Calendar, Clock, Gavel } from 'lucide-react';
+import { Calendar, Clock, Gavel, ExternalLink } from 'lucide-react';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
 
@@ -123,6 +123,21 @@ export default async function AuctionDetailPage({
             </span>
           )}
         </div>
+
+        {/* Bid CTA */}
+        {auction.liveauctioneersUrl && (
+          <div className="mt-6">
+            <a
+              href={auction.liveauctioneersUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-6 py-3 text-sm font-medium transition-colors"
+            >
+              Bid on LiveAuctioneers
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </div>
+        )}
       </div>
 
       {/* Lots grid */}

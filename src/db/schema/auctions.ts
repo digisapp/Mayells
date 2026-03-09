@@ -55,6 +55,9 @@ export const auctions = pgTable('auctions', {
   // LiveKit (Phase 3)
   livekitRoomName: text('livekit_room_name').unique(),
 
+  // External
+  liveauctioneersUrl: text('liveauctioneers_url'),
+
   // Admin
   createdById: uuid('created_by_id').references(() => users.id),
   auctioneerId: uuid('auctioneer_id').references(() => users.id),
