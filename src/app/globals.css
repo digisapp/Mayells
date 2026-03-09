@@ -157,7 +157,7 @@
     letter-spacing: -0.02em;
   }
   .font-logo {
-    font-family: var(--font-playfair), 'Didot', 'Bodoni MT', Georgia, serif;
+    font-family: var(--font-alte-haas), 'Helvetica Neue', 'Arial', sans-serif;
     letter-spacing: 0.12em;
     font-weight: 400;
   }

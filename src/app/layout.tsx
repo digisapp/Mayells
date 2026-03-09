@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display, Bebas_Neue } from 'next/font/google';
+import { Inter, Playfair_Display } from 'next/font/google';
+import localFont from 'next/font/local';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/context/AuthContext';
@@ -17,11 +18,13 @@ const playfair = Playfair_Display({
   display: 'swap',
 });
 
-const bebasNeue = Bebas_Neue({
-  variable: '--font-bebas',
-  subsets: ['latin'],
+const alteHaas = localFont({
+  src: [
+    { path: '../../public/fonts/AlteHaasGroteskRegular.ttf', weight: '400' },
+    { path: '../../public/fonts/AlteHaasGroteskBold.ttf', weight: '700' },
+  ],
+  variable: '--font-alte-haas',
   display: 'swap',
-  weight: '400',
 });
 
 export const metadata: Metadata = {
@@ -43,7 +46,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${playfair.variable} ${bebasNeue.variable} font-sans`}>
+      <body className={`${inter.variable} ${playfair.variable} ${alteHaas.variable} font-sans`}>
         <AuthProvider>
           <TooltipProvider>
             {children}
