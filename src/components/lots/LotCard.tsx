@@ -57,7 +57,7 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, isWat
 
   return (
     <Link href={href} className="group block">
-      <div className="rounded-xl overflow-hidden shadow-luxury transition-all duration-500 hover:shadow-luxury-hover hover:-translate-y-1 bg-card">
+      <div className="rounded-xl overflow-hidden glass-card border-glow-hover transition-all duration-500 hover:-translate-y-1">
         <div className="relative aspect-[3/4] bg-muted overflow-hidden">
           {lot.primaryImageUrl ? (
             <Image
@@ -69,7 +69,7 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, isWat
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-muted to-muted/60 flex items-center justify-center">
-              <span className="font-logo text-lg text-muted-foreground/40">MAYELLS</span>
+              <span className="font-logo text-lg text-muted-foreground/40">MAYELL</span>
             </div>
           )}
 

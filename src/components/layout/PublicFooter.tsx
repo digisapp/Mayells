@@ -2,12 +2,13 @@ import Link from 'next/link';
 
 export function PublicFooter() {
   return (
-    <footer className="border-t border-border/40 bg-secondary/30 mt-20">
+    <footer className="relative border-t border-border/40 bg-secondary/30 mt-20">
+      <div className="absolute top-0 left-0 right-0 gradient-line" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
           <div>
             <h3 className="font-logo text-xl mb-1">MAYELL</h3>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-3">Fine Art • Antiques • Design • Auctions</p>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-3">Fine Art Antiques Design Fashion Collectibles</p>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.
             </p>

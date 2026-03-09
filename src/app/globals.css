@@ -234,3 +234,84 @@
 .animate-urgency {
   animation: urgencyPulse 1.5s ease-in-out infinite;
 }
+
+/* Glassmorphism & Luxury Glass Effects */
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(20px) saturate(1.8);
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+  .glass-dark {
+    background: rgba(14, 17, 23, 0.7);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .glass-card {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(16px) saturate(1.5);
+    -webkit-backdrop-filter: blur(16px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow:
+      0 1px 2px rgba(0,0,0,0.04),
+      0 4px 16px rgba(0,0,0,0.04),
+      inset 0 1px 0 rgba(255,255,255,0.5);
+  }
+  .glass-card:hover {
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow:
+      0 2px 4px rgba(0,0,0,0.06),
+      0 8px 32px rgba(0,0,0,0.08),
+      inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  .border-glow {
+    border: 1px solid oklch(0.82 0.06 80 / 0.2);
+    box-shadow:
+      0 0 0 1px oklch(0.82 0.06 80 / 0.05),
+      0 0 20px -5px oklch(0.82 0.06 80 / 0.1);
+  }
+  .border-glow-hover:hover {
+    border-color: oklch(0.82 0.06 80 / 0.35);
+    box-shadow:
+      0 0 0 1px oklch(0.82 0.06 80 / 0.1),
+      0 0 30px -5px oklch(0.82 0.06 80 / 0.15);
+  }
+  .gradient-line {
+    height: 1px;
+    background: linear-gradient(90deg,
+      transparent,
+      oklch(0.82 0.06 80 / 0.3) 20%,
+      oklch(0.82 0.06 80 / 0.5) 50%,
+      oklch(0.82 0.06 80 / 0.3) 80%,
+      transparent
+    );
+  }
+  .text-shimmer {
+    background: linear-gradient(
+      120deg,
+      oklch(0.82 0.06 80) 0%,
+      oklch(0.9 0.04 80) 50%,
+      oklch(0.82 0.06 80) 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 3s ease-in-out infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}

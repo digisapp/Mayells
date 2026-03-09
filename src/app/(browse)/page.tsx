@@ -70,24 +70,30 @@ export default async function HomePage() {
 
       {/* Hero */}
       <section className="relative bg-charcoal text-white overflow-hidden min-h-[85vh] flex items-center">
+        {/* Dot grid pattern */}
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
           backgroundSize: '40px 40px',
         }} />
-        <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-champagne/[0.05] to-transparent pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-champagne/[0.03] rounded-full blur-3xl pointer-events-none" />
+        {/* Champagne glow - top right */}
+        <div className="absolute top-0 right-0 w-2/3 h-full bg-gradient-to-l from-champagne/[0.07] to-transparent pointer-events-none" />
+        {/* Floating orbs */}
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-champagne/[0.04] rounded-full blur-[100px] pointer-events-none animate-float" />
+        <div className="absolute top-20 right-20 w-72 h-72 bg-champagne/[0.03] rounded-full blur-[80px] pointer-events-none animate-float" style={{ animationDelay: '-3s' }} />
+        {/* Gradient line accent */}
+        <div className="absolute bottom-0 left-0 right-0 gradient-line" />
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 w-full">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-white/[0.06] backdrop-blur-sm border border-white/10 rounded-full px-4 py-1.5 mb-8">
+            <div className="inline-flex items-center gap-2 glass-dark rounded-full px-5 py-2 mb-8 border-glow">
               <Sparkles className="h-3.5 w-3.5 text-champagne" />
-              <span className="text-[13px] text-white/70 tracking-wide">AI-Powered Auction Platform</span>
+              <span className="text-[13px] text-white/80 tracking-wide">AI-Powered Auction Platform</span>
             </div>
 
             <h1 className="font-display text-display-xl md:text-[5rem] leading-[1.02] tracking-tight">
               The Auction House
               <br />
-              <span className="text-champagne">of the Future</span>
+              <span className="text-shimmer">of the Future</span>
             </h1>
             <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
               Discover extraordinary objects from around the world. AI-powered cataloging,
@@ -95,13 +101,13 @@ export default async function HomePage() {
             </p>
             <div className="mt-10 flex flex-wrap gap-4">
               <Link href="/auctions">
-                <Button variant="champagne" size="xl">
+                <Button variant="champagne" size="xl" className="shadow-gold">
                   Browse Auctions
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/signup">
-                <Button variant="champagne-outline" size="xl">
+                <Button variant="champagne-outline" size="xl" className="backdrop-blur-sm">
                   Create Account
                 </Button>
               </Link>
@@ -136,7 +142,8 @@ export default async function HomePage() {
 
       {/* Featured Lots */}
       {featuredLots.length > 0 && (
-        <section className="bg-secondary/40 py-20 md:py-28">
+        <section className="relative bg-secondary/40 py-20 md:py-28">
+          <div className="absolute top-0 left-0 right-0 gradient-line" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-end justify-between mb-12">
               <div>
@@ -179,8 +186,10 @@ export default async function HomePage() {
       )}
 
       {/* CTA */}
-      <section className="bg-charcoal text-white py-20 md:py-28">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <section className="relative bg-charcoal text-white py-20 md:py-28 overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 gradient-line" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-champagne/[0.04] rounded-full blur-[120px] pointer-events-none" />
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Consignment</span>
           <h2 className="font-display text-display-md text-white mt-2 mb-4">Ready to Sell?</h2>
           <p className="text-white/50 max-w-lg mx-auto mb-10 text-[15px] leading-relaxed">
@@ -188,7 +197,7 @@ export default async function HomePage() {
             Submit your piece for consignment and reach collectors worldwide.
           </p>
           <Link href="/consign">
-            <Button variant="champagne" size="xl">
+            <Button variant="champagne" size="xl" className="shadow-gold">
               Submit for Consignment
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>

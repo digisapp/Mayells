@@ -35,7 +35,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
 
   return (
     <Link href={`/auctions/${auction.slug}`} className="group block">
-      <div className="rounded-xl overflow-hidden shadow-luxury transition-all duration-500 hover:shadow-luxury-hover hover:-translate-y-1 bg-card">
+      <div className="rounded-xl overflow-hidden glass-card border-glow-hover transition-all duration-500 hover:-translate-y-1">
         {/* Cover Image */}
         <div className="relative aspect-[16/9] bg-muted overflow-hidden">
           {auction.coverImageUrl ? (
@@ -48,7 +48,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-charcoal via-charcoal/95 to-graphite flex items-center justify-center">
-              <span className="font-logo text-3xl text-white/20">MAYELLS</span>
+              <span className="font-logo text-3xl text-white/20">MAYELL</span>
             </div>
           )}
 
@@ -66,7 +66,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
           </Badge>
 
           {/* Lot count pill */}
-          <div className="absolute bottom-4 right-4 bg-black/60 backdrop-blur-sm rounded-full px-3 py-1 text-white text-xs font-medium">
+          <div className="absolute bottom-4 right-4 glass-dark rounded-full px-3 py-1 text-white text-xs font-medium">
             {auction.lotCount} lots
           </div>
         </div>
