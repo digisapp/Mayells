@@ -45,7 +45,7 @@ export function NewsletterSignup() {
         placeholder="Email for updates"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="flex-1 min-w-0 bg-background border border-border/60 rounded-md px-3 py-1.5 text-xs placeholder:text-muted-foreground/50 focus:outline-none focus:border-champagne/50 transition-colors"
+        className="flex-1 min-w-0 bg-white/[0.06] border border-white/15 rounded-md px-3 py-1.5 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
       />
       <button
         type="submit"

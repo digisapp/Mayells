@@ -27,7 +27,7 @@ const jsonLd = {
   contactPoint: {
     '@type': 'ContactPoint',
     contactType: 'customer service',
-    email: 'support@mayellauctions.com',
+    email: 'info@mayellauctions.com',
   },
 };
 
@@ -118,57 +118,62 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* How It Works + Departments — side by side on white */}
+      {/* How It Works + Departments — side by side */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10">
           {/* Left: How It Works */}
-          <div>
-            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">How It Works</span>
-            <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8">
-              Sell With <span className="text-champagne">Mayell</span>
-            </h2>
-            <div className="space-y-6">
-              {[
-                {
-                  step: '01',
-                  title: 'Free Appraisal',
-                  desc: 'Send us photos of your items. Our specialists evaluate and provide auction estimates — completely free, no obligation.',
-                },
-                {
-                  step: '02',
-                  title: 'We Catalog & Photograph',
-                  desc: 'Once you consign, we handle professional photography, detailed cataloging, and marketing to attract the right buyers.',
-                },
-                {
-                  step: '03',
-                  title: 'Auction on LiveAuctioneers',
-                  desc: 'Your items go live to millions of registered bidders worldwide. We manage the entire sale and send you payment.',
-                },
-              ].map((s) => (
-                <div key={s.step} className="flex items-start gap-5">
-                  <span className="font-display text-champagne/60 text-2xl font-light leading-none mt-1 tabular-nums">{s.step}</span>
-                  <div>
-                    <p className="font-display text-[15px] mb-1">{s.title}</p>
-                    <p className="text-[13px] text-muted-foreground leading-relaxed">{s.desc}</p>
+          <div className="relative bg-charcoal text-white rounded-2xl p-7 sm:p-10 overflow-hidden">
+            {/* Subtle champagne glow */}
+            <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-champagne/[0.06] to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-40 h-40 bg-champagne/[0.04] rounded-full blur-[60px] pointer-events-none" />
+            <div className="relative">
+              <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">How It Works</span>
+              <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8">
+                Sell With <span className="text-champagne">Mayell</span>
+              </h2>
+              <div className="space-y-6">
+                {[
+                  {
+                    step: '01',
+                    title: 'Free Appraisal',
+                    desc: 'Send us photos of your items. Our specialists evaluate and provide auction estimates — completely free, no obligation.',
+                  },
+                  {
+                    step: '02',
+                    title: 'We Catalog & Photograph',
+                    desc: 'Once you consign, we handle professional photography, detailed cataloging, and marketing to attract the right buyers.',
+                  },
+                  {
+                    step: '03',
+                    title: 'Auction on LiveAuctioneers',
+                    desc: 'Your items go live to millions of registered bidders worldwide. We manage the entire sale and send you payment.',
+                  },
+                ].map((s) => (
+                  <div key={s.step} className="flex items-start gap-5">
+                    <span className="font-display text-champagne text-2xl font-light leading-none mt-1 tabular-nums">{s.step}</span>
+                    <div>
+                      <p className="font-display text-[15px] mb-1">{s.title}</p>
+                      <p className="text-[13px] text-white/50 leading-relaxed">{s.desc}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+              <div className="mt-8 flex flex-col sm:flex-row items-start gap-3">
+                <Link href="/consign">
+                  <Button variant="champagne" className="gap-2 shadow-gold">
+                    Start Consigning
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+              <p className="mt-3 text-[12px] text-white/30">
+                35% seller&apos;s commission · Payment within 35 business days
+              </p>
             </div>
-            <div className="mt-8 flex flex-col sm:flex-row items-start gap-3">
-              <Link href="/consign">
-                <Button variant="champagne" className="gap-2">
-                  Start Consigning
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
-            <p className="mt-3 text-[12px] text-muted-foreground">
-              35% seller&apos;s commission · Payment within 35 business days
-            </p>
           </div>
 
           {/* Right: Departments / What We Sell */}
-          <div>
+          <div className="border border-border/60 rounded-2xl p-7 sm:p-10 bg-secondary/20">
             <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Departments</span>
             <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8">What We Sell</h2>
             <div className="grid grid-cols-2 gap-3">
@@ -197,7 +202,7 @@ export default async function HomePage() {
         </div>
 
         {/* Mobile appraisal form (hidden on desktop since it's in hero) */}
-        <div className="lg:hidden mt-12 bg-charcoal rounded-2xl p-1">
+        <div className="lg:hidden mt-8 bg-charcoal rounded-2xl p-1">
           <div className="text-white">
             <HeroAppraisalForm />
           </div>
