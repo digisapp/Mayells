@@ -32,7 +32,17 @@ export async function middleware(request: NextRequest) {
 
   // Redirect authenticated users away from auth pages
   if (user && authRoutes.some((route) => pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const { data: profile } = await adminClient
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    const dest = profile?.role === 'admin' ? '/admin' : '/dashboard';
+    return NextResponse.redirect(new URL(dest, request.url));
   }
 
   // Redirect unauthenticated users to login

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { loginSchema } from '@/lib/validation/schemas';
+import { db } from '@/db';
+import { users } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,10 +29,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
+    // Fetch user role to determine redirect
+    const [profile] = await db.select({ role: users.role }).from(users).where(eq(users.id, data.user.id)).limit(1);
+
     return NextResponse.json({
       success: true,
       user: data.user,
       session: data.session,
+      role: profile?.role || 'buyer',
     });
   } catch (error) {
     console.error('Login error:', error);

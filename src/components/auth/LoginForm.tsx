@@ -37,7 +37,8 @@ export function LoginForm() {
         return;
       }
 
-      router.push(next);
+      const destination = data.role === 'admin' ? '/admin' : next;
+      router.push(destination);
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');
