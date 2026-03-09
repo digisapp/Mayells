@@ -73,10 +73,7 @@ export function HeroAppraisalForm() {
         </div>
       ) : (
         <>
-          <h3 className="font-display text-lg mb-1">Request a Free Appraisal</h3>
-          <p className="text-[13px] text-white/50 mb-5">
-            Tell us what you have — we&apos;ll get back to you within 24 hours.
-          </p>
+          <h3 className="font-display text-lg mb-5">Request a Free Appraisal</h3>
           <form onSubmit={handleSubmit} className="space-y-3">
             <input
               type="text"
