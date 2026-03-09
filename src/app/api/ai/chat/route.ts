@@ -1,4 +1,4 @@
-import { streamText, stepCountIs } from 'ai';
+import { streamText, stepCountIs, convertToModelMessages } from 'ai';
 import { webSearch, xSearch } from '@ai-sdk/xai';
 import { getChatModel } from '@/lib/ai/client';
 import { chatTools } from '@/lib/ai/chat-tools';
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
   const result = streamText({
     model: getChatModel(),
     system: prompt,
-    messages,
+    messages: await convertToModelMessages(messages),
     tools: {
       webSearch: webSearch(),
       xSearch: xSearch(),
