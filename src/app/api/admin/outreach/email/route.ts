@@ -31,6 +31,10 @@ export async function POST(req: NextRequest) {
 
     const { to, subject, body, contactId } = parsed.data;
 
+    // HTML-escape user input to prevent XSS
+    const escapeHtml = (text: string) =>
+      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
     const resend = getResend();
     await resend.emails.send({
       from: 'Mayell <outreach@mayellauctions.com>',
@@ -38,7 +42,7 @@ export async function POST(req: NextRequest) {
       subject,
       html: `
         <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; white-space: pre-wrap; line-height: 1.6;">
-          ${body.replace(/\n/g, '<br />')}
+          ${escapeHtml(body).replace(/\n/g, '<br />')}
         </div>
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
           <p style="font-size: 12px; color: #999;">

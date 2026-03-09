@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { email, password, fullName, role } = parsed.data;
+    const { email, password, fullName } = parsed.data;
     const supabase = createAdminClient();
 
     // Create Supabase auth user
@@ -30,12 +30,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: authError.message }, { status: 400 });
     }
 
-    // Create user profile in our database
+    // Create user profile in our database — always default to buyer
     await db.insert(users).values({
       id: authData.user.id,
       email,
       fullName,
-      role: role as 'buyer' | 'seller',
+      role: 'buyer',
     });
 
     return NextResponse.json({ success: true, userId: authData.user.id });
