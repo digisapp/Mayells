@@ -14,6 +14,7 @@ import {
   Brain,
   Radio,
   Mail,
+  FileSignature,
   Settings,
 } from 'lucide-react';
 
@@ -27,6 +28,7 @@ const adminLinks = [
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/invoices', label: 'Invoices', icon: FileText },
   { href: '/admin/outreach', label: 'Outreach', icon: Mail },
+  { href: '/admin/agreements', label: 'Agreements', icon: FileSignature },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
 ];
 

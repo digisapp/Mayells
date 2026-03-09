@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Phone, CheckCircle, ArrowRight } from 'lucide-react';
+import { Phone, CheckCircle, ArrowRight, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { BUSINESS } from '@/lib/config';
 
@@ -121,6 +121,24 @@ export function ServicesBar() {
                     No obligation. Completely confidential.
                   </p>
                 </form>
+
+                <div className="flex items-center gap-3 mt-5">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span className="text-[11px] text-white/30 uppercase tracking-widest">or</span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-chat', { detail: { message: 'I\'d like a free appraisal for my items' } }))}
+                  className="mt-4 w-full flex items-center justify-center gap-2.5 bg-champagne/10 hover:bg-champagne/20 border border-champagne/30 text-champagne rounded-xl px-5 py-3.5 transition-colors"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">Chat with our AI Appraiser</span>
+                </button>
+                <p className="text-[11px] text-white/30 text-center mt-2">
+                  Get an instant AI assessment — upload photos for best results
+                </p>
               </>
             )}
           </div>

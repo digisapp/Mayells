@@ -178,23 +178,6 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* Stats */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {[
-            { value: 'AI', label: 'Powered Cataloging' },
-            { value: 'Live', label: 'Streaming Auctions' },
-            { value: '24/7', label: 'Online Bidding' },
-            { value: '100%', label: 'Secure Payments' },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <p className="font-display text-display-md text-champagne">{stat.value}</p>
-              <p className="text-sm text-muted-foreground mt-1">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* CTA */}
       <section className="bg-charcoal text-white py-20 md:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
