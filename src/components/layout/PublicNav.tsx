@@ -7,7 +7,6 @@ import { Search, User, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 const navLinks = [
-  { label: 'Auctions', href: '/auctions' },
   { label: 'Gallery', href: '/gallery' },
   { label: 'How to Buy', href: '/how-to-buy' },
   { label: 'Consign', href: '/consign' },

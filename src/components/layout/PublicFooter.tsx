@@ -18,7 +18,6 @@ export function PublicFooter() {
           <div>
             <h4 className="text-[11px] uppercase tracking-wider font-semibold text-white/60 mb-4">Browse</h4>
             <ul className="space-y-2.5 text-sm text-white/80">
-              <li><Link href="/auctions" className="hover:text-champagne transition-colors duration-300">Auctions</Link></li>
               <li><Link href="/gallery" className="hover:text-champagne transition-colors duration-300">Gallery</Link></li>
               <li><Link href="/lots" className="hover:text-champagne transition-colors duration-300">Browse Lots</Link></li>
             </ul>
