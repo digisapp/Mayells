@@ -6,9 +6,6 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
   CheckCircle,
-  Shield,
-  TrendingUp,
-  Clock,
   Camera,
   ArrowRight,
   Phone,
@@ -20,32 +17,26 @@ import { BUSINESS } from '@/lib/config';
 const steps = [
   {
     num: '01',
-    title: 'Submit Your Item',
-    desc: 'Fill out the form below with details about your piece. Upload photos for the fastest assessment.',
+    title: 'Submit Online or Schedule a Visit',
+    desc: 'Upload photos below or schedule a free in-person appraisal. Our team serves South Florida and New York City.',
   },
   {
     num: '02',
-    title: 'Free Appraisal',
-    desc: 'Our specialists review your submission and provide a complimentary, no-obligation valuation within 1-2 business days.',
+    title: 'Free Appraisal & Pickup',
+    desc: 'We come to you for complimentary appraisals and item pickup — or handle full estate cleanouts, same day if needed.',
   },
   {
     num: '03',
     title: 'Choose Your Path',
-    desc: 'We recommend the best sale method — auction, gallery, or private sale — based on your item and goals.',
+    desc: 'We recommend the best sale method — live online auction, gallery, or private sale — based on your item and goals.',
   },
   {
     num: '04',
-    title: 'We Handle the Rest',
+    title: 'We Handle Everything',
     desc: 'Professional photography, cataloging, marketing, and secure handling. You get paid when your item sells.',
   },
 ];
 
-const benefits = [
-  { icon: TrendingUp, title: 'Maximized Returns', desc: 'Our specialists determine the optimal sale strategy for each piece' },
-  { icon: Shield, title: 'Expert Handling', desc: 'Full insurance, professional photography, and secure storage' },
-  { icon: Clock, title: 'Fast Turnaround', desc: 'From submission to sale in as few as 30 days' },
-  { icon: CheckCircle, title: 'Free Appraisals', desc: 'Complimentary valuations for all consignments' },
-];
 
 export default function ConsignPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
@@ -146,8 +137,8 @@ export default function ConsignPage() {
           <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Sell With Us</span>
           <h1 className="font-display text-display-lg mt-3 mb-5">Consign Your Pieces</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto leading-relaxed">
-            Whether it&apos;s a single heirloom or an entire estate, our team of specialists will help you
-            achieve the best possible result through auction, gallery, or private sale.
+            Whether it&apos;s a single heirloom or an entire estate, our team in Boca Raton and Tribeca, NYC
+            will come to you for free appraisals, item pickup, and same-day estate cleanouts.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
             <a href="#submit-form">
@@ -181,18 +172,48 @@ export default function ConsignPage() {
         </div>
       </section>
 
-      {/* Benefits */}
+      {/* Why Mayell vs Big Auction Houses */}
       <section className="bg-ivory">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <h2 className="font-display text-display-sm text-center mb-12">Why Consign With Mayell</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-            {benefits.map((b) => (
-              <div key={b.title} className="text-center">
-                <div className="w-12 h-12 rounded-xl bg-champagne/10 flex items-center justify-center mx-auto mb-4">
-                  <b.icon className="h-6 w-6 text-champagne" />
+          <h2 className="font-display text-display-sm text-center mb-4">Why Consign With Mayell</h2>
+          <p className="text-center text-muted-foreground text-sm max-w-2xl mx-auto mb-12">
+            Large auction houses charge hidden fees, cherry-pick only the best items, and can take up to a year before you get paid. We do things differently.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+            {[
+              {
+                title: 'No Hidden Fees',
+                desc: 'Big auction houses charge sellers for photography, catalog printing, insurance, and storage — on top of commission. With Mayell, you pay nothing upfront. Ever.',
+              },
+              {
+                title: 'We Take Everything',
+                desc: 'Other houses cherry-pick your best pieces and leave you to deal with the rest. We take it all — from fine art to everyday household items. One call, one cleanout.',
+              },
+              {
+                title: 'Paid in 60 Days, Not 12 Months',
+                desc: 'Major houses can take 6–12 months to place your items and another 30–90 days to pay you. We list your items within 30 days and pay you within 30 days of sale.',
+              },
+              {
+                title: 'Monthly Auctions',
+                desc: 'We run auctions every month, so your items go live fast. No waiting for the "right" sale or next season — your items are listed and selling within weeks.',
+              },
+              {
+                title: 'Free House Calls & Pickup',
+                desc: 'Need your parents\u2019 house cleaned out this week? Our team in Boca Raton and Tribeca, NYC can be there same day for appraisals, pickup, and full estate cleanouts.',
+              },
+              {
+                title: 'Simple & Fast',
+                desc: 'From the day we pick up your items, you can be paid in as little as 60 days. No contracts to negotiate, no waiting lists, no surprise invoices.',
+              },
+            ].map((item) => (
+              <div key={item.title} className="bg-white rounded-xl border border-black/5 p-6">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-champagne mt-0.5 flex-shrink-0" />
+                  <div>
+                    <h3 className="font-semibold text-base mb-1">{item.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
+                  </div>
                 </div>
-                <h3 className="font-medium text-sm mb-1">{b.title}</h3>
-                <p className="text-xs text-muted-foreground leading-relaxed">{b.desc}</p>
               </div>
             ))}
           </div>
