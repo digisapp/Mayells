@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { loginSchema } from '@/lib/validation/schemas';
-import { db } from '@/db';
-import { users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,13 +27,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
-    // Fetch user role to determine redirect
+    // Fetch user role to determine redirect (using Supabase admin client, same as middleware)
     let role = 'buyer';
     try {
-      const [profile] = await db.select({ role: users.role }).from(users).where(eq(users.id, data.user.id)).limit(1);
+      const adminClient = createAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      );
+      const { data: profile } = await adminClient
+        .from('users')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
       if (profile?.role) role = profile.role;
     } catch {
-      // DB lookup failed — default to buyer, login still succeeds
+      // lookup failed — default to buyer, login still succeeds
     }
 
     return NextResponse.json({
