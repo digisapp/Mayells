@@ -8,11 +8,10 @@ import {
   CheckCircle,
   Camera,
   ArrowRight,
-  Phone,
   X,
   MessageCircle,
 } from 'lucide-react';
-import { BUSINESS } from '@/lib/config';
+
 
 const steps = [
   {
@@ -147,13 +146,6 @@ export default function ConsignPage() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </a>
-            <a
-              href={BUSINESS.phoneHref}
-              className="inline-flex items-center gap-2 text-white/60 hover:text-white transition-colors text-sm"
-            >
-              <Phone className="h-4 w-4" />
-              {BUSINESS.phone}
-            </a>
           </div>
         </div>
       </section>
@@ -177,33 +169,34 @@ export default function ConsignPage() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           <h2 className="font-display text-display-sm text-center mb-4">Why Consign With Mayell</h2>
           <p className="text-center text-muted-foreground text-sm max-w-2xl mx-auto mb-12">
-            Large auction houses charge hidden fees, cherry-pick only the best items, and can take up to a year before you get paid. We do things differently.
+            Traditional auction houses can involve long waiting periods, complex fee structures, and selective consignment policies.
+            At Mayell, we offer a simpler, faster approach designed for modern sellers.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {[
               {
                 title: 'No Hidden Fees',
-                desc: 'Big auction houses charge sellers for photography, catalog printing, insurance, and storage — on top of commission. With Mayell, you pay nothing upfront. Ever.',
+                desc: 'Many auction houses charge additional fees for photography, catalog production, insurance, and storage. With Mayell, there are no upfront costs \u2014 our commission covers the entire process.',
               },
               {
-                title: 'We Take Everything',
-                desc: 'Other houses cherry-pick your best pieces and leave you to deal with the rest. We take it all — from fine art to everyday household items. One call, one cleanout.',
+                title: 'We Handle Entire Collections',
+                desc: 'Rather than accepting only select pieces, Mayell specializes in complete estate and collection consignments \u2014 from fine art and antiques to design, jewelry, and collectibles.',
               },
               {
-                title: 'Paid in 60 Days, Not 12 Months',
-                desc: 'Major houses can take 6–12 months to place your items and another 30–90 days to pay you. We list your items within 30 days and pay you within 30 days of sale.',
+                title: 'Faster Payment',
+                desc: 'Items are typically listed within 30 days, and sellers are paid within 30 days of the auction closing.',
               },
               {
                 title: 'Monthly Auctions',
-                desc: 'We run auctions every month, so your items go live fast. No waiting for the "right" sale or next season — your items are listed and selling within weeks.',
+                desc: 'Our monthly auctions ensure your items reach buyers quickly \u2014 often within weeks.',
               },
               {
-                title: 'Free House Calls & Pickup',
-                desc: 'Need your parents\u2019 house cleaned out this week? Our team in Boca Raton and Tribeca, NYC can be there same day for appraisals, pickup, and full estate cleanouts.',
+                title: 'In-Home Appraisals & Pickup',
+                desc: 'We offer complimentary in-home appraisals and pickup services across South Florida and New York.',
               },
               {
-                title: 'Simple & Fast',
-                desc: 'From the day we pick up your items, you can be paid in as little as 60 days. No contracts to negotiate, no waiting lists, no surprise invoices.',
+                title: 'Simple & Transparent',
+                desc: 'From pickup to auction, our process is straightforward and efficient \u2014 no surprises, no hidden invoices.',
               },
             ].map((item) => (
               <div key={item.title} className="bg-white rounded-xl border border-black/5 p-6">
@@ -220,48 +213,19 @@ export default function ConsignPage() {
         </div>
       </section>
 
-      {/* What We Accept */}
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <h2 className="font-display text-display-sm text-center mb-8">What We Accept</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-          {[
-            'Fine Art & Paintings',
-            'Antiques & Furniture',
-            'Jewelry & Watches',
-            'Fashion & Accessories',
-            'Collectibles & Memorabilia',
-            'Design & Decorative Arts',
-          ].map((item) => (
-            <div
-              key={item}
-              className="text-center bg-charcoal/[0.03] border border-black/5 rounded-xl px-4 py-4"
-            >
-              <p className="text-sm font-medium">{item}</p>
-            </div>
-          ))}
-        </div>
-        <p className="text-center text-sm text-muted-foreground mt-6">
-          Not sure if your item qualifies? <button
-            type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('open-chat', { detail: { message: 'I have an item I\'d like to consign — can you help?' } }))}
-            className="text-champagne hover:underline"
-          >Chat with a specialist</button> or call us at{' '}
-          <a href={BUSINESS.phoneHref} className="text-champagne hover:underline">{BUSINESS.phone}</a>.
-        </p>
-      </section>
 
       {/* Submission Form */}
-      <section id="submit-form" className="bg-charcoal text-white">
+      <section id="submit-form" className="bg-white">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
           {submitted ? (
             <div className="text-center py-8">
               <CheckCircle className="h-12 w-12 text-champagne mx-auto mb-4" />
-              <h2 className="font-display text-xl mb-2">Submission Received</h2>
-              <p className="text-white/60 text-sm mb-6">
+              <h2 className="font-display text-xl text-charcoal mb-2">Submission Received</h2>
+              <p className="text-muted-foreground text-sm mb-6">
                 Thank you! Our team will review your consignment and contact you within 1-2 business days.
               </p>
               <div className="flex gap-3 justify-center">
-                <Button variant="outline" className="border-white/20 text-white hover:bg-white/10" onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', items: '' }); setPhotos([]); setPhotoPreviews([]); }}>
+                <Button variant="outline" className="border-gray-200 text-charcoal hover:bg-gray-50" onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', items: '' }); setPhotos([]); setPhotoPreviews([]); }}>
                   Submit Another
                 </Button>
                 <Link href="/">
@@ -271,8 +235,8 @@ export default function ConsignPage() {
             </div>
           ) : (
             <>
-              <h2 className="font-display text-display-sm text-center mb-2">Submit Your Item</h2>
-              <p className="text-center text-white/50 text-sm mb-8">
+              <h2 className="font-display text-display-sm text-center mb-2 text-charcoal">Submit Your Item</h2>
+              <p className="text-center text-muted-foreground text-sm mb-8">
                 Tell us about your piece — we&apos;ll get back to you within 1-2 business days.
               </p>
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -283,7 +247,7 @@ export default function ConsignPage() {
                     required
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
                   />
                   <input
                     type="tel"
@@ -291,7 +255,7 @@ export default function ConsignPage() {
                     required
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
                   />
                 </div>
                 <input
@@ -299,14 +263,14 @@ export default function ConsignPage() {
                   placeholder="Email Address"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
                 />
                 <textarea
                   placeholder="Describe your item(s): what it is, condition, provenance, dimensions, any known history..."
                   rows={4}
                   value={form.items}
                   onChange={(e) => setForm({ ...form, items: e.target.value })}
-                  className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
                 />
 
                 {/* Photo Upload */}
@@ -323,7 +287,7 @@ export default function ConsignPage() {
                     <div className="flex gap-2 mb-3 flex-wrap">
                       {photoPreviews.map((src, i) => (
                         <div key={i} className="relative group">
-                          <img src={src} alt={`Photo ${i + 1}`} className="h-16 w-16 object-cover rounded-lg border border-white/10" />
+                          <img src={src} alt={`Photo ${i + 1}`} className="h-16 w-16 object-cover rounded-lg border border-gray-200" />
                           <button
                             type="button"
                             onClick={() => removePhoto(i)}
@@ -338,7 +302,7 @@ export default function ConsignPage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 bg-white/[0.06] border border-dashed border-white/20 hover:border-champagne/40 rounded-lg px-4 py-3 text-sm text-white/50 hover:text-white/70 transition-colors"
+                    className="w-full flex items-center justify-center gap-2 bg-gray-50 border border-dashed border-gray-300 hover:border-champagne/60 rounded-lg px-4 py-3 text-sm text-gray-500 hover:text-charcoal transition-colors"
                   >
                     <Camera className="h-4 w-4" />
                     {photos.length > 0 ? `${photos.length} photo${photos.length !== 1 ? 's' : ''} — add more` : 'Upload photos (recommended)'}
@@ -349,21 +313,21 @@ export default function ConsignPage() {
                   {submitting ? 'Submitting...' : 'Submit for Review'}
                   {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
                 </Button>
-                <p className="text-[11px] text-white/30 text-center">
+                <p className="text-[11px] text-muted-foreground text-center">
                   No obligation. Completely confidential.
                 </p>
               </form>
 
               <div className="flex items-center gap-3 mt-6">
-                <div className="flex-1 h-px bg-white/10" />
-                <span className="text-[11px] text-white/30 uppercase tracking-widest">or</span>
-                <div className="flex-1 h-px bg-white/10" />
+                <div className="flex-1 h-px bg-gray-200" />
+                <span className="text-[11px] text-muted-foreground uppercase tracking-widest">or</span>
+                <div className="flex-1 h-px bg-gray-200" />
               </div>
 
               <button
                 type="button"
                 onClick={() => window.dispatchEvent(new CustomEvent('open-chat', { detail: { message: 'I have an item I\'d like to consign' } }))}
-                className="mt-4 w-full flex items-center justify-center gap-2.5 bg-champagne/10 hover:bg-champagne/20 border border-champagne/30 text-champagne rounded-xl px-5 py-3.5 transition-colors"
+                className="mt-4 w-full flex items-center justify-center gap-2.5 bg-charcoal hover:bg-charcoal/90 border border-charcoal text-white rounded-xl px-5 py-3.5 transition-colors"
               >
                 <MessageCircle className="h-4 w-4" />
                 <span className="text-sm font-medium">Chat with a Specialist</span>

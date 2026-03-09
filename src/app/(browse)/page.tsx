@@ -94,7 +94,6 @@ export default async function HomePage() {
               </h1>
               <p className="mt-4 sm:mt-6 text-[15px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
                 Discover fine art, antiques, jewelry, design, and remarkable collectibles sourced from estates and private collections worldwide.
-                Our specialists provide expert cataloging, authentication, and appraisal services for collectors and consignors.
               </p>
               <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <Link href="/consign" className="w-full sm:w-auto">
