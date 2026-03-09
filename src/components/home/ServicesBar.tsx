@@ -37,9 +37,6 @@ export function ServicesBar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 md:py-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           <div>
-            <div className="inline-block bg-champagne text-charcoal text-[11px] sm:text-xs font-bold uppercase tracking-[0.2em] px-3 py-1.5 rounded mb-6">
-              Complimentary Service
-            </div>
             <h2 className="font-display text-display-md sm:text-display-lg leading-tight">
               Free Appraisals &<br />
               <span className="text-champagne">Estate Evaluations</span>

@@ -90,24 +90,24 @@ export default async function HomePage() {
             </div>
 
             <h1 className="font-display text-[2.5rem] sm:text-display-xl md:text-[5rem] leading-[1.05] tracking-tight">
-              Extraordinary Objects,
+              Fine Art. Antiques.
               <br />
-              <span className="text-shimmer">Exceptional Service</span>
+              <span className="text-shimmer">Jewelry. Collectibles.</span>
             </h1>
             <p className="mt-4 sm:mt-6 text-[15px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
               Discover rare and remarkable pieces from around the world. Expert cataloging,
               authentication, and appraisal for art, antiques, fashion, jewelry, and design.
             </p>
             <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4">
-              <Link href="/auctions" className="w-full sm:w-auto">
+              <Link href="/consign" className="w-full sm:w-auto">
                 <Button variant="champagne" size="xl" className="shadow-gold w-full sm:w-auto">
-                  Browse Auctions
+                  Sell With Us
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link href="/signup" className="w-full sm:w-auto">
+              <Link href="/services" className="w-full sm:w-auto">
                 <Button variant="champagne-outline" size="xl" className="backdrop-blur-sm w-full sm:w-auto">
-                  Create Account
+                  Free Appraisals
                 </Button>
               </Link>
             </div>
@@ -120,7 +120,7 @@ export default async function HomePage() {
 
       {/* Upcoming Auctions */}
       {upcomingAuctions.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 md:py-28">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
           <div className="flex items-end justify-between mb-8 sm:mb-12">
             <div>
               <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Auctions</span>
@@ -145,7 +145,7 @@ export default async function HomePage() {
 
       {/* Featured Lots */}
       {featuredLots.length > 0 && (
-        <section className="relative bg-secondary/40 py-12 sm:py-20 md:py-28">
+        <section className="relative bg-secondary/40 py-10 sm:py-14 md:py-20">
           <div className="absolute top-0 left-0 right-0 gradient-line" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-end justify-between mb-8 sm:mb-12">
@@ -173,7 +173,7 @@ export default async function HomePage() {
 
       {/* Shop the Gallery */}
       {galleryLots.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 md:py-28">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
           <div className="flex items-end justify-between mb-8 sm:mb-12">
             <div>
               <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Buy Now</span>
@@ -197,7 +197,7 @@ export default async function HomePage() {
       )}
 
       {/* CTA */}
-      <section className="relative bg-charcoal text-white py-20 md:py-28 overflow-hidden">
+      <section className="relative bg-charcoal text-white py-14 sm:py-16 md:py-20 overflow-hidden">
         <div className="absolute top-0 left-0 right-0 gradient-line" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-champagne/[0.04] rounded-full blur-[120px] pointer-events-none" />
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
