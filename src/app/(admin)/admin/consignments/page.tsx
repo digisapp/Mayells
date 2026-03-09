@@ -116,7 +116,7 @@ export default function AdminConsignmentsPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex gap-4 text-sm">
-                  <span className="text-muted-foreground">Category: <strong className="text-foreground capitalize">{row.consignment.categorySlug}</strong></span>
+                  <span className="text-muted-foreground">Department: <strong className="text-foreground capitalize">{row.consignment.categorySlug}</strong></span>
                   {row.consignment.estimatedValue && (
                     <span className="text-muted-foreground">Est: <strong className="text-foreground">{formatCurrency(row.consignment.estimatedValue)}</strong></span>
                   )}

@@ -89,7 +89,7 @@ function CatalogTab() {
             {result.origin ? <div><strong>Origin:</strong> {String(result.origin)}</div> : null}
             {result.dimensions ? <div><strong>Dimensions:</strong> {String(result.dimensions)}</div> : null}
             {result.condition ? <div><strong>Condition:</strong> <Badge variant="secondary">{String(result.condition)}</Badge></div> : null}
-            {result.suggestedCategory ? <div><strong>Category:</strong> <Badge className="bg-champagne/20 text-champagne">{String(result.suggestedCategory)}</Badge></div> : null}
+            {result.suggestedCategory ? <div><strong>Department:</strong> <Badge className="bg-champagne/20 text-champagne">{String(result.suggestedCategory)}</Badge></div> : null}
             <div><strong>Description:</strong><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{String(result.description ?? '')}</p></div>
             {result.tags ? <div className="flex flex-wrap gap-1">{(result.tags as string[]).map((t) => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}</div> : null}
           </CardContent>

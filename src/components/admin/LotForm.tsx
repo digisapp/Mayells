@@ -202,9 +202,9 @@ export function LotForm({ initialData, initialImages, lotId, onSubmit, isLoading
             <Textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={5} required />
           </div>
           <div className="space-y-2">
-            <Label>Category *</Label>
+            <Label>Department *</Label>
             <Select value={form.categoryId} onValueChange={(v) => update('categoryId', v)}>
-              <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
               <SelectContent>
                 {categories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>

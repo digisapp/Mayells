@@ -55,7 +55,7 @@
 :root {
   --radius: 0.5rem;
 
-  /* Mayells Luxury Light Theme */
+  /* Mayell Luxury Light Theme */
   --background: oklch(0.988 0.002 90);      /* Warm white #FAFAF6 */
   --foreground: oklch(0.18 0.02 250);        /* Charcoal #272D35 */
   --card: oklch(1 0 0);                      /* Pure white */
@@ -157,8 +157,8 @@
     letter-spacing: -0.02em;
   }
   .font-logo {
-    font-family: var(--font-bebas), 'Arial Narrow', sans-serif;
-    letter-spacing: 0.15em;
+    font-family: var(--font-playfair), 'Didot', 'Bodoni MT', Georgia, serif;
+    letter-spacing: 0.12em;
     font-weight: 400;
   }
   .text-display-xl {

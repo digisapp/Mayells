@@ -50,7 +50,7 @@ export function LoginForm() {
     <Card className="w-full max-w-md border-border/50">
       <CardHeader className="text-center">
         <CardTitle className="font-display text-display-sm">Welcome Back</CardTitle>
-        <CardDescription>Sign in to your Mayells account</CardDescription>
+        <CardDescription>Sign in to your Mayell account</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

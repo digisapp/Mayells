@@ -7,10 +7,10 @@ from livekit.plugins import xai, noise_cancellation
 load_dotenv(".env.local")
 
 
-class MayellsConcierge(Agent):
+class MayellConcierge(Agent):
     def __init__(self) -> None:
         super().__init__(
-            instructions="""You are the phone concierge for Mayells, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
+            instructions="""You are the phone concierge for Mayell, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
 
 Key information:
 - We offer FREE appraisals and estate evaluations, no obligation, completely confidential.
@@ -42,7 +42,7 @@ async def entrypoint(ctx: agents.JobContext):
 
     await session.start(
         room=ctx.room,
-        agent=MayellsConcierge(),
+        agent=MayellConcierge(),
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
                 noise_cancellation=lambda params: noise_cancellation.BVCTelephony()
@@ -53,7 +53,7 @@ async def entrypoint(ctx: agents.JobContext):
     )
 
     await session.generate_reply(
-        instructions="Greet the caller warmly. Say something like: Hello, thank you for calling Mayells. How can I help you today?"
+        instructions="Greet the caller warmly. Say something like: Hello, thank you for calling Mayell. How can I help you today?"
     )
 
 

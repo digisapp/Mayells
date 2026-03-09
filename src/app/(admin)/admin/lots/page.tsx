@@ -44,7 +44,7 @@ export default async function AdminLotsPage() {
             <TableRow>
               <TableHead className="w-[50px]"></TableHead>
               <TableHead>Title</TableHead>
-              <TableHead>Category</TableHead>
+              <TableHead>Department</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Price / Estimate</TableHead>

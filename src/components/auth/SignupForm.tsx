@@ -59,7 +59,7 @@ export function SignupForm() {
     <Card className="w-full max-w-md border-border/50">
       <CardHeader className="text-center">
         <CardTitle className="font-display text-display-sm">Create Account</CardTitle>
-        <CardDescription>Join Mayells to start bidding or consigning</CardDescription>
+        <CardDescription>Join Mayell to start bidding or consigning</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

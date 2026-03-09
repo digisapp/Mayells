@@ -180,13 +180,13 @@ function SearchContent() {
         <div className="bg-muted/50 border rounded-lg p-4 mb-6 max-w-3xl mx-auto">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Category</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Department</label>
               <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
                 <SelectTrigger className="h-9">
-                  <SelectValue placeholder="All Categories" />
+                  <SelectValue placeholder="All Departments" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="all">All Departments</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                   ))}
@@ -243,7 +243,7 @@ function SearchContent() {
               <span className="text-xs text-muted-foreground">Active:</span>
               {categoryFilter && categoryFilter !== 'all' && (
                 <Badge variant="secondary" className="text-xs gap-1">
-                  {categories.find((c) => c.id === categoryFilter)?.name || 'Category'}
+                  {categories.find((c) => c.id === categoryFilter)?.name || 'Department'}
                   <X className="h-3 w-3 cursor-pointer" onClick={() => setCategoryFilter('')} />
                 </Badge>
               )}

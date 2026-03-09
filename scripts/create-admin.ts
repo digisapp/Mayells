@@ -7,7 +7,7 @@ import { users } from '../src/db/schema/users';
 
 const EMAIL = 'admin@mayells.com';
 const PASSWORD = 'Test#123';
-const FULL_NAME = 'Mayells Admin';
+const FULL_NAME = 'Mayell Admin';
 
 async function main() {
   const supabase = createClient(

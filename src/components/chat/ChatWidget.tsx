@@ -84,7 +84,7 @@ export function ChatWidget() {
           {/* Header */}
           <div className="bg-charcoal text-white px-5 py-4 flex items-center justify-between flex-shrink-0">
             <div>
-              <h3 className="font-display text-base">Mayells Concierge</h3>
+              <h3 className="font-display text-base">Mayell Concierge</h3>
               <p className="text-[11px] text-white/50">
                 {voiceMode ? 'Voice call active' : 'Ask us anything — or upload a photo'}
               </p>
@@ -106,7 +106,7 @@ export function ChatWidget() {
                 {messages.length === 0 && (
                   <div className="text-center py-6">
                     <p className="text-sm text-gray-500 mb-3">
-                      Welcome to Mayells! How can we help you today?
+                      Welcome to Mayell! How can we help you today?
                     </p>
                     <div className="space-y-2">
                       {[

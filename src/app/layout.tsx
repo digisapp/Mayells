@@ -26,13 +26,13 @@ const bebasNeue = Bebas_Neue({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Mayells — The Auction House of the Future',
-    template: '%s — Mayells',
+    default: 'Mayell Auctions | Fine Art Antiques Design Fashion Collectibles',
+    template: '%s | Mayell Auctions',
   },
-  description: 'AI-powered luxury auctions for Art, Antiques, Fashion, Jewelry, and Design. Live and timed auctions with a modern experience.',
+  description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
   openGraph: {
     type: 'website',
-    siteName: 'Mayells',
+    siteName: 'Mayell Auctions',
   },
 };
 

@@ -6,7 +6,7 @@ export default function PrivacyPage() {
       <h1 className="font-display text-display-lg mb-8">Privacy Policy</h1>
       <div className="prose prose-sm text-muted-foreground space-y-6">
         <p>
-          Mayells is committed to protecting your privacy. This policy explains how we collect,
+          Mayell is committed to protecting your privacy. This policy explains how we collect,
           use, and safeguard your personal information.
         </p>
         <h2 className="font-display text-lg text-foreground">1. Information We Collect</h2>

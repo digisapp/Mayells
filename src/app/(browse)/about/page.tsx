@@ -3,10 +3,10 @@ export const metadata = { title: 'About' };
 export default function AboutPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <h1 className="font-display text-display-lg mb-8">About Mayells</h1>
+      <h1 className="font-display text-display-lg mb-8">About Mayell</h1>
       <div className="prose prose-lg max-w-none space-y-6 text-muted-foreground">
         <p>
-          Mayells is the auction house of the future — an AI-powered platform where
+          Mayell is the auction house of the future — an AI-powered platform where
           collectors, dealers, and enthusiasts discover and acquire extraordinary objects
           across art, antiques, luxury, fashion, jewelry, and design.
         </p>
@@ -23,7 +23,7 @@ export default function AboutPage() {
           <li>If you&apos;re outbid, you&apos;ll receive a notification immediately.</li>
           <li>Win the lot, pay your invoice, and receive your item with insured shipping.</li>
         </ol>
-        <h2 className="font-display text-display-sm text-foreground">Selling with Mayells</h2>
+        <h2 className="font-display text-display-sm text-foreground">Selling with Mayell</h2>
         <p>
           Have an extraordinary item to sell? Submit it for consignment through our
           platform. Our team reviews every submission and provides expert guidance on

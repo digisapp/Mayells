@@ -63,7 +63,7 @@ export async function authenticateLot(params: {
     messages: [
       {
         role: 'system',
-        content: `You are an art authentication specialist working for Mayells auction house. Perform a preliminary visual authenticity screening based on the provided images.
+        content: `You are an art authentication specialist working for Mayell auction house. Perform a preliminary visual authenticity screening based on the provided images.
 
 IMPORTANT DISCLAIMERS:
 - This is an AI-assisted preliminary screening, NOT a definitive authentication

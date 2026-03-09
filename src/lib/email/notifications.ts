@@ -2,7 +2,7 @@ import { getResend } from './resend';
 import { formatCurrency } from '@/types';
 import { BUSINESS } from '@/lib/config';
 
-const FROM = 'Mayells <notifications@mayells.com>';
+const FROM = 'Mayell <notifications@mayells.com>';
 const ADMIN_EMAIL = BUSINESS.email;
 
 export async function sendOutbidNotification(params: {
@@ -35,7 +35,7 @@ export async function sendOutbidNotification(params: {
           Place a New Bid
         </a>
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
-          Mayells — The Auction House of the Future
+          Mayell — The Auction House of the Future
         </p>
       </div>
     `,
@@ -76,7 +76,7 @@ export async function sendInvoiceNotification(params: {
           Pay Invoice
         </a>
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
-          Mayells — The Auction House of the Future
+          Mayell — The Auction House of the Future
         </p>
       </div>
     `,
@@ -100,7 +100,7 @@ export async function sendPaymentConfirmation(params: {
         <p>Thank you! We've received your payment of <strong>${formatCurrency(params.totalAmount)}</strong> for <strong>${params.lotTitle}</strong>.</p>
         <p>We'll begin preparing your item for shipment. You'll receive tracking information once it ships.</p>
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
-          Mayells — The Auction House of the Future
+          Mayell — The Auction House of the Future
         </p>
       </div>
     `,
@@ -180,13 +180,13 @@ export async function sendConsignmentNotification(params: {
     html: `
       <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #272D35; font-size: 24px;">Consignment Received</h1>
-        <p>Thank you for submitting <strong>${params.title}</strong> for consignment with Mayells.</p>
+        <p>Thank you for submitting <strong>${params.title}</strong> for consignment with Mayell.</p>
         <p>Our team will review your submission and contact you within 1-2 business days to discuss next steps.</p>
         <a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard/consignments" style="display: inline-block; background: #D4C5A0; color: #272D35; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 4px;">
           Track Your Consignment
         </a>
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
-          Mayells — The Auction House of the Future
+          Mayell — The Auction House of the Future
         </p>
       </div>
     `,

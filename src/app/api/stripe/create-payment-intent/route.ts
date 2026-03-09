@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         auctionId: invoice.auctionId,
       },
       receipt_email: buyer?.email,
-      description: `Mayells Invoice ${invoice.invoiceNumber}`,
+      description: `Mayell Invoice ${invoice.invoiceNumber}`,
     });
 
     // Save payment intent ID on invoice

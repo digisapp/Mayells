@@ -62,7 +62,7 @@ export const chatTools = {
 
   searchLots: tool({
     description:
-      'Search available lots by keyword, category, or price range. Use when someone asks about specific items, categories, or wants to browse inventory.',
+      'Search available lots by keyword, department, or price range. Use when someone asks about specific items, departments, or wants to browse inventory.',
     inputSchema: z.object({
       query: z
         .string()
@@ -202,7 +202,7 @@ export const chatTools = {
 
   getCategories: tool({
     description:
-      'Get all available auction categories. Use when someone asks what types of items you deal in.',
+      'Get all available auction departments. Use when someone asks what types of items you deal in.',
     inputSchema: z.object({}),
     execute: async () => {
       const results = await db

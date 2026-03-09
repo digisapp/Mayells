@@ -4,8 +4,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Mayells — The Auction House of the Future',
-  description: 'AI-powered luxury auctions for art, antiques, fashion, jewelry, and design. Free appraisals, estate evaluations, and live streaming auctions.',
+  title: 'Mayell Auctions | Fine Art Antiques Design Fashion Collectibles',
+  description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
 };
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Sparkles } from 'lucide-react';
@@ -19,8 +19,8 @@ import { ServicesBar } from '@/components/home/ServicesBar';
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'Mayells',
-  description: 'AI-powered luxury auctions for art, antiques, fashion, jewelry, and design.',
+  name: 'Mayell',
+  description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.',
   url: process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com',
   sameAs: [],
   contactPoint: {

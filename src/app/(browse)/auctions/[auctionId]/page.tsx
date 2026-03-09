@@ -25,8 +25,8 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   const auction = await getAuction(auctionId);
   if (!auction) return {};
 
-  const title = `${auction.title} | Mayells Auctions`;
-  const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayells.`;
+  const title = `${auction.title} | Mayell Auctions`;
+  const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayell.`;
 
   return {
     title,
@@ -73,10 +73,10 @@ export default async function AuctionDetailPage({
     '@context': 'https://schema.org',
     '@type': 'Event',
     name: auction.title,
-    description: auction.description || `${auction.title} at Mayells`,
+    description: auction.description || `${auction.title} at Mayell`,
     url: `${BASE_URL}/auctions/${auction.slug}`,
     image: auction.coverImageUrl || undefined,
-    organizer: { '@type': 'Organization', name: 'Mayells', url: BASE_URL },
+    organizer: { '@type': 'Organization', name: 'Mayell', url: BASE_URL },
     ...(auction.biddingStartsAt ? { startDate: new Date(auction.biddingStartsAt).toISOString() } : {}),
     ...(auction.biddingEndsAt ? { endDate: new Date(auction.biddingEndsAt).toISOString() } : {}),
     eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',

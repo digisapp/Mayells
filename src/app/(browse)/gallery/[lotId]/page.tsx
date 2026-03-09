@@ -27,8 +27,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lotId: st
   if (!lot) return {};
 
   const price = lot.buyNowPrice ? formatCurrency(lot.buyNowPrice) : undefined;
-  const title = `${lot.title}${price ? ` — ${price}` : ''} | Mayells Gallery`;
-  const description = lot.description?.slice(0, 160) || `${lot.title} available at Mayells Gallery.`;
+  const title = `${lot.title}${price ? ` — ${price}` : ''} | Mayell Gallery`;
+  const description = lot.description?.slice(0, 160) || `${lot.title} available at Mayell Gallery.`;
 
   return {
     title,
@@ -74,7 +74,7 @@ export default async function GalleryDetailPage({
     description: lot.description,
     image: lot.primaryImageUrl || undefined,
     url: `${BASE_URL}/gallery/${lot.slug || lot.id}`,
-    brand: { '@type': 'Organization', name: 'Mayells' },
+    brand: { '@type': 'Organization', name: 'Mayell' },
     ...(lot.buyNowPrice ? {
       offers: {
         '@type': 'Offer',

@@ -7,7 +7,7 @@ import { LotGrid } from '@/components/lots/LotGrid';
 import type { Lot } from '@/db/schema/lots';
 
 export const metadata = {
-  title: 'Gallery | Mayells',
+  title: 'Gallery | Mayell',
   description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices.',
 };
 

@@ -1,6 +1,7 @@
 // Centralized business configuration
 export const BUSINESS = {
-  name: 'Mayells',
+  name: 'Mayell',
+  tagline: 'Fine Art Antiques Design Fashion Collectibles',
   phone: '(561) 220-4622',
   phoneHref: 'tel:+15612204622',
   email: 'info@mayells.com',

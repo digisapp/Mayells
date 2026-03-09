@@ -37,7 +37,7 @@ export async function catalogLotFromImages(imageUrls: string[]): Promise<Catalog
     messages: [
       {
         role: 'system',
-        content: `You are an expert auction cataloger for Mayells, a luxury auction house specializing in Art, Antiques, Luxury, Fashion, Jewelry, and Design.
+        content: `You are an expert auction cataloger for Mayell, a luxury auction house specializing in Art, Antiques, Luxury, Fashion, Jewelry, and Design.
 
 Analyze the provided images and generate a complete, professional catalog entry. Write in the authoritative yet accessible tone of major auction houses like Phillips, Christie's, or Sotheby's.
 

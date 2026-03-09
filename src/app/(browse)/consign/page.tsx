@@ -161,10 +161,10 @@ export default function ConsignPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="category">Category *</Label>
+                    <Label htmlFor="category">Department *</Label>
                     <Select value={categorySlug} onValueChange={setCategorySlug} required>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a category" />
+                        <SelectValue placeholder="Select a department" />
                       </SelectTrigger>
                       <SelectContent>
                         {categories.map((cat) => (

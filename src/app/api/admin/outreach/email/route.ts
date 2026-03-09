@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     const resend = getResend();
     await resend.emails.send({
-      from: 'Mayells <outreach@mayells.com>',
+      from: 'Mayell <outreach@mayells.com>',
       to,
       subject,
       html: `
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
         </div>
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
           <p style="font-size: 12px; color: #999;">
-            Mayells — The Auction House of the Future<br />
+            Mayell — The Auction House of the Future<br />
             <a href="https://mayells.com" style="color: #D4C5A0;">mayells.com</a>
           </p>
         </div>

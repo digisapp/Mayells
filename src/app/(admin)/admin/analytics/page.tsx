@@ -271,10 +271,10 @@ export default async function AdminAnalyticsPage() {
         </Card>
       </div>
 
-      {/* Top categories & recent bids */}
+      {/* Top departments & recent bids */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
-          <CardHeader><CardTitle>Top Categories</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Top Departments</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-3">
               {(topCategories as unknown as { name: string; lot_count: number; sold_count: number; revenue: number }[]).map((cat) => (
@@ -287,7 +287,7 @@ export default async function AdminAnalyticsPage() {
                 </div>
               ))}
               {(topCategories as unknown[]).length === 0 && (
-                <p className="text-sm text-muted-foreground">No category data yet</p>
+                <p className="text-sm text-muted-foreground">No department data yet</p>
               )}
             </div>
           </CardContent>
