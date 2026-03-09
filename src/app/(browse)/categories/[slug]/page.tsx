@@ -1,10 +1,21 @@
 export const dynamic = 'force-dynamic';
 
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { LotGrid } from '@/components/lots/LotGrid';
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const [category] = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
+  if (!category) return { title: 'Category Not Found' };
+  return {
+    title: category.name,
+    description: category.description || `Browse ${category.name} lots at Mayell Auctions. Expert cataloging, authentication, and appraisal.`,
+  };
+}
 
 export default async function CategoryPage({
   params,

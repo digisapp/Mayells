@@ -3,6 +3,7 @@ import { LoginForm } from '@/components/auth/LoginForm';
 
 export const metadata = {
   title: 'Sign In — Mayell',
+  robots: { index: false, follow: false },
 };
 
 export default function LoginPage() {

@@ -5,7 +5,10 @@ import { auctions } from '@/db/schema';
 import { desc, inArray } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 
-export const metadata = { title: 'Auctions' };
+export const metadata = {
+  title: 'Auctions',
+  description: 'Browse upcoming and current auctions at Mayell. Fine art, antiques, jewelry, watches, fashion, and collectibles — bid live on LiveAuctioneers.',
+};
 
 export default async function AuctionsPage() {
   const allAuctions = await db

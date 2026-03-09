@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const protectedRoutes = ['/dashboard', '/bids', '/won', '/watchlist', '/invoices', '/settings', '/consign', '/payouts'];
+const protectedRoutes = ['/dashboard', '/bids', '/won', '/watchlist', '/invoices', '/settings', '/payouts'];
 const adminRoutes = ['/admin'];
 const authRoutes = ['/login', '/signup', '/reset-password'];
 

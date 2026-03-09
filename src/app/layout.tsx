@@ -24,15 +24,27 @@ const cormorant = Cormorant_Garamond({
   weight: ['400', '600', '700'],
 });
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(BASE_URL),
   title: {
     default: 'Mayell Auctions | Fine Art Antiques Design Fashion Collectibles',
     template: '%s | Mayell Auctions',
   },
   description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
+  keywords: ['auction', 'fine art', 'antiques', 'jewelry', 'watches', 'collectibles', 'consignment', 'estate sale', 'appraisal', 'LiveAuctioneers'],
   openGraph: {
     type: 'website',
     siteName: 'Mayell Auctions',
+    url: BASE_URL,
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+  },
+  alternates: {
+    canonical: BASE_URL,
   },
 };
 

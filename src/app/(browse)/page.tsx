@@ -167,6 +167,60 @@ export default async function HomePage() {
         </section>
       )}
 
+      {/* Categories */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
+        <div className="text-center mb-8 sm:mb-12">
+          <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Departments</span>
+          <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2">What We Sell</h2>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          {[
+            {
+              name: 'Fine Art',
+              href: '/auctions',
+              image: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=600&h=400&fit=crop',
+            },
+            {
+              name: 'Antiques',
+              href: '/auctions',
+              image: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=600&h=400&fit=crop',
+            },
+            {
+              name: 'Jewelry & Watches',
+              href: '/auctions',
+              image: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600&h=400&fit=crop',
+            },
+            {
+              name: 'Fashion & Accessories',
+              href: '/auctions',
+              image: 'https://images.unsplash.com/photo-1603567364858-8e3362d9f040?w=600&h=400&fit=crop',
+            },
+            {
+              name: 'Collectibles',
+              href: '/auctions',
+              image: 'https://images.unsplash.com/photo-1587836374828-4dbafa94cf0e?w=600&h=400&fit=crop',
+            },
+            {
+              name: 'Design & Furniture',
+              href: '/auctions',
+              image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&h=400&fit=crop',
+            },
+          ].map((cat) => (
+            <Link key={cat.name} href={cat.href} className="group relative aspect-[3/2] rounded-xl overflow-hidden">
+              <img
+                src={cat.image}
+                alt={cat.name}
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5">
+                <h3 className="font-display text-white text-sm sm:text-base">{cat.name}</h3>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* Shop the Gallery */}
       {galleryLots.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
@@ -192,29 +246,6 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* Departments - shown when no auction/lot sections are visible */}
-      {upcomingAuctions.length === 0 && featuredLots.length === 0 && galleryLots.length === 0 && (
-        <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-16 md:py-20">
-          <div className="text-center mb-10">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Departments</span>
-            <h2 className="font-display text-display-sm sm:text-display-md mt-1.5">What We Handle</h2>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            {[
-              'Fine Art & Paintings',
-              'Antiques & Furniture',
-              'Jewelry & Watches',
-              'Fashion & Accessories',
-              'Collectibles & Memorabilia',
-              'Design & Decorative Arts',
-            ].map((dept) => (
-              <div key={dept} className="text-center bg-charcoal/[0.03] border border-black/5 rounded-xl px-4 py-6">
-                <p className="text-sm font-medium">{dept}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }

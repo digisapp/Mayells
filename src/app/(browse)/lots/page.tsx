@@ -5,7 +5,10 @@ import { lots } from '@/db/schema';
 import { desc, eq } from 'drizzle-orm';
 import { LotGrid } from '@/components/lots/LotGrid';
 
-export const metadata = { title: 'Browse Lots' };
+export const metadata = {
+  title: 'Browse Lots',
+  description: 'Browse auction lots at Mayell. Paintings, sculptures, antique furniture, jewelry, watches, designer fashion, and collectibles with expert cataloging.',
+};
 
 export default async function LotsPage() {
   const allLots = await db

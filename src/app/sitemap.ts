@@ -12,13 +12,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/gallery`, lastModified: new Date(), changeFrequency: 'hourly', priority: 0.9 },
     { url: `${BASE_URL}/lots`, lastModified: new Date(), changeFrequency: 'hourly', priority: 0.8 },
     { url: `${BASE_URL}/search`, changeFrequency: 'weekly', priority: 0.7 },
-    { url: `${BASE_URL}/services`, changeFrequency: 'monthly', priority: 0.7 },
-    { url: `${BASE_URL}/consign`, changeFrequency: 'monthly', priority: 0.7 },
+    { url: `${BASE_URL}/consign`, changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${BASE_URL}/how-to-buy`, changeFrequency: 'monthly', priority: 0.7 },
     { url: `${BASE_URL}/about`, changeFrequency: 'monthly', priority: 0.5 },
+    { url: `${BASE_URL}/consignment-agreement`, changeFrequency: 'monthly', priority: 0.4 },
     { url: `${BASE_URL}/terms`, changeFrequency: 'yearly', priority: 0.3 },
     { url: `${BASE_URL}/privacy`, changeFrequency: 'yearly', priority: 0.3 },
-    { url: `${BASE_URL}/login`, changeFrequency: 'monthly', priority: 0.3 },
-    { url: `${BASE_URL}/signup`, changeFrequency: 'monthly', priority: 0.3 },
   ];
 
   try {

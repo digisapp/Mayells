@@ -2,7 +2,10 @@ import Link from 'next/link';
 import { ArrowRight, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 
-export const metadata = { title: 'Consignment Agreement | Mayell' };
+export const metadata = {
+  title: 'Consignment Agreement',
+  description: 'Mayell consignment terms: 35% seller commission, payment within 35 business days, 90-day consignment period. View our full agreement.',
+};
 
 export default function ConsignmentAgreementPage() {
   return (

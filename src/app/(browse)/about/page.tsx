@@ -2,7 +2,10 @@ import Link from 'next/link';
 import { ArrowRight, Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 
-export const metadata = { title: 'About | Mayell' };
+export const metadata = {
+  title: 'About',
+  description: 'Mayell is a full-service auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles on LiveAuctioneers.',
+};
 
 export default function AboutPage() {
   return (
@@ -59,22 +62,30 @@ export default function AboutPage() {
             </span>
             <h2 className="font-display text-display-md mt-2">What We Auction</h2>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-3xl mx-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
             {[
-              'Fine Art',
-              'Antiques',
-              'Jewelry',
-              'Watches',
-              'Fashion & Accessories',
-              'Design & Furniture',
-              'Collectibles',
-              'Estates',
+              { name: 'Fine Art', image: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=400&h=300&fit=crop' },
+              { name: 'Antiques', image: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&h=300&fit=crop' },
+              { name: 'Jewelry & Watches', image: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400&h=300&fit=crop' },
+              { name: 'Fashion', image: 'https://images.unsplash.com/photo-1603567364858-8e3362d9f040?w=400&h=300&fit=crop' },
+              { name: 'Collectibles', image: 'https://images.unsplash.com/photo-1587836374828-4dbafa94cf0e?w=400&h=300&fit=crop' },
+              { name: 'Design & Furniture', image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400&h=300&fit=crop' },
+              { name: 'Decorative Arts', image: 'https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400&h=300&fit=crop' },
+              { name: 'Estates', image: 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=300&fit=crop' },
             ].map((cat) => (
               <div
-                key={cat}
-                className="border border-border/60 rounded-xl p-5 text-center hover:border-champagne/40 transition-colors"
+                key={cat.name}
+                className="relative aspect-[4/3] rounded-xl overflow-hidden group"
               >
-                <p className="font-display text-sm">{cat}</p>
+                <img
+                  src={cat.image}
+                  alt={cat.name}
+                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <p className="font-display text-white text-sm">{cat.name}</p>
+                </div>
               </div>
             ))}
           </div>

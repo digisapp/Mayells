@@ -2,11 +2,33 @@ import Link from 'next/link';
 import { Monitor, Phone, FileText, ArrowRight, ExternalLink } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 
-export const metadata = { title: 'How to Buy | Mayell' };
+export const metadata = {
+  title: 'How to Buy',
+  description: 'Three ways to bid at Mayell auctions: online through LiveAuctioneers, by phone, or via absentee bid. Free to register, 25% buyer premium.',
+};
+
+const faqData = [
+  { q: 'Do I need an account to bid?', a: 'Yes — you\'ll need a free LiveAuctioneers account. Registration takes less than a minute.' },
+  { q: 'Is there a buyer\'s premium?', a: 'Yes, a 25% buyer\'s premium is added to the hammer price. This is standard practice in the auction industry.' },
+  { q: 'How do I pay for items I win?', a: 'Payment is processed securely through LiveAuctioneers. They accept credit cards, wire transfers, and other payment methods.' },
+  { q: 'How do I receive my items?', a: 'We offer shipping worldwide through trusted partners. Local pickup is also available by appointment. Shipping costs are calculated after the sale.' },
+  { q: 'Can I preview items before the auction?', a: 'Yes — preview dates are listed on each auction page. Contact us to schedule an in-person preview appointment.' },
+];
+
+const faqJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: faqData.map((faq) => ({
+    '@type': 'Question',
+    name: faq.q,
+    acceptedAnswer: { '@type': 'Answer', text: faq.a },
+  })),
+};
 
 export default function HowToBuyPage() {
   return (
     <div>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
       {/* Hero */}
       <section className="bg-charcoal text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
@@ -129,28 +151,7 @@ export default function HowToBuyPage() {
             <h2 className="font-display text-display-md">Common Questions</h2>
           </div>
           <div className="space-y-6">
-            {[
-              {
-                q: 'Do I need an account to bid?',
-                a: 'Yes — you\'ll need a free LiveAuctioneers account. Registration takes less than a minute.',
-              },
-              {
-                q: 'Is there a buyer\'s premium?',
-                a: 'Yes, a 25% buyer\'s premium is added to the hammer price. This is standard practice in the auction industry.',
-              },
-              {
-                q: 'How do I pay for items I win?',
-                a: 'Payment is processed securely through LiveAuctioneers. They accept credit cards, wire transfers, and other payment methods.',
-              },
-              {
-                q: 'How do I receive my items?',
-                a: 'We offer shipping worldwide through trusted partners. Local pickup is also available by appointment. Shipping costs are calculated after the sale.',
-              },
-              {
-                q: 'Can I preview items before the auction?',
-                a: 'Yes — preview dates are listed on each auction page. Contact us to schedule an in-person preview appointment.',
-              },
-            ].map((faq) => (
+            {faqData.map((faq) => (
               <div key={faq.q} className="border border-border/60 rounded-xl p-6">
                 <h3 className="font-display text-base mb-2">{faq.q}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
