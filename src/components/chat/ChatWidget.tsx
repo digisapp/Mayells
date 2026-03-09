@@ -85,52 +85,27 @@ export function ChatWidget() {
     <>
       {/* Chat Dialog */}
       {open && (
-        <div className="fixed bottom-20 right-4 sm:right-6 z-50 w-[340px] sm:w-[380px] max-h-[500px] bg-white rounded-2xl shadow-2xl border border-black/10 flex flex-col overflow-hidden">
+        <div className="fixed bottom-20 right-4 sm:right-6 z-50 w-[370px] sm:w-[440px] max-h-[580px] bg-white rounded-2xl shadow-2xl border border-black/10 flex flex-col overflow-hidden">
           {/* Header */}
-          <div className="bg-charcoal text-white px-5 py-4 flex items-center justify-between flex-shrink-0">
+          <div className="bg-charcoal text-white px-6 py-5 flex items-center justify-between flex-shrink-0">
             <div>
-              <h3 className="font-display text-base">Mayell Concierge</h3>
-              <p className="text-[11px] text-white/50">
-                Ask us anything — or upload a photo
-              </p>
+              <h3 className="font-display text-2xl">Mayell Concierge</h3>
             </div>
             <button
               onClick={() => setOpen(false)}
               className="text-white/60 hover:text-white transition-colors"
             >
-              <X className="h-5 w-5" />
+              <X className="h-6 w-6" />
             </button>
           </div>
 
           {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-[200px] max-h-[340px]">
+              <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 min-h-[220px] max-h-[380px]">
                 {messages.length === 0 && (
-                  <div className="text-center py-6">
-                    <p className="text-sm text-gray-500 mb-3">
+                  <div className="text-center py-8">
+                    <p className="text-base text-gray-500">
                       Welcome to Mayell! How can we help you today?
                     </p>
-                    <div className="space-y-2">
-                      {[
-                        'How do I get a free appraisal?',
-                        'What upcoming auctions do you have?',
-                        'What do you buy?',
-                      ].map((q) => (
-                        <button
-                          key={q}
-                          onClick={() => handleSend(q)}
-                          className="block w-full text-left text-xs bg-ivory hover:bg-champagne/30 text-charcoal px-3 py-2 rounded-lg transition-colors"
-                        >
-                          {q}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 w-full text-left text-xs bg-champagne/20 hover:bg-champagne/40 text-charcoal px-3 py-2 rounded-lg transition-colors"
-                      >
-                        <Camera className="h-3.5 w-3.5" />
-                        Upload a photo for a quick assessment
-                      </button>
-                    </div>
                   </div>
                 )}
 
@@ -153,15 +128,15 @@ export function ChatWidget() {
                       className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                        className={`max-w-[85%] rounded-2xl px-5 py-3 text-base leading-relaxed ${
                           m.role === 'user'
                             ? 'bg-charcoal text-white rounded-br-md'
                             : 'bg-ivory text-charcoal rounded-bl-md'
                         }`}
                       >
                         {fileParts && fileParts.length > 0 && (
-                          <div className="mb-2 flex items-center gap-1.5 text-xs opacity-70">
-                            <ImageIcon className="h-3 w-3" />
+                          <div className="mb-2 flex items-center gap-1.5 text-sm opacity-70">
+                            <ImageIcon className="h-4 w-4" />
                             Photo attached
                           </div>
                         )}
@@ -173,8 +148,8 @@ export function ChatWidget() {
 
                 {isLoading && messages[messages.length - 1]?.role === 'user' && (
                   <div className="flex justify-start">
-                    <div className="bg-ivory text-charcoal rounded-2xl rounded-bl-md px-4 py-2.5">
-                      <Loader2 className="h-4 w-4 animate-spin text-champagne" />
+                    <div className="bg-ivory text-charcoal rounded-2xl rounded-bl-md px-5 py-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-champagne" />
                     </div>
                   </div>
                 )}
@@ -184,13 +159,13 @@ export function ChatWidget() {
 
               {/* Image Preview */}
               {imagePreview && (
-                <div className="px-4 py-2 border-t border-black/5 flex items-center gap-2">
+                <div className="px-5 py-3 border-t border-black/5 flex items-center gap-3">
                   <img
                     src={imagePreview}
                     alt="Upload preview"
-                    className="h-12 w-12 object-cover rounded-lg border border-black/10"
+                    className="h-14 w-14 object-cover rounded-lg border border-black/10"
                   />
-                  <span className="text-xs text-gray-500 flex-1">Photo ready to send</span>
+                  <span className="text-sm text-gray-500 flex-1">Photo ready to send</span>
                   <button
                     onClick={() => {
                       setImagePreview(null);
@@ -198,7 +173,7 @@ export function ChatWidget() {
                     }}
                     className="text-gray-400 hover:text-gray-600"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
               )}
@@ -209,7 +184,7 @@ export function ChatWidget() {
                   e.preventDefault();
                   handleSend(input);
                 }}
-                className="border-t border-black/5 px-4 py-3 flex items-center gap-2 flex-shrink-0"
+                className="border-t border-black/5 px-5 py-4 flex items-center gap-3 flex-shrink-0"
               >
                 <input
                   ref={fileInputRef}
@@ -224,20 +199,20 @@ export function ChatWidget() {
                   className="text-gray-400 hover:text-champagne transition-colors flex-shrink-0"
                   title="Upload a photo"
                 >
-                  <Camera className="h-5 w-5" />
+                  <Camera className="h-6 w-6" />
                 </button>
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={imageFile ? 'Add a message (optional)...' : 'Ask about appraisals, consignment...'}
-                  className="flex-1 text-sm bg-transparent outline-none placeholder:text-gray-400 text-charcoal"
+                  className="flex-1 text-base bg-transparent outline-none placeholder:text-gray-400 text-charcoal"
                 />
                 <button
                   type="submit"
                   disabled={(!input.trim() && !imageFile) || isLoading}
-                  className="bg-champagne text-charcoal rounded-full p-2 hover:bg-champagne/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="bg-charcoal text-white rounded-full p-2.5 hover:bg-charcoal/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
-                  <Send className="h-4 w-4" />
+                  <Send className="h-5 w-5" />
                 </button>
               </form>
         </div>
@@ -255,13 +230,13 @@ export function ChatWidget() {
         aria-label="Chat with us"
       >
         {open ? (
-          <X className="h-6 w-6" />
+          <X className="h-7 w-7" />
         ) : (
           <>
-            <MessageCircle className="h-6 w-6" />
+            <MessageCircle className="h-7 w-7" />
             <span
-              className={`font-semibold text-sm whitespace-nowrap overflow-hidden transition-all duration-500 ${
-                showLabel ? 'max-w-[120px] opacity-100' : 'max-w-0 opacity-0'
+              className={`font-semibold text-base whitespace-nowrap overflow-hidden transition-all duration-500 ${
+                showLabel ? 'max-w-[130px] opacity-100' : 'max-w-0 opacity-0'
               }`}
             >
               Chat With Us

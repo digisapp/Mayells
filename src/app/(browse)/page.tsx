@@ -127,7 +127,7 @@ export default async function HomePage() {
             <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-champagne/[0.12] to-transparent pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-40 h-40 bg-champagne/[0.08] rounded-full blur-[60px] pointer-events-none" />
             <div className="relative">
-              <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">How It Works</span>
+              <span className="text-xs uppercase tracking-[0.2em] text-champagne font-semibold">How It Works</span>
               <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8 text-charcoal">
                 Sell With <span className="text-champagne">Mayell</span>
               </h2>
@@ -150,10 +150,10 @@ export default async function HomePage() {
                   },
                 ].map((s) => (
                   <div key={s.step} className="flex items-start gap-5">
-                    <span className="font-display text-champagne text-2xl font-light leading-none mt-1 tabular-nums">{s.step}</span>
+                    <span className="font-display text-champagne text-3xl font-light leading-none mt-0.5 tabular-nums">{s.step}</span>
                     <div>
-                      <p className="font-display text-[15px] text-charcoal mb-1">{s.title}</p>
-                      <p className="text-[13px] text-charcoal/50 leading-relaxed">{s.desc}</p>
+                      <p className="font-semibold text-base text-charcoal mb-1">{s.title}</p>
+                      <p className="text-sm text-charcoal/65 leading-relaxed">{s.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -166,7 +166,7 @@ export default async function HomePage() {
                   </Button>
                 </Link>
               </div>
-              <p className="mt-3 text-[12px] text-charcoal/30">
+              <p className="mt-3 text-sm text-charcoal/70">
                 35% seller&apos;s commission · Payment within 35 business days
               </p>
             </div>
