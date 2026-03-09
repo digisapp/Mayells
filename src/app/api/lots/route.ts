@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get('category');
     const status = searchParams.get('status');
     const sort = searchParams.get('sort') ?? 'newest';
-    const limit = Math.min(parseInt(searchParams.get('limit') ?? '24'), 100);
-    const offset = parseInt(searchParams.get('offset') ?? '0');
+    const limit = Math.max(1, Math.min(parseInt(searchParams.get('limit') ?? '24') || 24, 100));
+    const offset = Math.max(0, parseInt(searchParams.get('offset') ?? '0') || 0);
     const search = searchParams.get('q');
 
     const conditions = [];
@@ -28,12 +28,13 @@ export async function GET(req: NextRequest) {
       conditions.push(eq(lots.saleType, saleType as 'auction' | 'gallery' | 'private'));
     }
     if (search) {
-      conditions.push(ilike(lots.title, `%${search}%`));
+      const trimmed = search.slice(0, 200); // Cap search length
+      conditions.push(ilike(lots.title, `%${trimmed}%`));
     }
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
     if (minPrice) {
-      const min = parseInt(minPrice);
+      const min = Math.max(0, parseInt(minPrice));
       if (!isNaN(min)) {
         conditions.push(sql`COALESCE(${lots.buyNowPrice}, ${lots.estimateLow}, ${lots.currentBidAmount}) >= ${min}`);
       }

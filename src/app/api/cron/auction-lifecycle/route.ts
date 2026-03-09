@@ -7,9 +7,9 @@ import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
 const CRON_SECRET = process.env.CRON_SECRET;
 
 export async function POST(request: NextRequest) {
-  // Verify cron secret (Vercel cron or manual trigger)
+  // Verify cron secret — always required
   const authHeader = request.headers.get('authorization');
-  if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

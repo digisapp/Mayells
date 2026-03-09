@@ -29,6 +29,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // HTML-escape user input to prevent XSS in emails
+    const escapeHtml = (text: string) =>
+      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const safeName = escapeHtml(recipientName);
+
     const agreementUrl = `${BUSINESS.url}/consignment-agreement`;
     const resend = getResend();
 
@@ -46,7 +51,7 @@ export async function POST(req: NextRequest) {
           </div>
 
           <div style="padding: 30px 0;">
-            <p>Dear ${recipientName},</p>
+            <p>Dear ${safeName},</p>
 
             <p>
               Thank you for your interest in consigning with ${BUSINESS.name}. We are pleased to

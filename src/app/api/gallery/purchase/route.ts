@@ -45,24 +45,35 @@ export async function POST(req: NextRequest) {
     // Generate invoice number
     const invoiceNumber = `GAL-${Date.now().toString(36).toUpperCase()}`;
 
-    // Create invoice and mark lot as sold in a transaction-like sequence
-    const [invoice] = await db.insert(invoices).values({
-      invoiceNumber,
-      buyerId: user.id,
-      lotId: lot.id,
-      hammerPrice,
-      buyerPremium,
-      totalAmount,
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-    }).returning();
+    // Atomic transaction — prevents double-selling
+    const invoice = await db.transaction(async (tx) => {
+      // Re-check availability inside transaction
+      const [freshLot] = await tx.select({ status: lots.status }).from(lots).where(eq(lots.id, lotId)).limit(1);
+      if (!freshLot || freshLot.status !== 'for_sale') {
+        throw new Error('LOT_UNAVAILABLE');
+      }
 
-    // Mark lot as sold
-    await db.update(lots).set({
-      status: 'sold',
-      winnerId: user.id,
-      hammerPrice,
-      updatedAt: new Date(),
-    }).where(eq(lots.id, lotId));
+      // Mark lot as sold first (locks the row)
+      await tx.update(lots).set({
+        status: 'sold',
+        winnerId: user.id,
+        hammerPrice,
+        updatedAt: new Date(),
+      }).where(eq(lots.id, lotId));
+
+      // Create invoice
+      const [inv] = await tx.insert(invoices).values({
+        invoiceNumber,
+        buyerId: user.id,
+        lotId: lot.id,
+        hammerPrice,
+        buyerPremium,
+        totalAmount,
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      }).returning();
+
+      return inv;
+    });
 
     return NextResponse.json({
       data: {
@@ -72,6 +83,9 @@ export async function POST(req: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof Error && error.message === 'LOT_UNAVAILABLE') {
+      return NextResponse.json({ error: 'This lot is no longer available' }, { status: 409 });
+    }
     console.error('Gallery purchase error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
