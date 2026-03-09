@@ -79,8 +79,8 @@ export default function BidsPage() {
           <CardContent className="py-12 text-center">
             <Gavel className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">No bids yet. Browse auctions to start bidding.</p>
-            <Link href="/auctions" className="text-sm text-champagne hover:underline mt-2 inline-block">
-              Browse Auctions
+            <Link href="/gallery" className="text-sm text-champagne hover:underline mt-2 inline-block">
+              Browse Gallery
             </Link>
           </CardContent>
         </Card>

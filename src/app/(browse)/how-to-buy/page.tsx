@@ -169,10 +169,10 @@ export default function HowToBuyPage() {
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Link
-            href="/auctions"
+            href="/gallery"
             className="inline-flex items-center justify-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-8 py-3 text-sm font-medium transition-colors"
           >
-            View Upcoming Auctions
+            Browse Gallery
             <ArrowRight className="h-4 w-4" />
           </Link>
           <a

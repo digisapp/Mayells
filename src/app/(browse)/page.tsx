@@ -174,12 +174,12 @@ export default async function HomePage() {
             <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8">What We Sell</h2>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { name: 'Fine Art', href: '/auctions', image: '/images/categories/fine-art.webp' },
-                { name: 'Antiques', href: '/auctions', image: '/images/categories/antiques.webp' },
-                { name: 'Jewelry & Watches', href: '/auctions', image: '/images/categories/jewelry.webp' },
-                { name: 'Fashion & Accessories', href: '/auctions', image: '/images/categories/fashion.webp' },
-                { name: 'Collectibles', href: '/auctions', image: '/images/categories/collectibles.webp' },
-                { name: 'Design & Furniture', href: '/auctions', image: '/images/categories/design.webp' },
+                { name: 'Fine Art', href: '/gallery', image: '/images/categories/fine-art.webp' },
+                { name: 'Antiques', href: '/gallery', image: '/images/categories/antiques.webp' },
+                { name: 'Jewelry & Watches', href: '/gallery', image: '/images/categories/jewelry.webp' },
+                { name: 'Fashion & Accessories', href: '/gallery', image: '/images/categories/fashion.webp' },
+                { name: 'Collectibles', href: '/gallery', image: '/images/categories/collectibles.webp' },
+                { name: 'Design & Furniture', href: '/gallery', image: '/images/categories/design.webp' },
               ].map((cat) => (
                 <Link key={cat.name} href={cat.href} className="group relative aspect-[3/2] rounded-xl overflow-hidden">
                   <img
@@ -205,7 +205,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Upcoming Auctions */}
+      {/* Upcoming Auctions — hidden until auctions are ready
       {upcomingAuctions.length > 0 && (
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
           <div className="flex items-end justify-between mb-8 sm:mb-12">
@@ -229,6 +229,7 @@ export default async function HomePage() {
           </Link>
         </section>
       )}
+      */}
 
       {/* Featured Lots */}
       {featuredLots.length > 0 && (

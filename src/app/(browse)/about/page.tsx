@@ -127,10 +127,10 @@ export default function AboutPage() {
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              href="/auctions"
+              href="/gallery"
               className="inline-flex items-center justify-center gap-2 border border-border rounded-lg px-8 py-3 text-sm font-medium hover:bg-secondary/50 transition-colors"
             >
-              View Auctions
+              View Gallery
             </Link>
           </div>
         </div>
