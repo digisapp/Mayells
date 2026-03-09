@@ -101,11 +101,11 @@ export default async function HomePage() {
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Link href="/services" className="w-full sm:w-auto">
+              <a href="#free-appraisal" className="w-full sm:w-auto">
                 <Button variant="champagne-outline" size="xl" className="backdrop-blur-sm w-full sm:w-auto">
                   Free Appraisals
                 </Button>
-              </Link>
+              </a>
             </div>
           </div>
         </div>

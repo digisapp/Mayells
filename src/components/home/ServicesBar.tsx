@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Phone, CheckCircle, ArrowRight, MessageCircle, Camera, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -62,41 +63,50 @@ export function ServicesBar() {
   };
 
   return (
-    <section className="bg-charcoal text-white">
+    <section id="free-appraisal" className="bg-charcoal text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12 md:py-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           <div>
             <h2 className="font-display text-display-md sm:text-display-lg leading-tight">
-              Free Appraisals &<br />
-              <span className="text-champagne">Estate Evaluations</span>
+              Sell With<br />
+              <span className="text-champagne">Mayell</span>
             </h2>
             <p className="mt-4 text-white/60 text-[15px] leading-relaxed max-w-md">
-              Thinking of selling? Our specialists provide complimentary appraisals for
-              art, antiques, jewelry, watches, fashion, and design. Walk-ins welcome.
+              We make it simple. Send us photos of your items, consign with us,
+              and we handle the rest — from appraisal to auction on LiveAuctioneers.
             </p>
 
-            <div className="mt-8 grid grid-cols-3 gap-4 sm:gap-6 max-w-md">
+            <div className="mt-8 space-y-4 max-w-md">
               {[
-                { label: 'We Buy', desc: 'Immediate offers' },
-                { label: 'We Sell', desc: 'Auction or gallery' },
-                { label: 'Consign', desc: 'Earn top dollar' },
+                { step: '1', title: 'Free Appraisal', desc: 'Submit photos — we evaluate your items at no cost' },
+                { step: '2', title: 'Consign', desc: 'Sign a simple agreement and we take it from there' },
+                { step: '3', title: 'We Auction', desc: 'Your items go live on LiveAuctioneers to global buyers' },
               ].map((s) => (
-                <div key={s.label} className="text-center">
-                  <p className="font-display text-lg sm:text-xl text-champagne">{s.label}</p>
-                  <p className="text-[11px] text-white/40 mt-0.5">{s.desc}</p>
+                <div key={s.step} className="flex items-start gap-4">
+                  <span className="font-display text-champagne text-lg mt-0.5">{s.step}</span>
+                  <div>
+                    <p className="font-medium text-sm">{s.title}</p>
+                    <p className="text-[13px] text-white/40">{s.desc}</p>
+                  </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+            <div className="mt-6 flex flex-col sm:flex-row items-start gap-3">
+              <Link
+                href="/consign"
+                className="inline-flex items-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-5 py-3 text-sm font-medium transition-colors"
+              >
+                Learn About Consigning
+                <ArrowRight className="h-4 w-4" />
+              </Link>
               <a
                 href={BUSINESS.phoneHref}
-                className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-4 sm:px-5 py-3 transition-colors"
+                className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 border border-white/10 rounded-lg px-5 py-3 transition-colors"
               >
                 <Phone className="h-4 w-4 text-champagne" />
                 <span className="font-semibold text-sm">{BUSINESS.phone}</span>
               </a>
-              <span className="text-[12px] text-white/40">Call or text anytime</span>
             </div>
           </div>
 
@@ -133,7 +143,7 @@ export function ServicesBar() {
                     className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
                   />
                   <textarea
-                    placeholder="What items do you have? (e.g., jewelry collection, estate furniture, art collection...)"
+                    placeholder="What items do you have? (e.g., jewelry, estate furniture, art...)"
                     rows={3}
                     value={form.items}
                     onChange={(e) => setForm({ ...form, items: e.target.value })}
