@@ -30,13 +30,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Fetch user role to determine redirect
-    const [profile] = await db.select({ role: users.role }).from(users).where(eq(users.id, data.user.id)).limit(1);
+    let role = 'buyer';
+    try {
+      const [profile] = await db.select({ role: users.role }).from(users).where(eq(users.id, data.user.id)).limit(1);
+      if (profile?.role) role = profile.role;
+    } catch {
+      // DB lookup failed — default to buyer, login still succeeds
+    }
 
     return NextResponse.json({
       success: true,
       user: data.user,
       session: data.session,
-      role: profile?.role || 'buyer',
+      role,
     });
   } catch (error) {
     console.error('Login error:', error);
