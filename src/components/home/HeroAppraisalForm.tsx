@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, ArrowRight, Camera, X } from 'lucide-react';
+import { CheckCircle, ArrowRight, Camera, X, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function HeroAppraisalForm() {
@@ -150,6 +150,17 @@ export function HeroAppraisalForm() {
             <p className="text-[10px] text-white/30 text-center">
               No obligation. Completely confidential.
             </p>
+
+            <div className="flex items-center justify-center gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent('open-chat'))}
+                className="text-[12px] text-champagne/70 hover:text-champagne transition-colors flex items-center gap-1"
+              >
+                <MessageCircle className="h-3 w-3" />
+                Prefer to chat? Talk to a specialist now
+              </button>
+            </div>
           </form>
         </>
       )}

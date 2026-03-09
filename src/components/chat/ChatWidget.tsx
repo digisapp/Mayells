@@ -14,10 +14,17 @@ export function ChatWidget() {
   const [input, setInput] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [showLabel, setShowLabel] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { messages, sendMessage, status } = useChat({ transport });
+
+  // Hide the text label after 8 seconds to reduce visual noise
+  useEffect(() => {
+    const timer = setTimeout(() => setShowLabel(false), 8000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const isLoading = status === 'submitted' || status === 'streaming';
 
@@ -238,14 +245,28 @@ export function ChatWidget() {
 
       {/* Floating Bubble */}
       <button
-        onClick={() => setOpen(!open)}
-        className="fixed bottom-4 right-4 sm:right-6 z-50 bg-champagne text-charcoal rounded-full p-4 shadow-lg hover:shadow-xl hover:scale-105 transition-all"
+        onClick={() => {
+          setOpen(!open);
+          setShowLabel(false);
+        }}
+        className={`fixed bottom-4 right-4 sm:right-6 z-50 bg-champagne text-charcoal shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 ${
+          open ? 'rounded-full p-4' : 'rounded-full py-4 px-5'
+        } ${!open && showLabel ? 'animate-bounce-gentle' : ''}`}
         aria-label="Chat with us"
       >
         {open ? (
           <X className="h-6 w-6" />
         ) : (
-          <MessageCircle className="h-6 w-6" />
+          <>
+            <MessageCircle className="h-6 w-6" />
+            <span
+              className={`font-semibold text-sm whitespace-nowrap overflow-hidden transition-all duration-500 ${
+                showLabel ? 'max-w-[120px] opacity-100' : 'max-w-0 opacity-0'
+              }`}
+            >
+              Chat With Us
+            </span>
+          </>
         )}
       </button>
     </>

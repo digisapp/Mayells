@@ -122,13 +122,13 @@ export default async function HomePage() {
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10">
           {/* Left: How It Works */}
-          <div className="relative bg-charcoal text-white rounded-2xl p-7 sm:p-10 overflow-hidden">
-            {/* Subtle champagne glow */}
-            <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-champagne/[0.06] to-transparent pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-40 h-40 bg-champagne/[0.04] rounded-full blur-[60px] pointer-events-none" />
+          <div className="relative bg-ivory rounded-2xl p-7 sm:p-10 overflow-hidden border border-champagne/20">
+            {/* Subtle warm glow */}
+            <div className="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-champagne/[0.12] to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-40 h-40 bg-champagne/[0.08] rounded-full blur-[60px] pointer-events-none" />
             <div className="relative">
               <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">How It Works</span>
-              <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8">
+              <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8 text-charcoal">
                 Sell With <span className="text-champagne">Mayell</span>
               </h2>
               <div className="space-y-6">
@@ -152,8 +152,8 @@ export default async function HomePage() {
                   <div key={s.step} className="flex items-start gap-5">
                     <span className="font-display text-champagne text-2xl font-light leading-none mt-1 tabular-nums">{s.step}</span>
                     <div>
-                      <p className="font-display text-[15px] mb-1">{s.title}</p>
-                      <p className="text-[13px] text-white/50 leading-relaxed">{s.desc}</p>
+                      <p className="font-display text-[15px] text-charcoal mb-1">{s.title}</p>
+                      <p className="text-[13px] text-charcoal/50 leading-relaxed">{s.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -166,7 +166,7 @@ export default async function HomePage() {
                   </Button>
                 </Link>
               </div>
-              <p className="mt-3 text-[12px] text-white/30">
+              <p className="mt-3 text-[12px] text-charcoal/30">
                 35% seller&apos;s commission · Payment within 35 business days
               </p>
             </div>
