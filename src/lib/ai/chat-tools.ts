@@ -20,43 +20,47 @@ export const chatTools = {
         .describe('Optional category filter like "jewelry", "art", "antiques"'),
     }),
     execute: async ({ category }) => {
-      const results = await db
-        .select({
-          title: auctions.title,
-          subtitle: auctions.subtitle,
-          status: auctions.status,
-          biddingStartsAt: auctions.biddingStartsAt,
-          biddingEndsAt: auctions.biddingEndsAt,
-          lotCount: auctions.lotCount,
-          slug: auctions.slug,
-        })
-        .from(auctions)
-        .where(
-          or(
-            eq(auctions.status, 'scheduled'),
-            eq(auctions.status, 'preview'),
-            eq(auctions.status, 'open'),
-            eq(auctions.status, 'live'),
-          ),
-        )
-        .orderBy(asc(auctions.biddingStartsAt))
-        .limit(10);
+      try {
+        const results = await db
+          .select({
+            title: auctions.title,
+            subtitle: auctions.subtitle,
+            status: auctions.status,
+            biddingStartsAt: auctions.biddingStartsAt,
+            biddingEndsAt: auctions.biddingEndsAt,
+            lotCount: auctions.lotCount,
+            slug: auctions.slug,
+          })
+          .from(auctions)
+          .where(
+            or(
+              eq(auctions.status, 'scheduled'),
+              eq(auctions.status, 'preview'),
+              eq(auctions.status, 'open'),
+              eq(auctions.status, 'live'),
+            ),
+          )
+          .orderBy(asc(auctions.biddingStartsAt))
+          .limit(10);
 
-      if (results.length === 0) {
-        return { message: 'No upcoming auctions at the moment. Check back soon or contact us to be notified of future sales.' };
+        if (results.length === 0) {
+          return { message: 'No upcoming auctions at the moment. Check back soon or contact us to be notified of future sales.' };
+        }
+
+        return {
+          auctions: results.map((a) => ({
+            title: a.title,
+            subtitle: a.subtitle,
+            status: a.status,
+            starts: a.biddingStartsAt?.toLocaleDateString() ?? 'TBA',
+            ends: a.biddingEndsAt?.toLocaleDateString() ?? 'TBA',
+            lotCount: a.lotCount,
+            url: `/auctions/${a.slug}`,
+          })),
+        };
+      } catch {
+        return { message: 'Unable to fetch auction data right now. Please visit our Auctions page or contact us directly.' };
       }
-
-      return {
-        auctions: results.map((a) => ({
-          title: a.title,
-          subtitle: a.subtitle,
-          status: a.status,
-          starts: a.biddingStartsAt?.toLocaleDateString() ?? 'TBA',
-          ends: a.biddingEndsAt?.toLocaleDateString() ?? 'TBA',
-          lotCount: a.lotCount,
-          url: `/auctions/${a.slug}`,
-        })),
-      };
     },
   }),
 
@@ -82,74 +86,78 @@ export const chatTools = {
         .describe('Filter by sale type'),
     }),
     execute: async ({ query, category, maxPrice, saleType }) => {
-      const conditions = [
-        or(
-          eq(lots.status, 'for_sale'),
-          eq(lots.status, 'in_auction'),
-          eq(lots.status, 'approved'),
-        ),
-      ];
-
-      if (saleType) {
-        conditions.push(eq(lots.saleType, saleType));
-      }
-      if (query) {
-        conditions.push(
+      try {
+        const conditions = [
           or(
-            ilike(lots.title, `%${query}%`),
-            ilike(lots.description, `%${query}%`),
-            ilike(lots.artist, `%${query}%`),
-            ilike(lots.maker, `%${query}%`),
-          )!,
-        );
-      }
-      if (maxPrice) {
-        conditions.push(gte(sql`${maxPrice * 100}`, lots.estimateLow));
-      }
+            eq(lots.status, 'for_sale'),
+            eq(lots.status, 'in_auction'),
+            eq(lots.status, 'approved'),
+          ),
+        ];
 
-      const results = await db
-        .select({
-          title: lots.title,
-          artist: lots.artist,
-          maker: lots.maker,
-          saleType: lots.saleType,
-          estimateLow: lots.estimateLow,
-          estimateHigh: lots.estimateHigh,
-          buyNowPrice: lots.buyNowPrice,
-          currentBid: lots.currentBidAmount,
-          bidCount: lots.bidCount,
-          categoryName: categories.name,
-          slug: lots.slug,
-        })
-        .from(lots)
-        .leftJoin(categories, eq(lots.categoryId, categories.id))
-        .where(and(...conditions))
-        .orderBy(desc(lots.isFeatured), desc(lots.createdAt))
-        .limit(8);
+        if (saleType) {
+          conditions.push(eq(lots.saleType, saleType));
+        }
+        if (query) {
+          conditions.push(
+            or(
+              ilike(lots.title, `%${query}%`),
+              ilike(lots.description, `%${query}%`),
+              ilike(lots.artist, `%${query}%`),
+              ilike(lots.maker, `%${query}%`),
+            )!,
+          );
+        }
+        if (maxPrice) {
+          conditions.push(gte(sql`${maxPrice * 100}`, lots.estimateLow));
+        }
 
-      if (results.length === 0) {
-        return { message: 'No items found matching your criteria. Try a broader search or contact us — we may have items arriving soon.' };
-      }
+        const results = await db
+          .select({
+            title: lots.title,
+            artist: lots.artist,
+            maker: lots.maker,
+            saleType: lots.saleType,
+            estimateLow: lots.estimateLow,
+            estimateHigh: lots.estimateHigh,
+            buyNowPrice: lots.buyNowPrice,
+            currentBid: lots.currentBidAmount,
+            bidCount: lots.bidCount,
+            categoryName: categories.name,
+            slug: lots.slug,
+          })
+          .from(lots)
+          .leftJoin(categories, eq(lots.categoryId, categories.id))
+          .where(and(...conditions))
+          .orderBy(desc(lots.isFeatured), desc(lots.createdAt))
+          .limit(8);
 
-      return {
-        lots: results.map((l) => ({
-          title: l.title,
-          artist: l.artist || l.maker || undefined,
-          category: l.categoryName,
-          type: l.saleType,
-          estimate: l.estimateLow
-            ? `${formatPrice(l.estimateLow)} - ${formatPrice(l.estimateHigh)}`
-            : undefined,
-          buyNowPrice:
-            l.saleType === 'gallery' ? formatPrice(l.buyNowPrice) : undefined,
-          currentBid:
-            l.saleType === 'auction' && l.currentBid
-              ? formatPrice(l.currentBid)
+        if (results.length === 0) {
+          return { message: 'No items found matching your criteria. Try a broader search or contact us — we may have items arriving soon.' };
+        }
+
+        return {
+          lots: results.map((l) => ({
+            title: l.title,
+            artist: l.artist || l.maker || undefined,
+            category: l.categoryName,
+            type: l.saleType,
+            estimate: l.estimateLow
+              ? `${formatPrice(l.estimateLow)} - ${formatPrice(l.estimateHigh)}`
               : undefined,
-          bids: l.bidCount || undefined,
-          url: (l.saleType === 'private' || l.saleType === 'gallery') ? `/gallery/${l.slug}` : `/lots/${l.slug}`,
-        })),
-      };
+            buyNowPrice:
+              l.saleType === 'gallery' ? formatPrice(l.buyNowPrice) : undefined,
+            currentBid:
+              l.saleType === 'auction' && l.currentBid
+                ? formatPrice(l.currentBid)
+                : undefined,
+            bids: l.bidCount || undefined,
+            url: (l.saleType === 'private' || l.saleType === 'gallery') ? `/gallery/${l.slug}` : `/lots/${l.slug}`,
+          })),
+        };
+      } catch {
+        return { message: 'Unable to search inventory right now. Please browse our lots at /lots or contact us directly.' };
+      }
     },
   }),
 
@@ -164,39 +172,43 @@ export const chatTools = {
       limit: z.number().optional().default(6).describe('Number of items to return'),
     }),
     execute: async ({ category, limit }) => {
-      const conditions = [
-        eq(lots.saleType, 'gallery'),
-        eq(lots.status, 'for_sale'),
-      ];
+      try {
+        const conditions = [
+          eq(lots.saleType, 'gallery'),
+          eq(lots.status, 'for_sale'),
+        ];
 
-      const results = await db
-        .select({
-          title: lots.title,
-          artist: lots.artist,
-          maker: lots.maker,
-          buyNowPrice: lots.buyNowPrice,
-          categoryName: categories.name,
-          slug: lots.slug,
-        })
-        .from(lots)
-        .leftJoin(categories, eq(lots.categoryId, categories.id))
-        .where(and(...conditions))
-        .orderBy(desc(lots.isFeatured), desc(lots.createdAt))
-        .limit(limit);
+        const results = await db
+          .select({
+            title: lots.title,
+            artist: lots.artist,
+            maker: lots.maker,
+            buyNowPrice: lots.buyNowPrice,
+            categoryName: categories.name,
+            slug: lots.slug,
+          })
+          .from(lots)
+          .leftJoin(categories, eq(lots.categoryId, categories.id))
+          .where(and(...conditions))
+          .orderBy(desc(lots.isFeatured), desc(lots.createdAt))
+          .limit(limit);
 
-      if (results.length === 0) {
-        return { message: 'No gallery items available right now. Check our auctions for current lots.' };
+        if (results.length === 0) {
+          return { message: 'No gallery items available right now. Check our auctions for current lots.' };
+        }
+
+        return {
+          items: results.map((l) => ({
+            title: l.title,
+            artist: l.artist || l.maker || undefined,
+            category: l.categoryName,
+            price: formatPrice(l.buyNowPrice),
+            url: `/lots/${l.slug}`,
+          })),
+        };
+      } catch {
+        return { message: 'Unable to fetch gallery items right now. Please visit our Gallery page or contact us directly.' };
       }
-
-      return {
-        items: results.map((l) => ({
-          title: l.title,
-          artist: l.artist || l.maker || undefined,
-          category: l.categoryName,
-          price: formatPrice(l.buyNowPrice),
-          url: `/lots/${l.slug}`,
-        })),
-      };
     },
   }),
 
@@ -205,24 +217,28 @@ export const chatTools = {
       'Get all available auction departments. Use when someone asks what types of items you deal in.',
     inputSchema: z.object({}),
     execute: async () => {
-      const results = await db
-        .select({
-          name: categories.name,
-          description: categories.description,
-          lotCount: categories.lotCount,
-          slug: categories.slug,
-        })
-        .from(categories)
-        .where(eq(categories.isActive, true))
-        .orderBy(asc(categories.sortOrder));
+      try {
+        const results = await db
+          .select({
+            name: categories.name,
+            description: categories.description,
+            lotCount: categories.lotCount,
+            slug: categories.slug,
+          })
+          .from(categories)
+          .where(eq(categories.isActive, true))
+          .orderBy(asc(categories.sortOrder));
 
-      return {
-        categories: results.map((c) => ({
-          name: c.name,
-          description: c.description,
-          items: c.lotCount,
-        })),
-      };
+        return {
+          categories: results.map((c) => ({
+            name: c.name,
+            description: c.description,
+            items: c.lotCount,
+          })),
+        };
+      } catch {
+        return { message: 'Our departments include Art, Antiques & Collectibles, Luxury Goods, Fashion & Accessories, Jewelry & Watches, and Design & Interiors.' };
+      }
     },
   }),
 
@@ -236,37 +252,41 @@ export const chatTools = {
         .describe('Optional category filter'),
     }),
     execute: async ({ category }) => {
-      const results = await db
-        .select({
-          title: lots.title,
-          artist: lots.artist,
-          maker: lots.maker,
-          hammerPrice: lots.hammerPrice,
-          estimateLow: lots.estimateLow,
-          estimateHigh: lots.estimateHigh,
-          categoryName: categories.name,
-        })
-        .from(lots)
-        .leftJoin(categories, eq(lots.categoryId, categories.id))
-        .where(eq(lots.status, 'sold'))
-        .orderBy(desc(lots.updatedAt))
-        .limit(8);
+      try {
+        const results = await db
+          .select({
+            title: lots.title,
+            artist: lots.artist,
+            maker: lots.maker,
+            hammerPrice: lots.hammerPrice,
+            estimateLow: lots.estimateLow,
+            estimateHigh: lots.estimateHigh,
+            categoryName: categories.name,
+          })
+          .from(lots)
+          .leftJoin(categories, eq(lots.categoryId, categories.id))
+          .where(eq(lots.status, 'sold'))
+          .orderBy(desc(lots.updatedAt))
+          .limit(8);
 
-      if (results.length === 0) {
-        return { message: 'No recent sales data available yet.' };
+        if (results.length === 0) {
+          return { message: 'No recent sales data available yet.' };
+        }
+
+        return {
+          recentSales: results.map((l) => ({
+            title: l.title,
+            artist: l.artist || l.maker || undefined,
+            category: l.categoryName,
+            soldFor: formatPrice(l.hammerPrice),
+            estimate: l.estimateLow
+              ? `${formatPrice(l.estimateLow)} - ${formatPrice(l.estimateHigh)}`
+              : undefined,
+          })),
+        };
+      } catch {
+        return { message: 'Unable to fetch recent sales data right now. Contact us for information about past auction results.' };
       }
-
-      return {
-        recentSales: results.map((l) => ({
-          title: l.title,
-          artist: l.artist || l.maker || undefined,
-          category: l.categoryName,
-          soldFor: formatPrice(l.hammerPrice),
-          estimate: l.estimateLow
-            ? `${formatPrice(l.estimateLow)} - ${formatPrice(l.estimateHigh)}`
-            : undefined,
-        })),
-      };
     },
   }),
 };

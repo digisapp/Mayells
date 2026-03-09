@@ -1,4 +1,4 @@
-import { streamText } from 'ai';
+import { streamText, stepCountIs } from 'ai';
 import { webSearch, xSearch } from '@ai-sdk/xai';
 import { getChatModel } from '@/lib/ai/client';
 import { chatTools } from '@/lib/ai/chat-tools';
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       xSearch: xSearch(),
       ...chatTools,
     },
+    stopWhen: stepCountIs(3),
     maxOutputTokens: 600,
   });
 
