@@ -11,3 +11,5 @@ export * from './watchlist';
 export * from './bid-increments';
 export * from './outreach';
 export * from './estate-visits';
+export * from './newsletter';
+export * from './auction-reminders';

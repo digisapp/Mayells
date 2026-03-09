@@ -55,15 +55,49 @@ export default function ConsignPage() {
   const [submitted, setSubmitted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  function compressImage(file: File, maxDim = 2000, quality = 0.8): Promise<File> {
+    return new Promise((resolve) => {
+      if (file.size <= 500 * 1024) { resolve(file); return; }
+      const img = new window.Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (blob && blob.size < file.size) {
+              resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
+            } else {
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          quality,
+        );
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = () => resolve(file);
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const imageFiles = files.filter((f) => f.type.startsWith('image/'));
+    const imageFiles = files.filter((f) => f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.heic'));
     if (photos.length + imageFiles.length > 50) {
       toast.error('Maximum 50 photos allowed');
       return;
     }
-    setPhotos((prev) => [...prev, ...imageFiles]);
-    imageFiles.forEach((file) => {
+    const compressed = await Promise.all(imageFiles.map((f) => compressImage(f)));
+    setPhotos((prev) => [...prev, ...compressed]);
+    compressed.forEach((file) => {
       const reader = new FileReader();
       reader.onload = (ev) => setPhotoPreviews((prev) => [...prev, ev.target?.result as string]);
       reader.readAsDataURL(file);

@@ -6,7 +6,7 @@ import { lots, auctions, users, outreachContacts, consignments, estateVisits } f
 import { sql, desc } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Gavel, Image, Users as UsersIcon, FileText, Package, BarChart3, Mail, Plus, ClipboardCheck, Brain } from 'lucide-react';
+import { Gavel, Image, Users as UsersIcon, FileText, Package, BarChart3, Mail, Plus, ClipboardCheck, Brain, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const statusColors: Record<string, string> = {
@@ -118,6 +118,7 @@ export default async function AdminDashboardPage() {
           { href: '/admin/outreach', label: 'Outreach', icon: Mail, desc: `Leads & follow-ups (${Number(outreachFollowUp.count)} pending)` },
           { href: '/admin/users', label: 'Users', icon: UsersIcon, desc: 'Manage accounts' },
           { href: '/admin/ai', label: 'AI Tools', icon: Brain, desc: 'Catalog, appraise, authenticate' },
+          { href: '/admin/submissions', label: 'Submissions', icon: Camera, desc: 'Consignment/appraisal photos' },
           { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, desc: 'Reports and insights' },
         ].map((item) => (
           <Link key={item.href} href={item.href}>

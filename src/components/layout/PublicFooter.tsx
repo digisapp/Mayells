@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { NewsletterSignup } from '@/components/layout/NewsletterSignup';
 
 export function PublicFooter() {
   return (
@@ -9,9 +10,10 @@ export function PublicFooter() {
           <div className="col-span-2 sm:col-span-2 lg:col-span-1">
             <h3 className="font-logo text-xl mb-1">MAYELL</h3>
             <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground/60 mb-3">Fine Art Antiques Design Fashion Collectibles</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">
+            <p className="text-sm text-muted-foreground leading-relaxed mb-4">
               Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.
             </p>
+            <NewsletterSignup />
           </div>
           <div>
             <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted-foreground mb-4">Browse</h4>

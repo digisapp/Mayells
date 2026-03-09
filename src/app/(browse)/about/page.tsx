@@ -64,11 +64,11 @@ export default function AboutPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
             {[
-              { name: 'Fine Art', image: '/images/categories/fine-art.png' },
+              { name: 'Fine Art', image: '/images/categories/fine-art.webp' },
               { name: 'Antiques', image: '/images/categories/antiques.webp' },
-              { name: 'Jewelry & Watches', image: '/images/categories/jewelry.png' },
-              { name: 'Fashion', image: '/images/categories/fashion.png' },
-              { name: 'Collectibles', image: '/images/categories/collectibles.png' },
+              { name: 'Jewelry & Watches', image: '/images/categories/jewelry.webp' },
+              { name: 'Fashion', image: '/images/categories/fashion.webp' },
+              { name: 'Collectibles', image: '/images/categories/collectibles.webp' },
               { name: 'Design & Furniture', image: '/images/categories/design.webp' },
               { name: 'Decorative Arts', image: 'https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400&h=300&fit=crop' },
               { name: 'Estates', image: 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=300&fit=crop' },

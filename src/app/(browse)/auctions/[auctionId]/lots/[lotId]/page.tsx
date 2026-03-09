@@ -7,6 +7,8 @@ import { db } from '@/db';
 import { lots, lotImages, auctionLots, auctions, bids } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { BidPanel } from '@/components/bidding/BidPanel';
+import { RemindMeButton } from '@/components/bidding/RemindMeButton';
+import { ShareButtons } from '@/components/lots/ShareButtons';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
@@ -175,6 +177,10 @@ export default async function LotDetailPage({
             {lot.subtitle && (
               <p className="text-lg text-muted-foreground">{lot.subtitle}</p>
             )}
+            <div className="flex flex-wrap items-center gap-3 mt-3">
+              {auction && <RemindMeButton lotId={lot.id} />}
+              <ShareButtons title={lot.title} url={`${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`} />
+            </div>
           </div>
 
           {/* Details table */}

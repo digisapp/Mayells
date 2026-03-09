@@ -8,13 +8,14 @@ export const metadata: Metadata = {
   description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
 };
 import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Phone } from 'lucide-react';
 import { db } from '@/db';
 import { auctions, lots } from '@/db/schema';
 import { inArray, desc, eq, and } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { LotCard } from '@/components/lots/LotCard';
-import { ServicesBar } from '@/components/home/ServicesBar';
+import { HeroAppraisalForm } from '@/components/home/HeroAppraisalForm';
+import { BUSINESS } from '@/lib/config';
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -68,8 +69,8 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      {/* Hero */}
-      <section className="relative bg-charcoal text-white overflow-hidden min-h-[50vh] sm:min-h-[60vh] flex items-center">
+      {/* Hero with Appraisal Form */}
+      <section className="relative bg-charcoal text-white overflow-hidden">
         {/* Dot grid pattern */}
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
@@ -84,35 +85,124 @@ export default async function HomePage() {
         <div className="absolute bottom-0 left-0 right-0 gradient-line" />
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 md:py-20 w-full">
-          <div className="max-w-2xl">
-            <h1 className="font-display text-[2.5rem] sm:text-display-xl md:text-[5rem] leading-[1.05] tracking-tight">
-              Fine Art. Antiques.
-              <br />
-              <span className="text-shimmer">Jewelry. Collectibles.</span>
-            </h1>
-            <p className="mt-4 sm:mt-6 text-[15px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
-              Discover rare and remarkable pieces from around the world. Expert cataloging,
-              authentication, and appraisal for art, antiques, fashion, jewelry, and design.
-            </p>
-            <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4">
-              <Link href="/consign" className="w-full sm:w-auto">
-                <Button variant="champagne" size="xl" className="shadow-gold w-full sm:w-auto">
-                  Sell With Us
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
-              <a href="#free-appraisal" className="w-full sm:w-auto">
-                <Button variant="champagne-outline" size="xl" className="backdrop-blur-sm w-full sm:w-auto">
-                  Free Appraisals
-                </Button>
-              </a>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+            <div>
+              <h1 className="font-display text-[2.5rem] sm:text-display-xl md:text-[5rem] leading-[1.05] tracking-tight">
+                Fine Art. Antiques.
+                <br />
+                <span className="text-shimmer">Jewelry. Collectibles.</span>
+              </h1>
+              <p className="mt-4 sm:mt-6 text-[15px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
+                Discover rare and remarkable pieces from around the world. Expert cataloging,
+                authentication, and appraisal for art, antiques, fashion, jewelry, and design.
+              </p>
+              <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4">
+                <Link href="/consign" className="w-full sm:w-auto">
+                  <Button variant="champagne" size="xl" className="shadow-gold w-full sm:w-auto">
+                    Sell With Us
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+                <a href={BUSINESS.phoneHref} className="w-full sm:w-auto">
+                  <Button variant="champagne-outline" size="xl" className="backdrop-blur-sm w-full sm:w-auto">
+                    <Phone className="mr-2 h-4 w-4" />
+                    {BUSINESS.phone}
+                  </Button>
+                </a>
+              </div>
+            </div>
+            <div className="hidden lg:block">
+              <HeroAppraisalForm />
             </div>
           </div>
         </div>
       </section>
 
-      {/* Services / Free Appraisals */}
-      <ServicesBar />
+      {/* How It Works + Departments — side by side on white */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
+          {/* Left: How It Works */}
+          <div>
+            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">How It Works</span>
+            <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8">
+              Sell With <span className="text-champagne">Mayell</span>
+            </h2>
+            <div className="space-y-6">
+              {[
+                {
+                  step: '01',
+                  title: 'Free Appraisal',
+                  desc: 'Send us photos of your items. Our specialists evaluate and provide auction estimates — completely free, no obligation.',
+                },
+                {
+                  step: '02',
+                  title: 'We Catalog & Photograph',
+                  desc: 'Once you consign, we handle professional photography, detailed cataloging, and marketing to attract the right buyers.',
+                },
+                {
+                  step: '03',
+                  title: 'Auction on LiveAuctioneers',
+                  desc: 'Your items go live to millions of registered bidders worldwide. We manage the entire sale and send you payment.',
+                },
+              ].map((s) => (
+                <div key={s.step} className="flex items-start gap-5">
+                  <span className="font-display text-champagne/60 text-2xl font-light leading-none mt-1 tabular-nums">{s.step}</span>
+                  <div>
+                    <p className="font-display text-[15px] mb-1">{s.title}</p>
+                    <p className="text-[13px] text-muted-foreground leading-relaxed">{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-8 flex flex-col sm:flex-row items-start gap-3">
+              <Link href="/consign">
+                <Button variant="champagne" className="gap-2">
+                  Start Consigning
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+            <p className="mt-3 text-[12px] text-muted-foreground">
+              35% seller&apos;s commission · Payment within 35 business days
+            </p>
+          </div>
+
+          {/* Right: Departments / What We Sell */}
+          <div>
+            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Departments</span>
+            <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2 mb-8">What We Sell</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { name: 'Fine Art', href: '/auctions', image: '/images/categories/fine-art.webp' },
+                { name: 'Antiques', href: '/auctions', image: '/images/categories/antiques.webp' },
+                { name: 'Jewelry & Watches', href: '/auctions', image: '/images/categories/jewelry.webp' },
+                { name: 'Fashion & Accessories', href: '/auctions', image: '/images/categories/fashion.webp' },
+                { name: 'Collectibles', href: '/auctions', image: '/images/categories/collectibles.webp' },
+                { name: 'Design & Furniture', href: '/auctions', image: '/images/categories/design.webp' },
+              ].map((cat) => (
+                <Link key={cat.name} href={cat.href} className="group relative aspect-[3/2] rounded-xl overflow-hidden">
+                  <img
+                    src={cat.image}
+                    alt={cat.name}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+                    <h3 className="font-display text-white text-xs sm:text-sm">{cat.name}</h3>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile appraisal form (hidden on desktop since it's in hero) */}
+        <div className="lg:hidden mt-12 bg-charcoal rounded-2xl p-1">
+          <div className="text-white">
+            <HeroAppraisalForm />
+          </div>
+        </div>
+      </section>
 
       {/* Upcoming Auctions */}
       {upcomingAuctions.length > 0 && (
@@ -166,60 +256,6 @@ export default async function HomePage() {
           </div>
         </section>
       )}
-
-      {/* Categories */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 md:py-20">
-        <div className="text-center mb-8 sm:mb-12">
-          <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Departments</span>
-          <h2 className="font-display text-display-sm sm:text-display-md mt-1.5 sm:mt-2">What We Sell</h2>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {[
-            {
-              name: 'Fine Art',
-              href: '/auctions',
-              image: '/images/categories/fine-art.png',
-            },
-            {
-              name: 'Antiques',
-              href: '/auctions',
-              image: '/images/categories/antiques.webp',
-            },
-            {
-              name: 'Jewelry & Watches',
-              href: '/auctions',
-              image: '/images/categories/jewelry.png',
-            },
-            {
-              name: 'Fashion & Accessories',
-              href: '/auctions',
-              image: '/images/categories/fashion.png',
-            },
-            {
-              name: 'Collectibles',
-              href: '/auctions',
-              image: '/images/categories/collectibles.png',
-            },
-            {
-              name: 'Design & Furniture',
-              href: '/auctions',
-              image: '/images/categories/design.webp',
-            },
-          ].map((cat) => (
-            <Link key={cat.name} href={cat.href} className="group relative aspect-[3/2] rounded-xl overflow-hidden">
-              <img
-                src={cat.image}
-                alt={cat.name}
-                className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-              <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5">
-                <h3 className="font-display text-white text-sm sm:text-base">{cat.name}</h3>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
 
       {/* Shop the Gallery */}
       {galleryLots.length > 0 && (
