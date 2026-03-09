@@ -149,7 +149,7 @@ function SearchContent() {
           onClick={() => setUseAI(true)}
           className={useAI ? 'bg-champagne text-charcoal hover:bg-champagne/90 gap-1' : 'gap-1'}
         >
-          <Sparkles className="h-3 w-3" /> AI Search
+          <Sparkles className="h-3 w-3" /> Smart Search
         </Button>
         <Button
           variant={!useAI ? 'default' : 'outline'}
@@ -267,10 +267,10 @@ function SearchContent() {
         </div>
       )}
 
-      {/* AI intent display */}
+      {/* Search intent display */}
       {intent && (
         <div className="flex flex-wrap items-center gap-2 mb-6 justify-center">
-          <span className="text-xs text-muted-foreground">AI understood:</span>
+          <span className="text-xs text-muted-foreground">Searching for:</span>
           {intent.keywords?.map((k) => <Badge key={k} variant="outline" className="text-xs">{k}</Badge>)}
           {intent.category && <Badge className="text-xs bg-champagne/20 text-champagne">{intent.category}</Badge>}
           {intent.artist && <Badge className="text-xs" variant="secondary">Artist: {intent.artist}</Badge>}
@@ -284,7 +284,7 @@ function SearchContent() {
       {isLoading ? (
         <div className="text-center py-12">
           <div className="w-6 h-6 border-2 border-champagne border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-muted-foreground text-sm">{useAI && query.trim() ? 'AI is searching...' : 'Searching...'}</p>
+          <p className="text-muted-foreground text-sm">{useAI && query.trim() ? 'Searching...' : 'Searching...'}</p>
         </div>
       ) : query.trim() || hasActiveFilters ? (
         <>

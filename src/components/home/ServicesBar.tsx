@@ -134,10 +134,10 @@ export function ServicesBar() {
                   className="mt-4 w-full flex items-center justify-center gap-2.5 bg-champagne/10 hover:bg-champagne/20 border border-champagne/30 text-champagne rounded-xl px-5 py-3.5 transition-colors"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">Chat with our AI Appraiser</span>
+                  <span className="text-sm font-medium">Chat with a Specialist</span>
                 </button>
                 <p className="text-[11px] text-white/30 text-center mt-2">
-                  Get an instant AI assessment — upload photos for best results
+                  Get an instant assessment — upload photos for best results
                 </p>
               </>
             )}

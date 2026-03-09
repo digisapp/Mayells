@@ -53,7 +53,7 @@ const services = [
       'Acquisition guidance & market intelligence',
       'Long-term collection strategy',
       'Authentication & provenance research',
-      'AI-powered valuation tracking',
+      'Real-time valuation tracking',
     ],
   },
 ];

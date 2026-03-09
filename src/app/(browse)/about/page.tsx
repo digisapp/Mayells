@@ -6,13 +6,13 @@ export default function AboutPage() {
       <h1 className="font-display text-display-lg mb-8">About Mayell</h1>
       <div className="prose prose-lg max-w-none space-y-6 text-muted-foreground">
         <p>
-          Mayell is the auction house of the future — an AI-powered platform where
-          collectors, dealers, and enthusiasts discover and acquire extraordinary objects
-          across art, antiques, luxury, fashion, jewelry, and design.
+          Mayell is a full-service auction house where collectors, dealers, and enthusiasts
+          discover and acquire extraordinary objects across art, antiques, luxury, fashion,
+          jewelry, and design.
         </p>
         <p>
           We combine the prestige and curation of traditional auction houses with
-          cutting-edge technology: real-time bidding, AI-powered cataloging and appraisal,
+          modern technology: real-time bidding, expert cataloging and appraisal,
           and live streaming auction events.
         </p>
         <h2 className="font-display text-display-sm text-foreground">How to Bid</h2>

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
 };
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Sparkles } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { db } from '@/db';
 import { auctions, lots } from '@/db/schema';
 import { inArray, desc, eq, and } from 'drizzle-orm';
@@ -86,17 +86,16 @@ export default async function HomePage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 md:py-32 w-full">
           <div className="max-w-2xl">
             <div className="inline-flex items-center gap-2 glass-dark rounded-full px-4 sm:px-5 py-2 mb-6 sm:mb-8 border-glow">
-              <Sparkles className="h-3.5 w-3.5 text-champagne" />
-              <span className="text-[12px] sm:text-[13px] text-white/80 tracking-wide">AI-Powered Auction Platform</span>
+              <span className="text-[12px] sm:text-[13px] text-white/80 tracking-wide">Fine Art &middot; Antiques &middot; Design &middot; Fashion &middot; Collectibles</span>
             </div>
 
             <h1 className="font-display text-[2.5rem] sm:text-display-xl md:text-[5rem] leading-[1.05] tracking-tight">
-              The Auction House
+              Extraordinary Objects,
               <br />
-              <span className="text-shimmer">of the Future</span>
+              <span className="text-shimmer">Exceptional Service</span>
             </h1>
             <p className="mt-4 sm:mt-6 text-[15px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
-              Discover extraordinary objects from around the world. AI-powered cataloging,
+              Discover rare and remarkable pieces from around the world. Expert cataloging,
               authentication, and appraisal for art, antiques, fashion, jewelry, and design.
             </p>
             <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row gap-3 sm:gap-4">
@@ -205,7 +204,7 @@ export default async function HomePage() {
           <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Consignment</span>
           <h2 className="font-display text-display-md text-white mt-2 mb-4">Ready to Sell?</h2>
           <p className="text-white/50 max-w-lg mx-auto mb-10 text-[15px] leading-relaxed">
-            Have an extraordinary item? Our AI appraisal system provides instant estimates.
+            Have an extraordinary item? Our specialists provide complimentary appraisals.
             Submit your piece for consignment and reach collectors worldwide.
           </p>
           <Link href="/consign">
