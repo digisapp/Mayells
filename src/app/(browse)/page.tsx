@@ -69,7 +69,7 @@ export default async function HomePage() {
       />
 
       {/* Hero */}
-      <section className="relative bg-charcoal text-white overflow-hidden min-h-[70vh] sm:min-h-[85vh] flex items-center">
+      <section className="relative bg-charcoal text-white overflow-hidden min-h-[50vh] sm:min-h-[60vh] flex items-center">
         {/* Dot grid pattern */}
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
@@ -83,12 +83,8 @@ export default async function HomePage() {
         {/* Gradient line accent */}
         <div className="absolute bottom-0 left-0 right-0 gradient-line" />
 
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 md:py-32 w-full">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 md:py-20 w-full">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 glass-dark rounded-full px-4 sm:px-5 py-2 mb-6 sm:mb-8 border-glow">
-              <span className="text-[12px] sm:text-[13px] text-white/80 tracking-wide">Fine Art &middot; Antiques &middot; Design &middot; Fashion &middot; Collectibles</span>
-            </div>
-
             <h1 className="font-display text-[2.5rem] sm:text-display-xl md:text-[5rem] leading-[1.05] tracking-tight">
               Fine Art. Antiques.
               <br />

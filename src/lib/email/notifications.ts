@@ -107,14 +107,17 @@ export async function sendPaymentConfirmation(params: {
   });
 }
 
-export async function sendAppraisalRequestNotification(params: {
-  name: string;
-  phone: string;
-  email?: string;
-  service?: string;
-  items?: string;
-  message?: string;
-}) {
+export async function sendAppraisalRequestNotification(
+  params: {
+    name: string;
+    phone: string;
+    email?: string;
+    service?: string;
+    items?: string;
+    message?: string;
+  },
+  photos?: { filename: string; content: Buffer }[],
+) {
   const resend = getResend();
   const rows = [
     `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Name:</td><td style="padding: 6px 12px; font-weight: bold;">${params.name}</td></tr>`,
@@ -125,19 +128,30 @@ export async function sendAppraisalRequestNotification(params: {
     params.message ? `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Message:</td><td style="padding: 6px 12px;">${params.message}</td></tr>` : '',
   ].filter(Boolean).join('');
 
+  const photoNote = photos && photos.length > 0
+    ? `<p style="margin-top: 16px; color: #666;">${photos.length} photo(s) attached.</p>`
+    : '';
+
+  const attachments = photos?.map((p) => ({
+    filename: p.filename,
+    content: p.content,
+  }));
+
   await resend.emails.send({
     from: FROM,
     to: ADMIN_EMAIL,
-    subject: `New Service Request from ${params.name}`,
+    subject: `New Service Request from ${params.name}${photos?.length ? ` (${photos.length} photos)` : ''}`,
     html: `
       <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #272D35; font-size: 24px;">New Service / Appraisal Request</h1>
         <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">${rows}</table>
+        ${photoNote}
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
           Submitted via mayellauctions.com
         </p>
       </div>
     `,
+    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   });
 }
 
