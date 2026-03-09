@@ -192,25 +192,29 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* CTA */}
-      <section className="relative bg-charcoal text-white py-14 sm:py-16 md:py-20 overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 gradient-line" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-champagne/[0.04] rounded-full blur-[120px] pointer-events-none" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Consignment</span>
-          <h2 className="font-display text-display-md text-white mt-2 mb-4">Ready to Sell?</h2>
-          <p className="text-white/50 max-w-lg mx-auto mb-10 text-[15px] leading-relaxed">
-            Have an extraordinary item? Our specialists provide complimentary appraisals.
-            Submit your piece for consignment and reach collectors worldwide.
-          </p>
-          <Link href="/consign">
-            <Button variant="champagne" size="xl" className="shadow-gold">
-              Submit for Consignment
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </section>
+      {/* Departments - shown when no auction/lot sections are visible */}
+      {upcomingAuctions.length === 0 && featuredLots.length === 0 && galleryLots.length === 0 && (
+        <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-16 md:py-20">
+          <div className="text-center mb-10">
+            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Departments</span>
+            <h2 className="font-display text-display-sm sm:text-display-md mt-1.5">What We Handle</h2>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {[
+              'Fine Art & Paintings',
+              'Antiques & Furniture',
+              'Jewelry & Watches',
+              'Fashion & Accessories',
+              'Collectibles & Memorabilia',
+              'Design & Decorative Arts',
+            ].map((dept) => (
+              <div key={dept} className="text-center bg-charcoal/[0.03] border border-black/5 rounded-xl px-4 py-6">
+                <p className="text-sm font-medium">{dept}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

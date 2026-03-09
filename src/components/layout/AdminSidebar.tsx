@@ -15,6 +15,7 @@ import {
   Radio,
   Mail,
   FileSignature,
+  ClipboardCheck,
   Settings,
 } from 'lucide-react';
 
@@ -23,6 +24,7 @@ const adminLinks = [
   { href: '/admin/auctions', label: 'Auctions', icon: Gavel },
   { href: '/admin/lots', label: 'Lots', icon: Image },
   { href: '/admin/consignments', label: 'Consignments', icon: Package },
+  { href: '/admin/appraisals', label: 'Appraisals', icon: ClipboardCheck },
   { href: '/admin/ai', label: 'AI Tools', icon: Brain },
   { href: '/admin/live', label: 'Live Auctions', icon: Radio },
   { href: '/admin/users', label: 'Users', icon: Users },

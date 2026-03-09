@@ -206,3 +206,53 @@ export async function sendConsignmentNotification(params: {
     `,
   });
 }
+
+export async function sendAppraisalReportEmail(params: {
+  clientName: string;
+  clientEmail: string;
+  reportUrl: string;
+  itemCount: number;
+  totalEstimateLow: number;
+  totalEstimateHigh: number;
+}) {
+  const resend = getResend();
+  await resend.emails.send({
+    from: FROM,
+    to: params.clientEmail,
+    subject: `${BUSINESS.name} — Your Estate Appraisal Report`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #272D35;">
+        <div style="text-align: center; padding: 30px 0; border-bottom: 2px solid #D4C5A0;">
+          <h1 style="font-size: 28px; margin: 0; letter-spacing: 2px;">${BUSINESS.name}</h1>
+          <p style="color: #D4C5A0; font-size: 12px; text-transform: uppercase; letter-spacing: 3px; margin-top: 4px;">Estate Appraisal Report</p>
+        </div>
+        <div style="padding: 30px 0;">
+          <p>Dear ${params.clientName},</p>
+          <p>Thank you for allowing ${BUSINESS.name} to appraise your collection. We are pleased to present your comprehensive appraisal report.</p>
+          <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
+            <tr>
+              <td style="padding: 8px 16px; color: #666;">Items Appraised:</td>
+              <td style="padding: 8px 16px; font-weight: bold;">${params.itemCount}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 16px; color: #666;">Estimated Total Value:</td>
+              <td style="padding: 8px 16px; font-weight: bold; font-size: 18px;">${formatCurrency(params.totalEstimateLow)} — ${formatCurrency(params.totalEstimateHigh)}</td>
+            </tr>
+          </table>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${params.reportUrl}" style="display: inline-block; background-color: #D4C5A0; color: #272D35; padding: 14px 32px; text-decoration: none; font-weight: bold; font-size: 14px; letter-spacing: 1px; border-radius: 6px;">VIEW YOUR APPRAISAL REPORT</a>
+          </div>
+          <p>If you are interested in consigning any of these items for auction or private sale, please review our consignment agreement:</p>
+          <div style="text-align: center; margin: 20px 0;">
+            <a href="${BUSINESS.url}/consignment-agreement" style="display: inline-block; border: 2px solid #D4C5A0; color: #272D35; padding: 12px 28px; text-decoration: none; font-weight: bold; font-size: 13px; border-radius: 6px;">REVIEW CONSIGNMENT AGREEMENT</a>
+          </div>
+          <p>If you have any questions, please don't hesitate to contact us.</p>
+          <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
+        </div>
+        <div style="border-top: 1px solid #eee; padding-top: 20px; text-align: center; font-size: 11px; color: #aaa;">
+          <p>${BUSINESS.name} &bull; Palm Beach County, Florida</p>
+        </div>
+      </div>
+    `,
+  });
+}
