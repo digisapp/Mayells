@@ -259,7 +259,7 @@ export default function ConsignPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept="image/*"
                     multiple
                     onChange={handlePhotoSelect}
                     className="hidden"

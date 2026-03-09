@@ -116,7 +116,7 @@ export async function sendAppraisalRequestNotification(
     items?: string;
     message?: string;
   },
-  photos?: { filename: string; content: Buffer }[],
+  photoUrls?: string[],
 ) {
   const resend = getResend();
   const rows = [
@@ -128,30 +128,29 @@ export async function sendAppraisalRequestNotification(
     params.message ? `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Message:</td><td style="padding: 6px 12px;">${params.message}</td></tr>` : '',
   ].filter(Boolean).join('');
 
-  const photoNote = photos && photos.length > 0
-    ? `<p style="margin-top: 16px; color: #666;">${photos.length} photo(s) attached.</p>`
+  const photoSection = photoUrls && photoUrls.length > 0
+    ? `
+      <h2 style="color: #272D35; font-size: 18px; margin-top: 24px;">Photos (${photoUrls.length})</h2>
+      <div style="margin: 12px 0;">
+        ${photoUrls.map((url, i) => `<a href="${url}" style="display: inline-block; margin: 4px;"><img src="${url}" alt="Photo ${i + 1}" style="width: 120px; height: 120px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd;" /></a>`).join('')}
+      </div>
+    `
     : '';
-
-  const attachments = photos?.map((p) => ({
-    filename: p.filename,
-    content: p.content,
-  }));
 
   await resend.emails.send({
     from: FROM,
     to: ADMIN_EMAIL,
-    subject: `New Service Request from ${params.name}${photos?.length ? ` (${photos.length} photos)` : ''}`,
+    subject: `New Service Request from ${params.name}${photoUrls?.length ? ` (${photoUrls.length} photos)` : ''}`,
     html: `
       <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
         <h1 style="color: #272D35; font-size: 24px;">New Service / Appraisal Request</h1>
         <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">${rows}</table>
-        ${photoNote}
+        ${photoSection}
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
           Submitted via mayellauctions.com
         </p>
       </div>
     `,
-    ...(attachments && attachments.length > 0 ? { attachments } : {}),
   });
 }
 

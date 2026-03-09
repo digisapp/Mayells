@@ -64,12 +64,12 @@ export default function AboutPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
             {[
-              { name: 'Fine Art', image: 'https://images.unsplash.com/photo-1637296276416-3276f530334b?w=400&h=300&fit=crop' },
-              { name: 'Antiques', image: 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=400&h=300&fit=crop' },
-              { name: 'Jewelry & Watches', image: 'https://images.unsplash.com/photo-1640405172860-076f1ef62ea5?w=400&h=300&fit=crop' },
-              { name: 'Fashion', image: 'https://images.unsplash.com/photo-1722236525367-00a4ff86ec00?w=400&h=300&fit=crop' },
-              { name: 'Collectibles', image: 'https://images.unsplash.com/photo-1647892591880-58c55fd726d8?w=400&h=300&fit=crop' },
-              { name: 'Design & Furniture', image: 'https://images.unsplash.com/photo-1756302555654-5e413da2d1b8?w=400&h=300&fit=crop' },
+              { name: 'Fine Art', image: '/images/categories/fine-art.png' },
+              { name: 'Antiques', image: '/images/categories/antiques.webp' },
+              { name: 'Jewelry & Watches', image: '/images/categories/jewelry.png' },
+              { name: 'Fashion', image: '/images/categories/fashion.png' },
+              { name: 'Collectibles', image: '/images/categories/collectibles.png' },
+              { name: 'Design & Furniture', image: '/images/categories/design.webp' },
               { name: 'Decorative Arts', image: 'https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400&h=300&fit=crop' },
               { name: 'Estates', image: 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=300&fit=crop' },
             ].map((cat) => (

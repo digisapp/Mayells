@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
+import { createAdminClient } from '@/lib/supabase/admin';
+
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif'];
+const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB per file
+const BUCKET = 'lot-images';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,7 +16,7 @@ export async function POST(req: NextRequest) {
     let email: string | undefined;
     let service: string | undefined;
     let message: string | undefined;
-    let photoAttachments: { filename: string; content: Buffer }[] = [];
+    let photoUrls: string[] = [];
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
@@ -23,11 +28,26 @@ export async function POST(req: NextRequest) {
       message = (formData.get('message') as string) || undefined;
 
       const photos = formData.getAll('photos') as File[];
-      for (const photo of photos) {
-        if (photo.size > 0) {
-          const buffer = Buffer.from(await photo.arrayBuffer());
-          photoAttachments.push({ filename: photo.name, content: buffer });
-        }
+      if (photos.length > 0) {
+        const admin = createAdminClient();
+        const uploadPromises = photos
+          .filter((p) => p.size > 0 && p.size <= MAX_FILE_SIZE)
+          .map(async (photo) => {
+            const ext = photo.name.split('.').pop()?.toLowerCase() || 'jpg';
+            const path = `submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+            const { data, error } = await admin.storage
+              .from(BUCKET)
+              .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: false });
+            if (error) {
+              console.error('Photo upload error:', error);
+              return null;
+            }
+            const { data: { publicUrl } } = admin.storage.from(BUCKET).getPublicUrl(data.path);
+            return publicUrl;
+          });
+
+        const results = await Promise.all(uploadPromises);
+        photoUrls = results.filter((url): url is string => url !== null);
       }
     } else {
       const body = await req.json();
@@ -45,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     sendAppraisalRequestNotification(
       { name, phone, email, service, items, message },
-      photoAttachments,
+      photoUrls,
     ).catch((err) =>
       console.error('Failed to send appraisal notification:', err),
     );
