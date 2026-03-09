@@ -110,6 +110,7 @@ export default function EditAuctionPage() {
     subtitle: (auction.subtitle as string) || '',
     description: (auction.description as string) || '',
     slug: (auction.slug as string) || '',
+    liveauctioneersUrl: (auction.liveauctioneersUrl as string) || '',
     type: (auction.type as 'timed' | 'live') || 'timed',
     previewStartsAt: formatDate(auction.previewStartsAt as string | null),
     biddingStartsAt: formatDate(auction.biddingStartsAt as string | null),

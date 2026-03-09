@@ -3,8 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
-import { MessageCircle, X, Send, Loader2, Camera, ImageIcon, Phone } from 'lucide-react';
-import { VoiceChat } from './VoiceChat';
+import { MessageCircle, X, Send, Loader2, Camera, ImageIcon } from 'lucide-react';
 
 const transport = new DefaultChatTransport({
   api: '/api/ai/chat',
@@ -15,7 +14,6 @@ export function ChatWidget() {
   const [input, setInput] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [voiceMode, setVoiceMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,22 +84,18 @@ export function ChatWidget() {
             <div>
               <h3 className="font-display text-base">Mayell Concierge</h3>
               <p className="text-[11px] text-white/50">
-                {voiceMode ? 'Voice call active' : 'Ask us anything — or upload a photo'}
+                Ask us anything — or upload a photo
               </p>
             </div>
             <button
-              onClick={() => { setOpen(false); setVoiceMode(false); }}
+              onClick={() => setOpen(false)}
               className="text-white/60 hover:text-white transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
 
-          {voiceMode ? (
-            <VoiceChat onClose={() => setVoiceMode(false)} />
-          ) : (
-            <>
-              {/* Messages */}
+          {/* Messages */}
               <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-[200px] max-h-[340px]">
                 {messages.length === 0 && (
                   <div className="text-center py-6">
@@ -128,13 +122,6 @@ export function ChatWidget() {
                       >
                         <Camera className="h-3.5 w-3.5" />
                         Upload a photo for a quick assessment
-                      </button>
-                      <button
-                        onClick={() => setVoiceMode(true)}
-                        className="flex items-center gap-2 w-full text-left text-xs bg-champagne/20 hover:bg-champagne/40 text-charcoal px-3 py-2 rounded-lg transition-colors"
-                      >
-                        <Phone className="h-3.5 w-3.5" />
-                        Talk to our concierge
                       </button>
                     </div>
                   </div>
@@ -232,14 +219,6 @@ export function ChatWidget() {
                 >
                   <Camera className="h-5 w-5" />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setVoiceMode(true)}
-                  className="text-gray-400 hover:text-champagne transition-colors flex-shrink-0"
-                  title="Talk to our concierge"
-                >
-                  <Phone className="h-5 w-5" />
-                </button>
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -254,14 +233,12 @@ export function ChatWidget() {
                   <Send className="h-4 w-4" />
                 </button>
               </form>
-            </>
-          )}
         </div>
       )}
 
       {/* Floating Bubble */}
       <button
-        onClick={() => { setOpen(!open); if (open) setVoiceMode(false); }}
+        onClick={() => setOpen(!open)}
         className="fixed bottom-4 right-4 sm:right-6 z-50 bg-champagne text-charcoal rounded-full p-4 shadow-lg hover:shadow-xl hover:scale-105 transition-all"
         aria-label="Chat with us"
       >

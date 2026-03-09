@@ -13,6 +13,7 @@ export interface AuctionFormData {
   subtitle: string;
   description: string;
   slug: string;
+  liveauctioneersUrl: string;
   type: 'timed' | 'live';
   previewStartsAt: string;
   biddingStartsAt: string;
@@ -36,6 +37,7 @@ const defaultFormData: AuctionFormData = {
   subtitle: '',
   description: '',
   slug: '',
+  liveauctioneersUrl: '',
   type: 'timed',
   previewStartsAt: '',
   biddingStartsAt: '',
@@ -66,6 +68,7 @@ export function AuctionForm({ initialData, onSubmit, isLoading, submitLabel, can
       await onSubmit({
         ...form,
         slug,
+        liveauctioneersUrl: form.liveauctioneersUrl || undefined,
         previewStartsAt: form.previewStartsAt || undefined,
         biddingStartsAt: form.biddingStartsAt || undefined,
         biddingEndsAt: form.biddingEndsAt || undefined,
@@ -103,6 +106,10 @@ export function AuctionForm({ initialData, onSubmit, isLoading, submitLabel, can
           <div className="space-y-2">
             <Label>URL Slug</Label>
             <Input value={form.slug} onChange={(e) => update('slug', e.target.value)} placeholder="auto-generated-from-title" />
+          </div>
+          <div className="space-y-2">
+            <Label>LiveAuctioneers URL</Label>
+            <Input value={form.liveauctioneersUrl} onChange={(e) => update('liveauctioneersUrl', e.target.value)} placeholder="https://www.liveauctioneers.com/catalog/..." />
           </div>
           <div className="space-y-2">
             <Label>Description</Label>
