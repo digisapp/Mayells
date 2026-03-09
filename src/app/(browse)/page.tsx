@@ -178,7 +178,7 @@ export default async function HomePage() {
             {
               name: 'Fine Art',
               href: '/auctions',
-              image: 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?w=600&h=400&fit=crop',
+              image: 'https://images.unsplash.com/photo-1637296276416-3276f530334b?w=600&h=400&fit=crop',
             },
             {
               name: 'Antiques',
@@ -188,22 +188,22 @@ export default async function HomePage() {
             {
               name: 'Jewelry & Watches',
               href: '/auctions',
-              image: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=600&h=400&fit=crop',
+              image: 'https://images.unsplash.com/photo-1640405172860-076f1ef62ea5?w=600&h=400&fit=crop',
             },
             {
               name: 'Fashion & Accessories',
               href: '/auctions',
-              image: 'https://images.unsplash.com/photo-1603567364858-8e3362d9f040?w=600&h=400&fit=crop',
+              image: 'https://images.unsplash.com/photo-1722236525367-00a4ff86ec00?w=600&h=400&fit=crop',
             },
             {
               name: 'Collectibles',
               href: '/auctions',
-              image: 'https://images.unsplash.com/photo-1587836374828-4dbafa94cf0e?w=600&h=400&fit=crop',
+              image: 'https://images.unsplash.com/photo-1647892591880-58c55fd726d8?w=600&h=400&fit=crop',
             },
             {
               name: 'Design & Furniture',
               href: '/auctions',
-              image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=600&h=400&fit=crop',
+              image: 'https://images.unsplash.com/photo-1756302555654-5e413da2d1b8?w=600&h=400&fit=crop',
             },
           ].map((cat) => (
             <Link key={cat.name} href={cat.href} className="group relative aspect-[3/2] rounded-xl overflow-hidden">
