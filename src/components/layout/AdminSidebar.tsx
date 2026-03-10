@@ -8,6 +8,7 @@ import {
   Gavel,
   Image,
   Users,
+  Users2,
   FileText,
   BarChart3,
   Package,
@@ -24,6 +25,7 @@ const adminLinks = [
   { href: '/admin/auctions', label: 'Auctions', icon: Gavel },
   { href: '/admin/lots', label: 'Lots', icon: Image },
   { href: '/admin/consignments', label: 'Consignments', icon: Package },
+  { href: '/admin/clients', label: 'Clients', icon: Users2 },
   { href: '/admin/appraisals', label: 'Appraisals', icon: ClipboardCheck },
   { href: '/admin/ai', label: 'AI Tools', icon: Brain },
   { href: '/admin/live', label: 'Live Auctions', icon: Radio },
@@ -64,7 +66,7 @@ export function AdminSidebar() {
 
       <div className="absolute bottom-4 left-4 right-4">
         <Link
-          href="/dashboard"
+          href="/admin"
           className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-colors"
         >
           <Settings className="h-4 w-4" />
