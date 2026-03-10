@@ -52,7 +52,6 @@ export function LoginForm() {
   return (
     <Card className="w-full max-w-md border-border/50">
       <CardHeader className="text-center">
-        <CardTitle className="font-display text-display-sm">Welcome Back</CardTitle>
         <CardDescription>Sign in to your Mayell account</CardDescription>
       </CardHeader>
       <CardContent>
