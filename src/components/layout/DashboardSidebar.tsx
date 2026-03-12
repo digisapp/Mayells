@@ -15,11 +15,14 @@ import {
   Package,
   DollarSign,
   LogOut,
+  Truck,
+  ScrollText,
+  BarChart3,
+  User,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const buyerLinks = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/bids', label: 'My Bids', icon: Gavel },
   { href: '/won', label: 'Won Lots', icon: Trophy },
   { href: '/watchlist', label: 'Watchlist', icon: Heart },
@@ -28,13 +31,14 @@ const buyerLinks = [
 
 const sellerLinks = [
   { href: '/dashboard/consignments', label: 'Consignments', icon: Package },
+  { href: '/dashboard/documents', label: 'Documents', icon: ScrollText },
   { href: '/payouts', label: 'Payouts', icon: DollarSign },
 ];
 
 export function DashboardSidebar() {
   const pathname = usePathname();
   const { signOut } = useAuth();
-  const { isSeller } = useRole();
+  const { isSeller, isBuyer } = useRole();
 
   return (
     <aside className="w-64 border-r border-border/50 bg-background min-h-screen p-4 hidden lg:block">
@@ -43,21 +47,43 @@ export function DashboardSidebar() {
       </Link>
 
       <nav className="space-y-1">
-        {buyerLinks.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={cn(
-              'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-              pathname === link.href
-                ? 'bg-accent/20 text-foreground font-medium'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/10',
-            )}
-          >
-            <link.icon className="h-4 w-4" />
-            {link.label}
-          </Link>
-        ))}
+        <Link
+          href="/dashboard"
+          className={cn(
+            'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+            pathname === '/dashboard'
+              ? 'bg-accent/20 text-foreground font-medium'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/10',
+          )}
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Overview
+        </Link>
+
+        {isBuyer && (
+          <>
+            <div className="pt-4 pb-2 px-3">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Buying
+              </span>
+            </div>
+            {buyerLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
+                  pathname === link.href
+                    ? 'bg-accent/20 text-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/10',
+                )}
+              >
+                <link.icon className="h-4 w-4" />
+                {link.label}
+              </Link>
+            ))}
+          </>
+        )}
 
         {isSeller && (
           <>
@@ -72,7 +98,7 @@ export function DashboardSidebar() {
                 href={link.href}
                 className={cn(
                   'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-                  pathname === link.href
+                  pathname === link.href || pathname.startsWith(link.href + '/')
                     ? 'bg-accent/20 text-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/10',
                 )}

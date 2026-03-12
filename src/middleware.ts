@@ -69,12 +69,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(dest, request.url));
   }
 
-  // Redirect unauthenticated users to login
-  if (!user && protectedRoutes.some((route) => pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL(`/login?next=${pathname}`, request.url));
-  }
-
-  // Admin routes: require auth + admin role
+  // Admin routes: require auth + admin role (check before protected routes since /admin also starts with /admin)
   if (adminRoutes.some((route) => pathname.startsWith(route))) {
     if (!user) {
       return NextResponse.redirect(new URL('/admin/login', request.url));
@@ -82,6 +77,20 @@ export async function middleware(request: NextRequest) {
     const profile = await getUserProfile(user.id);
     if (!isAdminUser(profile)) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+    return response;
+  }
+
+  // Redirect unauthenticated users to login
+  if (!user && protectedRoutes.some((route) => pathname.startsWith(route))) {
+    return NextResponse.redirect(new URL(`/login?next=${pathname}`, request.url));
+  }
+
+  // If an admin user tries to access /dashboard, redirect them to /admin
+  if (user && pathname.startsWith('/dashboard')) {
+    const profile = await getUserProfile(user.id);
+    if (isAdminUser(profile)) {
+      return NextResponse.redirect(new URL('/admin', request.url));
     }
   }
 
