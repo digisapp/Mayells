@@ -40,7 +40,7 @@ export function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 border-r border-border/50 bg-background min-h-screen p-4">
+    <aside className="w-64 border-r border-border/50 bg-background min-h-screen p-4 relative">
       <Link href="/" className="font-logo text-xl block mb-2">
         MAYELLS
       </Link>
