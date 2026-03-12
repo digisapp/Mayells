@@ -36,10 +36,14 @@ export async function POST(req: NextRequest) {
       );
       const { data: profile } = await adminClient
         .from('users')
-        .select('role')
+        .select('role, is_admin')
         .eq('id', data.user.id)
         .single();
-      if (profile?.role) role = profile.role;
+      if (profile?.is_admin) {
+        role = 'admin';
+      } else if (profile?.role) {
+        role = profile.role;
+      }
     } catch {
       // lookup failed — default to buyer, login still succeeds
     }
