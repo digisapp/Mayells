@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { watchlist, lots } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -38,7 +39,7 @@ export async function GET() {
 
     return NextResponse.json({ data: items });
   } catch (error) {
-    console.error('Watchlist error:', error);
+    logger.error('Watchlist error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: entry }, { status: 201 });
   } catch (error) {
-    console.error('Watchlist add error:', error);
+    logger.error('Watchlist add error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -88,7 +89,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Watchlist remove error:', error);
+    logger.error('Watchlist remove error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users, consignments, lots } from '@/db/schema';
 import { eq, sql, or, ilike } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: clients });
   } catch (error) {
-    console.error('Admin clients error:', error);
+    logger.error('Admin clients error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

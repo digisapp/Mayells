@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { outreachContacts, users } from '@/db/schema';
 import { eq, desc, asc, sql } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 const CATEGORIES = [
   'estate_attorney', 'trust_estate_planning', 'elder_law', 'wealth_management',
@@ -99,7 +100,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ data: contacts });
   } catch (error) {
-    console.error('Outreach list error:', error);
+    logger.error('Outreach list error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -130,7 +131,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: contact }, { status: 201 });
   } catch (error) {
-    console.error('Outreach create error:', error);
+    logger.error('Outreach create error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -167,7 +168,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ data: updated });
   } catch (error) {
-    console.error('Outreach update error:', error);
+    logger.error('Outreach update error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -187,7 +188,7 @@ export async function DELETE(req: NextRequest) {
     await db.delete(outreachContacts).where(eq(outreachContacts.id, parsed.data.id));
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Outreach delete error:', error);
+    logger.error('Outreach delete error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

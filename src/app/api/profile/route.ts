@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const updateProfileSchema = z.object({
   fullName: z.string().min(1).max(200).optional(),
@@ -38,7 +39,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ user: updated });
   } catch (error) {
-    console.error('Update profile error:', error);
+    logger.error('Update profile error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

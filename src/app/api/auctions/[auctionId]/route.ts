@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { auctions, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { auctionUpdateSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function GET(
   req: NextRequest,
@@ -33,7 +34,7 @@ export async function GET(
 
     return NextResponse.json({ data: auction });
   } catch (error) {
-    console.error('Get auction error:', error);
+    logger.error('Get auction error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -85,7 +86,7 @@ export async function PATCH(
 
     return NextResponse.json({ data: updated });
   } catch (error) {
-    console.error('Update auction error:', error);
+    logger.error('Update auction error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -123,7 +124,7 @@ export async function DELETE(
     await db.delete(auctions).where(eq(auctions.id, auctionId));
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Delete auction error:', error);
+    logger.error('Delete auction error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

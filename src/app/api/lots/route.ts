@@ -4,6 +4,7 @@ import { lots, lotImages, users } from '@/db/schema';
 import { eq, desc, asc, and, ilike, sql } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { lotSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   try {
@@ -68,7 +69,7 @@ export async function GET(req: NextRequest) {
       offset,
     });
   } catch (error) {
-    console.error('Lots list error:', error);
+    logger.error('Lots list error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: lot }, { status: 201 });
   } catch (error) {
-    console.error('Create lot error:', error);
+    logger.error('Create lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

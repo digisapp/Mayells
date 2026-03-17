@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users, consignments, lots } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
+import { logger } from '@/lib/logger';
 
 function formatCents(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(cents / 100);
@@ -106,7 +107,7 @@ export async function POST(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Client email error:', error);
+    logger.error('Client email error', error);
     return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { outreachContacts, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
+import { logger } from '@/lib/logger';
 
 const emailSchema = z.object({
   to: z.string().email(),
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Outreach email error:', error);
+    logger.error('Outreach email error', error);
     return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
   }
 }

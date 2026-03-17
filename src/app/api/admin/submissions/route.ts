@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 const BUCKET = 'lot-images';
 
@@ -26,7 +27,7 @@ export async function GET() {
       .list('submissions', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } });
 
     if (error) {
-      console.error('List submissions error:', error);
+      logger.error('List submissions error', error);
       return NextResponse.json({ error: 'Failed to list files' }, { status: 500 });
     }
 

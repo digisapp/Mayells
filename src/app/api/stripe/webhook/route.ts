@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { invoices, payments, lots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import Stripe from 'stripe';
+import { logger } from '@/lib/logger';
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
-    console.error('Webhook signature verification failed:', err);
+    logger.error('Webhook signature verification failed', err);
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
@@ -107,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error('Webhook handler error:', error);
+    logger.error('Webhook handler error', error);
     return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 });
   }
 }

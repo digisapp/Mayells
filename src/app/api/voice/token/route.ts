@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { generateToken } from '@/lib/livekit/config';
 import { randomUUID } from 'crypto';
+import { logger } from '@/lib/logger';
 
 export async function POST() {
   try {
@@ -20,7 +21,7 @@ export async function POST() {
       url: process.env.NEXT_PUBLIC_LIVEKIT_URL,
     });
   } catch (error) {
-    console.error('Voice token error:', error);
+    logger.error('Voice token error', error);
     return NextResponse.json(
       { error: 'Failed to generate voice token' },
       { status: 500 },

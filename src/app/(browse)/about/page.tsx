@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { ArrowRight, Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 
@@ -77,10 +78,12 @@ export default function AboutPage() {
                 key={cat.name}
                 className="relative aspect-[4/3] rounded-xl overflow-hidden group"
               >
-                <img
+                <Image
                   src={cat.image}
                   alt={cat.name}
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  fill
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-4">

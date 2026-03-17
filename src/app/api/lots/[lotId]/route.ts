@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { lots, lotImages, bids, users } from '@/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { lotUpdateSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function GET(
   req: NextRequest,
@@ -61,7 +62,7 @@ export async function GET(
 
     return NextResponse.json({ data: { ...lot, images, bidHistory } });
   } catch (error) {
-    console.error('Get lot error:', error);
+    logger.error('Get lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -101,7 +102,7 @@ export async function PATCH(
 
     return NextResponse.json({ data: updated });
   } catch (error) {
-    console.error('Update lot error:', error);
+    logger.error('Update lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -139,7 +140,7 @@ export async function DELETE(
     await db.delete(lots).where(eq(lots.id, lotId));
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Delete lot error:', error);
+    logger.error('Delete lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

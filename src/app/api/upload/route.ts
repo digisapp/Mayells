@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       });
 
     if (error) {
-      console.error('Upload error:', error);
+      logger.error('Upload error', error);
       return NextResponse.json({ error: 'Upload failed' }, { status: 500 });
     }
 
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ url: publicUrl, path: data.path });
   } catch (error) {
-    console.error('Upload error:', error);
+    logger.error('Upload error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { authenticateLot } from '@/lib/ai/authentication';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result });
   } catch (error) {
-    console.error('AI authenticate error:', error);
+    logger.error('AI authenticate error', error);
     return NextResponse.json({ error: 'AI authentication failed' }, { status: 500 });
   }
 }

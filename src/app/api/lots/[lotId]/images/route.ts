@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lotImages, lots, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function POST(
   req: NextRequest,
@@ -55,7 +56,7 @@ export async function POST(
 
     return NextResponse.json({ data: image }, { status: 201 });
   } catch (error) {
-    console.error('Add lot image error:', error);
+    logger.error('Add lot image error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -108,7 +109,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Delete lot image error:', error);
+    logger.error('Delete lot image error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

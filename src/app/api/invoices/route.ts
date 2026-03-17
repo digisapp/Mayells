@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { invoices, lots, auctions } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -37,7 +38,7 @@ export async function GET() {
 
     return NextResponse.json({ data: userInvoices });
   } catch (error) {
-    console.error('Invoices error:', error);
+    logger.error('Invoices error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

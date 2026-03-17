@@ -57,7 +57,7 @@ export default async function AdminLotsPage() {
               <TableRow key={lot.id}>
                 <TableCell>
                   {lot.primaryImageUrl ? (
-                    <img src={lot.primaryImageUrl} alt="" className="w-10 h-10 object-cover rounded" />
+                    <img src={lot.primaryImageUrl} alt={lot.title} className="w-10 h-10 object-cover rounded" />
                   ) : (
                     <div className="w-10 h-10 bg-muted rounded" />
                   )}

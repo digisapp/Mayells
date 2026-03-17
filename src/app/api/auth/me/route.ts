@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -25,7 +26,7 @@ export async function GET() {
 
     return NextResponse.json({ user: profile });
   } catch (error) {
-    console.error('Get profile error:', error);
+    logger.error('Get profile error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

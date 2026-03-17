@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { aiSearch } from '@/lib/ai/search';
+import { logger } from '@/lib/logger';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ data: results, intent });
   } catch (error) {
-    console.error('AI search error:', error);
+    logger.error('AI search error', error);
     return NextResponse.json({ error: 'AI search failed' }, { status: 500 });
   }
 }

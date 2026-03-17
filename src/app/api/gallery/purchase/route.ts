@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { lots, invoices } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
 
 const BUYER_PREMIUM_RATE = 0.20; // 20% buyer's premium
 
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.message === 'LOT_UNAVAILABLE') {
       return NextResponse.json({ error: 'This lot is no longer available' }, { status: 409 });
     }
-    console.error('Gallery purchase error:', error);
+    logger.error('Gallery purchase error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

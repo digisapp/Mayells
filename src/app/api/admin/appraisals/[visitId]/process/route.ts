@@ -5,6 +5,7 @@ import { estateVisits, estateVisitItems, users } from '@/db/schema';
 import { eq, and, asc, sql, sum } from 'drizzle-orm';
 import { catalogLotFromImages } from '@/lib/ai/cataloging';
 import { appraiseLot } from '@/lib/ai/appraisal';
+import { logger } from '@/lib/logger';
 
 export const maxDuration = 60;
 
@@ -126,7 +127,7 @@ export async function POST(
 
         batchProcessed++;
       } catch (err) {
-        console.error(`AI processing failed for item ${item.id}:`, err);
+        logger.error(`AI processing failed for item ${item.id}`, err);
         await db
           .update(estateVisitItems)
           .set({
@@ -180,7 +181,7 @@ export async function POST(
       batchProcessed,
     });
   } catch (error) {
-    console.error('Process error:', error);
+    logger.error('Process error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

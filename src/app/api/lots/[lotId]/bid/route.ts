@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import { placeBid } from '@/lib/bidding/bid-engine';
 import { bidSchema } from '@/lib/validation/schemas';
 import { rateLimit } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
 
 export async function POST(
   req: NextRequest,
@@ -136,7 +137,7 @@ export async function POST(
       extended: result.extended,
     });
   } catch (error) {
-    console.error('Place bid error:', error);
+    logger.error('Place bid error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

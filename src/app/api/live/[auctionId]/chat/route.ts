@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 /**
  * Chat messages are broadcast via Supabase Realtime, not stored permanently.
@@ -44,7 +45,7 @@ export async function POST(
 
     return NextResponse.json({ sent: true });
   } catch (error) {
-    console.error('Chat error:', error);
+    logger.error('Chat error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

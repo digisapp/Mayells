@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { auctionLots, lots, auctions, users } from '@/db/schema';
 import { eq, asc, sql } from 'drizzle-orm';
 import { assignLotSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function GET(
   req: NextRequest,
@@ -49,7 +50,7 @@ export async function GET(
 
     return NextResponse.json({ data: lotsWithNumbers });
   } catch (error) {
-    console.error('Auction lots error:', error);
+    logger.error('Auction lots error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -99,7 +100,7 @@ export async function POST(
 
     return NextResponse.json({ data: auctionLot }, { status: 201 });
   } catch (error) {
-    console.error('Assign lot error:', error);
+    logger.error('Assign lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -147,7 +148,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Remove lot error:', error);
+    logger.error('Remove lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

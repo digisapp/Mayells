@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { estateVisits, users } from '@/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
+import { logger } from '@/lib/logger';
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -39,7 +40,7 @@ export async function GET() {
 
     return NextResponse.json({ data: visits });
   } catch (error) {
-    console.error('Appraisals list error:', error);
+    logger.error('Appraisals list error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: visit }, { status: 201 });
   } catch (error) {
-    console.error('Appraisal create error:', error);
+    logger.error('Appraisal create error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -94,7 +95,7 @@ export async function PATCH(req: NextRequest) {
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ data: updated });
   } catch (error) {
-    console.error('Appraisal update error:', error);
+    logger.error('Appraisal update error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

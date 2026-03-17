@@ -4,6 +4,7 @@ import { auctions, users } from '@/db/schema';
 import { eq, desc, and, inArray } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { auctionSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,7 +27,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ data: result });
   } catch (error) {
-    console.error('Auctions list error:', error);
+    logger.error('Auctions list error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ data: auction }, { status: 201 });
   } catch (error) {
-    console.error('Create auction error:', error);
+    logger.error('Create auction error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

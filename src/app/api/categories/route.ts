@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/db';
 import { categories } from '@/db/schema';
 import { eq, asc } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -13,7 +14,7 @@ export async function GET() {
 
     return NextResponse.json({ data: result });
   } catch (error) {
-    console.error('Categories error:', error);
+    logger.error('Categories error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

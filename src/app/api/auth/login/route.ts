@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { loginSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest) {
       role,
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

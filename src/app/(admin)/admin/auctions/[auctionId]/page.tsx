@@ -258,7 +258,7 @@ export default function EditAuctionPage() {
                   {assignedLots.map((lot) => (
                     <div key={lot.id} className="flex items-center gap-3 p-3 rounded-md border">
                       {lot.primaryImageUrl ? (
-                        <img src={lot.primaryImageUrl} alt="" className="w-12 h-12 object-cover rounded" />
+                        <img src={lot.primaryImageUrl} alt={lot.title} className="w-12 h-12 object-cover rounded" />
                       ) : (
                         <div className="w-12 h-12 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">No img</div>
                       )}
@@ -290,7 +290,7 @@ export default function EditAuctionPage() {
                   {unassignedLots.map((lot) => (
                     <div key={lot.id} className="flex items-center gap-3 p-3 rounded-md border">
                       {lot.primaryImageUrl ? (
-                        <img src={lot.primaryImageUrl} alt="" className="w-12 h-12 object-cover rounded" />
+                        <img src={lot.primaryImageUrl} alt={lot.title} className="w-12 h-12 object-cover rounded" />
                       ) : (
                         <div className="w-12 h-12 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">No img</div>
                       )}

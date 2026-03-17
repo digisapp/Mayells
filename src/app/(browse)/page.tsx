@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export const metadata: Metadata = {
   title: 'Mayell Auctions | Fine Art Antiques Design Fashion Collectibles',
@@ -187,10 +188,12 @@ export default async function HomePage() {
               { name: 'Design & Furniture', href: '/gallery', image: '/images/categories/design.webp' },
             ].map((cat) => (
               <Link key={cat.name} href={cat.href} className="group relative aspect-[4/3] rounded-xl overflow-hidden">
-                <img
+                <Image
                   src={cat.image}
                   alt={cat.name}
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  fill
+                  sizes="(max-width: 768px) 50vw, 33vw"
+                  className="object-cover transition-transform duration-700 group-hover:scale-105"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent transition-opacity duration-500 group-hover:from-black/80" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">

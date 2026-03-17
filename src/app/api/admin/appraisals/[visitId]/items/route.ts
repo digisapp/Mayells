@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { estateVisits, estateVisitItems, users } from '@/db/schema';
 import { eq, sql, and, asc, sum } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -58,7 +59,7 @@ export async function GET(
       itemCount: visit.itemCount,
     });
   } catch (error) {
-    console.error('Items list error:', error);
+    logger.error('Items list error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -103,7 +104,7 @@ export async function POST(
 
     return NextResponse.json({ data: inserted }, { status: 201 });
   } catch (error) {
-    console.error('Items create error:', error);
+    logger.error('Items create error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -134,7 +135,7 @@ export async function PATCH(
 
     return NextResponse.json({ data: updated });
   } catch (error) {
-    console.error('Item update error:', error);
+    logger.error('Item update error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -169,7 +170,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Item delete error:', error);
+    logger.error('Item delete error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

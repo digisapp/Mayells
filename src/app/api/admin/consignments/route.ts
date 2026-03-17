@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { consignments, users } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -32,7 +33,7 @@ export async function GET() {
 
     return NextResponse.json({ data: items });
   } catch (error) {
-    console.error('Admin consignments error:', error);
+    logger.error('Admin consignments error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -70,7 +71,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ data: updated });
   } catch (error) {
-    console.error('Admin consignment review error:', error);
+    logger.error('Admin consignment review error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

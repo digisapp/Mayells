@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users, auctions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { deleteAuctionRoom } from '@/lib/livekit/config';
+import { logger } from '@/lib/logger';
 
 export async function POST(
   request: NextRequest,
@@ -53,7 +54,7 @@ export async function POST(
 
     return NextResponse.json({ status: 'closing' });
   } catch (error) {
-    console.error('End live auction error:', error);
+    logger.error('End live auction error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

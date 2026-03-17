@@ -4,6 +4,7 @@ import { stripe } from '@/lib/stripe/config';
 import { db } from '@/db';
 import { invoices, payments, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
       paymentIntentId: paymentIntent.id,
     });
   } catch (error) {
-    console.error('Create payment intent error:', error);
+    logger.error('Create payment intent error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

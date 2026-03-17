@@ -5,6 +5,7 @@ import { estateVisits, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { sendAppraisalReportEmail } from '@/lib/email/notifications';
 import { BUSINESS } from '@/lib/config';
+import { logger } from '@/lib/logger';
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -54,7 +55,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, reportUrl });
   } catch (error) {
-    console.error('Send report error:', error);
+    logger.error('Send report error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

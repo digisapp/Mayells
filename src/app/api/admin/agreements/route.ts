@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Send agreement error:', error);
+    logger.error('Send agreement error', error);
     return NextResponse.json(
       { error: 'Failed to send agreement' },
       { status: 500 },

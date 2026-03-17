@@ -40,7 +40,7 @@ export function PublicNav() {
           </Link>
 
           {/* Desktop nav — centered */}
-          <nav className="hidden md:flex items-center gap-10">
+          <nav aria-label="Main navigation" className="hidden md:flex items-center gap-10">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
@@ -54,7 +54,7 @@ export function PublicNav() {
 
           {/* Right actions */}
           <div className="flex items-center gap-1 sm:gap-2">
-            <Link href="/search">
+            <Link href="/search" aria-label="Search">
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-10 w-10">
                 <Search className="h-[18px] w-[18px]" />
               </Button>
@@ -83,6 +83,8 @@ export function PublicNav() {
               size="icon"
               className="md:hidden h-10 w-10"
               onClick={() => setMobileOpen(!mobileOpen)}
+              aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileOpen}
             >
               {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
@@ -91,7 +93,7 @@ export function PublicNav() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <nav className="md:hidden pb-6 pt-4 border-t border-border/30 animate-fade-in">
+          <nav aria-label="Mobile navigation" className="md:hidden pb-6 pt-4 border-t border-border/30 animate-fade-in">
             <div className="space-y-1">
               {navLinks.map((link) => (
                 <Link

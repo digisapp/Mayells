@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { signupSchema } from '@/lib/validation/schemas';
+import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, userId: authData.user.id });
   } catch (error) {
-    console.error('Signup error:', error);
+    logger.error('Signup error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

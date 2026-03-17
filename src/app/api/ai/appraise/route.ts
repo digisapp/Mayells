@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users, lots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { appraiseLot } from '@/lib/ai/appraisal';
+import { logger } from '@/lib/logger';
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result });
   } catch (error) {
-    console.error('AI appraise error:', error);
+    logger.error('AI appraise error', error);
     return NextResponse.json({ error: 'AI appraisal failed' }, { status: 500 });
   }
 }

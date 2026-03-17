@@ -5,6 +5,7 @@ import { consignments, users } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { consignmentSchema } from '@/lib/validation/schemas';
 import { sendConsignmentNotification } from '@/lib/email/notifications';
+import { logger } from '@/lib/logger';
 
 export async function GET() {
   try {
@@ -22,7 +23,7 @@ export async function GET() {
 
     return NextResponse.json({ data: items });
   } catch (error) {
-    console.error('Consignments error:', error);
+    logger.error('Consignments error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -58,12 +59,12 @@ export async function POST(request: NextRequest) {
         title: parsed.data.title,
         description: parsed.data.description || '',
         category: parsed.data.categorySlug,
-      }).catch((err) => console.error('Failed to send consignment notification:', err));
+      }).catch((err) => logger.error('Failed to send consignment notification', err));
     }
 
     return NextResponse.json({ data: entry }, { status: 201 });
   } catch (error) {
-    console.error('Create consignment error:', error);
+    logger.error('Create consignment error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

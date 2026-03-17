@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { logger } from '@/lib/logger';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB per file
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
               .from(BUCKET)
               .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: false });
             if (error) {
-              console.error('Photo upload error:', error);
+              logger.error('Photo upload error', error);
               return null;
             }
             const { data: { publicUrl } } = admin.storage.from(BUCKET).getPublicUrl(data.path);
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
       { name, phone, email, service, items, message },
       photoUrls,
     ).catch((err) =>
-      console.error('Failed to send appraisal notification:', err),
+      logger.error('Failed to send appraisal notification', err),
     );
 
     return NextResponse.json(

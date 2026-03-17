@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users, auctions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { generateToken } from '@/lib/livekit/config';
+import { logger } from '@/lib/logger';
 
 export async function POST(
   request: NextRequest,
@@ -49,7 +50,7 @@ export async function POST(
 
     return NextResponse.json({ token, roomName, isAuctioneer });
   } catch (error) {
-    console.error('Live token error:', error);
+    logger.error('Live token error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -221,7 +221,7 @@ export function LotForm({ initialData, initialImages, lotId, onSubmit, isLoading
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {images.map((img, idx) => (
               <div key={idx} className="relative group aspect-square rounded-md overflow-hidden border">
-                <img src={img.url} alt="" className="w-full h-full object-cover" />
+                <img src={img.url} alt={`Lot image ${idx + 1}`} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                   <button type="button" onClick={() => setPrimary(idx)} className="p-1.5 rounded-full bg-white/90 hover:bg-white" title="Set as primary">
                     <Star className={`h-4 w-4 ${img.isPrimary ? 'fill-yellow-500 text-yellow-500' : 'text-gray-600'}`} />

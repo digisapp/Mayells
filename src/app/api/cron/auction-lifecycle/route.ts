@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { auctions, auctionLots, lots, bids } from '@/db/schema';
 import { eq, lte, and, inArray, desc } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
+import { logger } from '@/lib/logger';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
       ...results,
     });
   } catch (error) {
-    console.error('Cron lifecycle error:', error);
+    logger.error('Cron lifecycle error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
