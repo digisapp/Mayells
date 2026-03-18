@@ -17,6 +17,7 @@ import {
   Mail,
   FileSignature,
   ClipboardCheck,
+  MessageSquare,
   Settings,
 } from 'lucide-react';
 
@@ -25,6 +26,7 @@ const adminLinks = [
   { href: '/admin/auctions', label: 'Auctions', icon: Gavel },
   { href: '/admin/lots', label: 'Lots', icon: Image },
   { href: '/admin/consignments', label: 'Consignments', icon: Package },
+  { href: '/admin/inquiries', label: 'Inquiries', icon: MessageSquare },
   { href: '/admin/clients', label: 'Clients', icon: Users2 },
   { href: '/admin/appraisals', label: 'Appraisals', icon: ClipboardCheck },
   { href: '/admin/ai', label: 'AI Tools', icon: Brain },

@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { db } from '@/db';
-import { lots, auctionLots, auctions } from '@/db/schema';
+import { lots, auctionLots, auctions, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { placeBid } from '@/lib/bidding/bid-engine';
 import { bidSchema } from '@/lib/validation/schemas';
 import { rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
+import { sendOutbidNotification } from '@/lib/email/notifications';
 
 export async function POST(
   req: NextRequest,
@@ -117,7 +118,7 @@ export async function POST(
       },
     });
 
-    // Notify outbid user
+    // Notify outbid user via realtime + email
     if (result.previousBidderId) {
       const outbidChannel = adminSupabase.channel(`user:${result.previousBidderId}`);
       await outbidChannel.send({
@@ -129,6 +130,23 @@ export async function POST(
           newAmount: parsed.data.amount,
         },
       });
+
+      // Send outbid email (non-blocking)
+      const [outbidUser] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, result.previousBidderId))
+        .limit(1);
+      if (outbidUser?.email) {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+        sendOutbidNotification({
+          email: outbidUser.email,
+          lotTitle: lot.title,
+          lotUrl: `${baseUrl}/auctions/${auction.id}/lots/${lotId}`,
+          currentBid: parsed.data.amount,
+          yourBid: lot.currentBidAmount || 0,
+        }).catch((err) => logger.error('Failed to send outbid email', err));
+      }
     }
 
     return NextResponse.json({
