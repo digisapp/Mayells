@@ -12,42 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
-
-const categoryOptions = [
-  { value: 'estate_attorney', label: 'Estate Attorney' },
-  { value: 'trust_estate_planning', label: 'Trust & Estate Planning' },
-  { value: 'elder_law', label: 'Elder Law' },
-  { value: 'wealth_management', label: 'Wealth Management' },
-  { value: 'family_office', label: 'Family Office' },
-  { value: 'cpa_tax', label: 'CPA / Tax Specialist' },
-  { value: 'divorce_attorney', label: 'Divorce Attorney' },
-  { value: 'insurance', label: 'Insurance' },
-  { value: 'estate_liquidator', label: 'Estate Liquidator' },
-  { value: 'real_estate', label: 'Real Estate (Luxury)' },
-  { value: 'art_advisor', label: 'Art Advisor' },
-  { value: 'bank_trust', label: 'Bank Trust Department' },
-  { value: 'other', label: 'Other' },
-];
-
-const statusOptions = [
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'follow_up', label: 'Follow Up' },
-  { value: 'interested', label: 'Interested' },
-  { value: 'converted', label: 'Converted' },
-  { value: 'not_interested', label: 'Not Interested' },
-  { value: 'do_not_contact', label: 'Do Not Contact' },
-];
-
-const statusColors: Record<string, string> = {
-  new: 'bg-blue-100 text-blue-800',
-  contacted: 'bg-yellow-100 text-yellow-800',
-  follow_up: 'bg-orange-100 text-orange-800',
-  interested: 'bg-green-100 text-green-800',
-  converted: 'bg-emerald-100 text-emerald-800',
-  not_interested: 'bg-gray-100 text-gray-600',
-  do_not_contact: 'bg-red-100 text-red-600',
-};
+import { categoryOptions, statusOptions, statusColors } from '@/lib/config/outreach';
 
 function formatDate(d: string | null) {
   if (!d) return '';

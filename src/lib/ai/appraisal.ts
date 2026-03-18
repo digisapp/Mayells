@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { getVisionModel } from './client';
+import { getModel } from './client';
 
 const appraisalSchema = z.object({
   estimateLow: z.number().int().positive().describe('Low estimate in USD cents'),
@@ -51,7 +51,7 @@ export async function appraiseLot(params: {
   ].filter(Boolean).join('\n');
 
   const { object } = await generateObject({
-    model: getVisionModel(),
+    model: getModel('vision'),
     schema: appraisalSchema,
     messages: [
       {

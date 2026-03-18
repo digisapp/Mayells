@@ -11,22 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
-
-const categoryOptions = [
-  { value: 'estate_attorney', label: 'Estate Attorney' },
-  { value: 'trust_estate_planning', label: 'Trust & Estate Planning' },
-  { value: 'elder_law', label: 'Elder Law' },
-  { value: 'wealth_management', label: 'Wealth Management' },
-  { value: 'family_office', label: 'Family Office' },
-  { value: 'cpa_tax', label: 'CPA / Tax Specialist' },
-  { value: 'divorce_attorney', label: 'Divorce Attorney' },
-  { value: 'insurance', label: 'Insurance' },
-  { value: 'estate_liquidator', label: 'Estate Liquidator' },
-  { value: 'real_estate', label: 'Real Estate (Luxury)' },
-  { value: 'art_advisor', label: 'Art Advisor' },
-  { value: 'bank_trust', label: 'Bank Trust Department' },
-  { value: 'other', label: 'Other' },
-];
+import { categoryOptions } from '@/lib/config/outreach';
 
 export default function NewOutreachContactPage() {
   const router = useRouter();

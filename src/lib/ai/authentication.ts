@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { getVisionModel } from './client';
+import { getModel } from './client';
 
 const authenticationSchema = z.object({
   verdict: z.enum(['likely_authentic', 'uncertain', 'likely_inauthentic']).describe('Overall authenticity assessment'),
@@ -58,7 +58,7 @@ export async function authenticateLot(params: {
   ].filter(Boolean).join('\n');
 
   const { object } = await generateObject({
-    model: getVisionModel(),
+    model: getModel('vision'),
     schema: authenticationSchema,
     messages: [
       {

@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { getVisionModel } from './client';
+import { getModel } from './client';
 
 const catalogSchema = z.object({
   title: z.string().describe('Concise auction lot title (5-15 words)'),
@@ -32,7 +32,7 @@ export async function catalogLotFromImages(imageUrls: string[]): Promise<Catalog
   }));
 
   const { object } = await generateObject({
-    model: getVisionModel(),
+    model: getModel('vision'),
     schema: catalogSchema,
     messages: [
       {

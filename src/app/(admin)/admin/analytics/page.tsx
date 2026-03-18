@@ -3,15 +3,12 @@ export const dynamic = 'force-dynamic';
 import { db } from '@/db';
 import { lots, auctions, users, invoices, bids, consignments, outreachContacts, watchlist } from '@/db/schema';
 import { sql } from 'drizzle-orm';
-import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { BarChart3, Globe, Zap, ExternalLink } from 'lucide-react';
-
-function fmt(cents: number) {
-  return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
+import { fmt } from './fmt';
+import { WebTrafficCard } from './web-traffic-card';
+import { KeyMetrics } from './key-metrics';
+import { StatsBreakdownCards } from './stats-breakdown-cards';
+import { TopDepartmentsCard } from './top-departments-card';
+import { RecentBidsCard } from './recent-bids-card';
 
 export default async function AdminAnalyticsPage() {
   const [
@@ -117,268 +114,100 @@ export default async function AdminAnalyticsPage() {
     ? ((Number(outreachStats.converted) / Number(outreachStats.total)) * 100).toFixed(1)
     : '0';
 
+  const keyMetrics = [
+    { label: 'Total Revenue', value: fmt(Number(revenueStats.paid)), sub: 'paid' },
+    { label: 'Pending', value: fmt(Number(revenueStats.pending)), sub: `${revenueStats.count} invoices` },
+    { label: 'Total Bids', value: Number(bidStats.total).toLocaleString(), sub: `${Number(bidStats.today)} today` },
+    { label: 'Active Users', value: Number(userStats.total).toLocaleString(), sub: `+${Number(userStats.thisWeek)} this week` },
+    { label: 'Watchlist Saves', value: Number(watchlistStats.total).toLocaleString(), sub: 'total saves' },
+    { label: 'Outreach Conversion', value: `${conversionRate}%`, sub: `${Number(outreachStats.converted)}/${Number(outreachStats.total)}` },
+  ];
+
+  const breakdownSections = [
+    {
+      title: 'Lots',
+      items: [
+        { label: 'Total', value: Number(lotStats.total) },
+        { label: 'For Sale', value: Number(lotStats.forSale) },
+        { label: 'In Auction', value: Number(lotStats.inAuction) },
+        { label: 'Sold', value: Number(lotStats.sold) },
+        { label: 'Drafts', value: Number(lotStats.draft) },
+        { label: 'Total Sold Value', value: fmt(Number(lotStats.totalValue)) },
+      ],
+    },
+    {
+      title: 'Auctions',
+      items: [
+        { label: 'Total', value: Number(auctionStats.total) },
+        { label: 'Active', value: Number(auctionStats.active) },
+        { label: 'Scheduled', value: Number(auctionStats.scheduled) },
+        { label: 'Completed', value: Number(auctionStats.completed) },
+        { label: 'Total Bids', value: Number(auctionStats.totalBids).toLocaleString() },
+        { label: 'Registered Bidders', value: Number(auctionStats.totalBidders).toLocaleString() },
+      ],
+    },
+    {
+      title: 'Users',
+      items: [
+        { label: 'Total', value: Number(userStats.total) },
+        { label: 'Buyers', value: Number(userStats.buyers) },
+        { label: 'Sellers', value: Number(userStats.sellers) },
+        { label: 'Admins', value: Number(userStats.admins) },
+        { label: 'New This Week', value: Number(userStats.thisWeek) },
+        { label: 'New This Month', value: Number(userStats.thisMonth) },
+      ],
+    },
+    {
+      title: 'Bidding Activity',
+      items: [
+        { label: 'Total Bids', value: Number(bidStats.total).toLocaleString() },
+        { label: 'Bids Today', value: Number(bidStats.today) },
+        { label: 'This Week', value: Number(bidStats.thisWeek) },
+        { label: 'Unique Bidders', value: Number(bidStats.uniqueBidders) },
+        { label: 'Avg Bid', value: fmt(Number(bidStats.avgAmount)) },
+        { label: 'Highest Bid', value: fmt(Number(bidStats.maxAmount)) },
+      ],
+    },
+    {
+      title: 'Consignments',
+      items: [
+        { label: 'Total', value: Number(consignmentStats.total) },
+        { label: 'Pending Review', value: Number(consignmentStats.submitted) },
+        { label: 'Approved', value: Number(consignmentStats.approved) },
+        { label: 'Listed', value: Number(consignmentStats.listed) },
+        { label: 'Sold', value: Number(consignmentStats.sold) },
+      ],
+    },
+    {
+      title: 'Outreach CRM',
+      items: [
+        { label: 'Total Contacts', value: Number(outreachStats.total) },
+        { label: 'New', value: Number(outreachStats.new) },
+        { label: 'Interested', value: Number(outreachStats.interested) },
+        { label: 'Converted', value: Number(outreachStats.converted) },
+        { label: 'Needs Follow-Up', value: Number(outreachStats.needsFollowUp) },
+        { label: 'Conversion Rate', value: `${conversionRate}%` },
+      ],
+    },
+  ];
+
   return (
     <div>
       <h1 className="font-display text-display-sm mb-8">Analytics</h1>
 
-      {/* Web Traffic — Vercel Analytics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="md:col-span-2 border-champagne/30 bg-gradient-to-br from-charcoal/[0.02] to-champagne/[0.04]">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Globe className="h-5 w-5 text-champagne" />
-              <CardTitle>Web Traffic</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Vercel Analytics is active and tracking visitors, page views, referrers, and geographic data across your site.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <a href="https://vercel.com/dashboard" target="_blank" rel="noopener noreferrer">
-                <Button className="gap-2">
-                  <BarChart3 className="h-4 w-4" />
-                  View Traffic Dashboard
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              </a>
-              <a href="https://vercel.com/dashboard" target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" className="gap-2">
-                  <Zap className="h-4 w-4" />
-                  Speed Insights
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              </a>
-            </div>
-          </CardContent>
-        </Card>
+      <WebTrafficCard />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Tracking Active</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-sm">Page Views</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-sm">Visitor Analytics</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-sm">Core Web Vitals</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-sm">Speed Insights</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <KeyMetrics metrics={keyMetrics} />
 
-      {/* Key metrics row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-8">
-        {[
-          { label: 'Total Revenue', value: fmt(Number(revenueStats.paid)), sub: 'paid' },
-          { label: 'Pending', value: fmt(Number(revenueStats.pending)), sub: `${revenueStats.count} invoices` },
-          { label: 'Total Bids', value: Number(bidStats.total).toLocaleString(), sub: `${Number(bidStats.today)} today` },
-          { label: 'Active Users', value: Number(userStats.total).toLocaleString(), sub: `+${Number(userStats.thisWeek)} this week` },
-          { label: 'Watchlist Saves', value: Number(watchlistStats.total).toLocaleString(), sub: 'total saves' },
-          { label: 'Outreach Conversion', value: `${conversionRate}%`, sub: `${Number(outreachStats.converted)}/${Number(outreachStats.total)}` },
-        ].map((m) => (
-          <Card key={m.label}>
-            <CardContent className="pt-5 pb-4">
-              <p className="text-2xl font-semibold">{m.value}</p>
-              <p className="text-xs text-muted-foreground">{m.label}</p>
-              <p className="text-[11px] text-muted-foreground/70 mt-1">{m.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatsBreakdownCards sections={breakdownSections} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        {/* Lots breakdown */}
-        <Card>
-          <CardHeader><CardTitle>Lots</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Total', value: Number(lotStats.total) },
-                { label: 'For Sale', value: Number(lotStats.forSale) },
-                { label: 'In Auction', value: Number(lotStats.inAuction) },
-                { label: 'Sold', value: Number(lotStats.sold) },
-                { label: 'Drafts', value: Number(lotStats.draft) },
-                { label: 'Total Sold Value', value: fmt(Number(lotStats.totalValue)) },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-xl font-semibold">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Auctions breakdown */}
-        <Card>
-          <CardHeader><CardTitle>Auctions</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Total', value: Number(auctionStats.total) },
-                { label: 'Active', value: Number(auctionStats.active) },
-                { label: 'Scheduled', value: Number(auctionStats.scheduled) },
-                { label: 'Completed', value: Number(auctionStats.completed) },
-                { label: 'Total Bids', value: Number(auctionStats.totalBids).toLocaleString() },
-                { label: 'Registered Bidders', value: Number(auctionStats.totalBidders).toLocaleString() },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-xl font-semibold">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Users breakdown */}
-        <Card>
-          <CardHeader><CardTitle>Users</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Total', value: Number(userStats.total) },
-                { label: 'Buyers', value: Number(userStats.buyers) },
-                { label: 'Sellers', value: Number(userStats.sellers) },
-                { label: 'Admins', value: Number(userStats.admins) },
-                { label: 'New This Week', value: Number(userStats.thisWeek) },
-                { label: 'New This Month', value: Number(userStats.thisMonth) },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-xl font-semibold">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Bidding stats */}
-        <Card>
-          <CardHeader><CardTitle>Bidding Activity</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Total Bids', value: Number(bidStats.total).toLocaleString() },
-                { label: 'Bids Today', value: Number(bidStats.today) },
-                { label: 'This Week', value: Number(bidStats.thisWeek) },
-                { label: 'Unique Bidders', value: Number(bidStats.uniqueBidders) },
-                { label: 'Avg Bid', value: fmt(Number(bidStats.avgAmount)) },
-                { label: 'Highest Bid', value: fmt(Number(bidStats.maxAmount)) },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-xl font-semibold">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Consignments */}
-        <Card>
-          <CardHeader><CardTitle>Consignments</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Total', value: Number(consignmentStats.total) },
-                { label: 'Pending Review', value: Number(consignmentStats.submitted) },
-                { label: 'Approved', value: Number(consignmentStats.approved) },
-                { label: 'Listed', value: Number(consignmentStats.listed) },
-                { label: 'Sold', value: Number(consignmentStats.sold) },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-xl font-semibold">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Outreach */}
-        <Card>
-          <CardHeader><CardTitle>Outreach CRM</CardTitle></CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Total Contacts', value: Number(outreachStats.total) },
-                { label: 'New', value: Number(outreachStats.new) },
-                { label: 'Interested', value: Number(outreachStats.interested) },
-                { label: 'Converted', value: Number(outreachStats.converted) },
-                { label: 'Needs Follow-Up', value: Number(outreachStats.needsFollowUp) },
-                { label: 'Conversion Rate', value: `${conversionRate}%` },
-              ].map((item) => (
-                <div key={item.label}>
-                  <p className="text-xl font-semibold">{item.value}</p>
-                  <p className="text-xs text-muted-foreground">{item.label}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Top departments & recent bids */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader><CardTitle>Top Departments</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {(topCategories as unknown as { name: string; lot_count: number; sold_count: number; revenue: number }[]).map((cat) => (
-                <div key={cat.name} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{cat.name}</p>
-                    <p className="text-xs text-muted-foreground">{Number(cat.lot_count)} lots, {Number(cat.sold_count)} sold</p>
-                  </div>
-                  <span className="text-sm font-medium">{fmt(Number(cat.revenue))}</span>
-                </div>
-              ))}
-              {(topCategories as unknown[]).length === 0 && (
-                <p className="text-sm text-muted-foreground">No department data yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Recent Bids</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {(recentBids as unknown as { amount: number; created_at: string; lot_title: string; bidder_name: string }[]).map((bid, i) => (
-                <div key={i} className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium truncate max-w-[200px]">{bid.lot_title}</p>
-                    <p className="text-xs text-muted-foreground">{bid.bidder_name}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium">{fmt(Number(bid.amount))}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(bid.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {(recentBids as unknown[]).length === 0 && (
-                <p className="text-sm text-muted-foreground">No bids yet</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        <TopDepartmentsCard
+          categories={topCategories as unknown as { name: string; lot_count: number; sold_count: number; revenue: number }[]}
+        />
+        <RecentBidsCard
+          bids={recentBids as unknown as { amount: number; created_at: string; lot_title: string; bidder_name: string }[]}
+        />
       </div>
     </div>
   );

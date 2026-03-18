@@ -9,98 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Plus, Pencil, Download, Mail, Search, X } from 'lucide-react';
+import { Plus, Pencil, Download, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { OutreachContact } from '@/db/schema/outreach';
-
-const statusColors: Record<string, string> = {
-  new: 'bg-blue-100 text-blue-800',
-  contacted: 'bg-yellow-100 text-yellow-800',
-  follow_up: 'bg-orange-100 text-orange-800',
-  interested: 'bg-green-100 text-green-800',
-  converted: 'bg-emerald-100 text-emerald-800',
-  not_interested: 'bg-gray-100 text-gray-600',
-  do_not_contact: 'bg-red-100 text-red-600',
-};
-
-const categoryLabels: Record<string, string> = {
-  estate_attorney: 'Estate Attorney',
-  trust_estate_planning: 'Trust & Estate',
-  elder_law: 'Elder Law',
-  wealth_management: 'Wealth Mgmt',
-  family_office: 'Family Office',
-  cpa_tax: 'CPA / Tax',
-  divorce_attorney: 'Divorce Attorney',
-  insurance: 'Insurance',
-  estate_liquidator: 'Liquidator',
-  real_estate: 'Real Estate',
-  art_advisor: 'Art Advisor',
-  bank_trust: 'Bank Trust',
-  other: 'Other',
-};
-
-const statusOptions = [
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'follow_up', label: 'Follow Up' },
-  { value: 'interested', label: 'Interested' },
-  { value: 'converted', label: 'Converted' },
-  { value: 'not_interested', label: 'Not Interested' },
-  { value: 'do_not_contact', label: 'Do Not Contact' },
-];
-
-const EMAIL_TEMPLATES = [
-  {
-    name: 'Initial Outreach',
-    subject: 'Partnership Opportunity with Mayell Auction House',
-    body: `Dear {contactName},
-
-I'm reaching out from Mayell, a luxury auction house specializing in art, antiques, jewelry, and fine collectibles.
-
-We frequently work with professionals in your field and would love to explore how we might be a resource for your clients — whether they're looking to sell estate items, get professional appraisals, or find unique pieces.
-
-Would you be open to a brief call to discuss how we might work together?
-
-Best regards,
-Mayell Team`,
-  },
-  {
-    name: 'Follow-Up',
-    subject: 'Following up — Mayell Partnership',
-    body: `Dear {contactName},
-
-I wanted to follow up on my previous message about a potential partnership between your firm and Mayell.
-
-We offer complimentary appraisals and can handle the entire process of selling estate items — from cataloging to marketing to auction. This can be a valuable service for your clients going through estate transitions.
-
-I'd welcome the chance to meet briefly and share more. What does your schedule look like this week?
-
-Best regards,
-Mayell Team`,
-  },
-  {
-    name: 'Services Overview',
-    subject: 'How Mayell Can Help Your Clients',
-    body: `Dear {contactName},
-
-I wanted to share a quick overview of the services Mayell offers that may benefit your clients:
-
-• Free Appraisals — Expert valuations for estate planning, insurance, or sale purposes
-• Estate Liquidation — Full-service handling of estate collections
-• Auction Consignment — Maximum market exposure for high-value items
-• Private Sales — Discreet handling of sensitive transactions
-
-We handle everything from pickup to payment, and our team has decades of experience with luxury goods.
-
-Would you like to schedule a brief meeting to discuss referral opportunities?
-
-Best regards,
-Mayell Team`,
-  },
-];
+import { statusColors, categoryLabels, statusOptions } from '@/lib/config/outreach';
+import { BulkEmailDialog } from './bulk-email-dialog';
 
 interface Props {
   initialContacts: OutreachContact[];
@@ -113,11 +26,6 @@ export function OutreachClient({ initialContacts }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
-  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-  const [emailTemplate, setEmailTemplate] = useState(0);
-  const [emailSubject, setEmailSubject] = useState(EMAIL_TEMPLATES[0].subject);
-  const [emailBody, setEmailBody] = useState(EMAIL_TEMPLATES[0].body);
-
   // Filter contacts
   const filtered = useMemo(() => {
     return contacts.filter((c) => {
@@ -220,55 +128,6 @@ export function OutreachClient({ initialContacts }: Props) {
     toast.success(`Exported ${rows.length} contacts`);
   }
 
-  function openEmailDialog() {
-    const template = EMAIL_TEMPLATES[0];
-    setEmailTemplate(0);
-    setEmailSubject(template.subject);
-    setEmailBody(template.body);
-    setEmailDialogOpen(true);
-  }
-
-  function selectTemplate(idx: number) {
-    setEmailTemplate(idx);
-    setEmailSubject(EMAIL_TEMPLATES[idx].subject);
-    setEmailBody(EMAIL_TEMPLATES[idx].body);
-  }
-
-  async function sendBulkEmail() {
-    const ids = Array.from(selected);
-    const recipients = contacts.filter((c) => ids.includes(c.id) && c.email);
-
-    if (recipients.length === 0) {
-      toast.error('No selected contacts have email addresses');
-      return;
-    }
-
-    let sent = 0;
-    for (const contact of recipients) {
-      const personalizedBody = emailBody
-        .replace(/{contactName}/g, contact.contactName || 'there')
-        .replace(/{companyName}/g, contact.companyName);
-
-      try {
-        const res = await fetch('/api/admin/outreach/email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: contact.email,
-            subject: emailSubject.replace(/{companyName}/g, contact.companyName),
-            body: personalizedBody,
-            contactId: contact.id,
-          }),
-        });
-        if (res.ok) sent++;
-      } catch { /* skip */ }
-    }
-
-    toast.success(`Sent ${sent} email${sent !== 1 ? 's' : ''}`);
-    setEmailDialogOpen(false);
-    setSelected(new Set());
-  }
-
   return (
     <div>
       {/* Header */}
@@ -354,49 +213,12 @@ export function OutreachClient({ initialContacts }: Props) {
             </SelectContent>
           </Select>
 
-          <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={openEmailDialog}>
-                <Mail className="h-3.5 w-3.5" /> Send Email
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Send Email to {selected.size} Contact{selected.size !== 1 ? 's' : ''}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 mt-2">
-                <div>
-                  <Label className="text-xs">Template</Label>
-                  <div className="flex gap-2 mt-1">
-                    {EMAIL_TEMPLATES.map((t, i) => (
-                      <Button
-                        key={i}
-                        variant={emailTemplate === i ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => selectTemplate(i)}
-                      >
-                        {t.name}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Subject</Label>
-                  <Input value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Body <span className="text-muted-foreground">(use {'{contactName}'} and {'{companyName}'} for personalization)</span></Label>
-                  <Textarea value={emailBody} onChange={(e) => setEmailBody(e.target.value)} rows={12} className="font-mono text-sm" />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>Cancel</Button>
-                  <Button onClick={sendBulkEmail} className="gap-1.5">
-                    <Mail className="h-4 w-4" /> Send to {selected.size} Contact{selected.size !== 1 ? 's' : ''}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <BulkEmailDialog
+            selectedCount={selected.size}
+            contacts={contacts}
+            selectedIds={selected}
+            onComplete={() => setSelected(new Set())}
+          />
 
           <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>
             <X className="h-3.5 w-3.5 mr-1" /> Clear

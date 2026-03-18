@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
-import { getFastModel } from './client';
+import { getModel } from './client';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { sql, and, eq, gte, lte, ilike, or, inArray, desc } from 'drizzle-orm';
@@ -23,7 +23,7 @@ export type SearchIntent = z.infer<typeof searchIntentSchema>;
  */
 export async function parseSearchQuery(query: string): Promise<SearchIntent> {
   const { object } = await generateObject({
-    model: getFastModel(),
+    model: getModel('fast'),
     schema: searchIntentSchema,
     prompt: `Parse this auction search query into structured filters. Convert any mentioned dollar amounts to cents (multiply by 100).
 
