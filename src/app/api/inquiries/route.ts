@@ -7,6 +7,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { getResend } from '@/lib/email/resend';
 import { BUSINESS } from '@/lib/config';
+import { emails } from '@/db/schema';
 
 const inquirySchema = z.object({
   lotId: z.string().uuid(),
@@ -57,11 +58,8 @@ export async function POST(req: NextRequest) {
     // Send email notification to admin
     try {
       const resend = getResend();
-      await resend.emails.send({
-        from: `Mayell <notifications@mayellauctions.com>`,
-        to: BUSINESS.email,
-        subject: `Private Sale Inquiry: ${lot.title}`,
-        html: `
+      const emailSubject = `Private Sale Inquiry: ${lot.title}`;
+      const emailHtml = `
           <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #272D35; font-size: 24px;">New Private Sale Inquiry</h1>
             <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">
@@ -76,8 +74,23 @@ export async function POST(req: NextRequest) {
             </a>
             <p style="margin-top: 30px; font-size: 12px; color: #999;">Submitted via mayellauctions.com</p>
           </div>
-        `,
+        `;
+      const { data: sent } = await resend.emails.send({
+        from: `Mayell <notifications@mayellauctions.com>`,
+        to: BUSINESS.email,
+        subject: emailSubject,
+        html: emailHtml,
       });
+      db.insert(emails).values({
+        resendId: sent?.id || null,
+        direction: 'outbound',
+        fromEmail: 'notifications@mayellauctions.com',
+        fromName: 'Mayell',
+        toEmail: BUSINESS.email,
+        subject: emailSubject,
+        bodyHtml: emailHtml,
+        status: 'sent',
+      }).catch((err) => console.error('Failed to log email:', err));
     } catch (emailError) {
       logger.error('Failed to send inquiry notification email', emailError, { inquiryId: inquiry.id });
     }

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { Calendar, Clock, Gavel, ExternalLink } from 'lucide-react';
+import { generateAuctionJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
 
@@ -69,23 +70,30 @@ export default async function AuctionDetailPage({
     lotNumber: auctionLot.lotNumber,
   }));
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Event',
-    name: auction.title,
-    description: auction.description || `${auction.title} at Mayell`,
-    url: `${BASE_URL}/auctions/${auction.slug}`,
-    image: auction.coverImageUrl || undefined,
-    organizer: { '@type': 'Organization', name: 'Mayell', url: BASE_URL },
-    ...(auction.biddingStartsAt ? { startDate: new Date(auction.biddingStartsAt).toISOString() } : {}),
-    ...(auction.biddingEndsAt ? { endDate: new Date(auction.biddingEndsAt).toISOString() } : {}),
-    eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
-    eventStatus: auction.status === 'cancelled' ? 'https://schema.org/EventCancelled' : 'https://schema.org/EventScheduled',
-  };
+  // Rich JSON-LD for AI agents + search engines
+  const jsonLd = generateAuctionJsonLd({
+    id: auction.id,
+    title: auction.title,
+    description: auction.description,
+    slug: auction.slug,
+    type: auction.type,
+    status: auction.status,
+    biddingStartsAt: auction.biddingStartsAt ? new Date(auction.biddingStartsAt) : null,
+    biddingEndsAt: auction.biddingEndsAt ? new Date(auction.biddingEndsAt) : null,
+    coverImageUrl: auction.coverImageUrl,
+    lotCount: auction.lotCount,
+  });
+
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
+    { name: 'Home', url: '/' },
+    { name: 'Auctions', url: '/auctions' },
+    { name: auction.title, url: `/auctions/${auction.slug || auction.id}` },
+  ]);
 
   return (
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
       <div className="mb-10">

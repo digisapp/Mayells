@@ -15,10 +15,13 @@ import {
   Brain,
   Radio,
   Mail,
+  Inbox,
   FileSignature,
   ClipboardCheck,
   MessageSquare,
   Settings,
+  Truck,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const adminLinks = [
@@ -33,9 +36,12 @@ const adminLinks = [
   { href: '/admin/live', label: 'Live Auctions', icon: Radio },
   { href: '/admin/users', label: 'Users', icon: Users },
   { href: '/admin/invoices', label: 'Invoices', icon: FileText },
+  { href: '/admin/shipments', label: 'Shipments', icon: Truck },
   { href: '/admin/outreach', label: 'Outreach', icon: Mail },
+  { href: '/admin/emails', label: 'Email', icon: Inbox },
   { href: '/admin/agreements', label: 'Agreements', icon: FileSignature },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
+  { href: '/admin/automation', label: 'Automation', icon: SlidersHorizontal },
 ];
 
 export function AdminSidebar() {

@@ -27,10 +27,12 @@ const buyerLinks = [
   { href: '/won', label: 'Won Lots', icon: Trophy },
   { href: '/watchlist', label: 'Watchlist', icon: Heart },
   { href: '/invoices', label: 'Invoices', icon: FileText },
+  { href: '/dashboard/shipments', label: 'Shipments', icon: Truck },
 ];
 
 const sellerLinks = [
   { href: '/dashboard/consignments', label: 'Consignments', icon: Package },
+  { href: '/dashboard/shipments', label: 'Shipments', icon: Truck },
   { href: '/dashboard/documents', label: 'Documents', icon: ScrollText },
   { href: '/payouts', label: 'Payouts', icon: DollarSign },
 ];

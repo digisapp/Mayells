@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getResend } from '@/lib/email/resend';
 import { BUSINESS } from '@/lib/config';
+import { emails } from '@/db/schema';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
@@ -37,12 +38,8 @@ export async function POST(req: NextRequest) {
 
     const agreementUrl = `${BUSINESS.url}/consignment-agreement`;
     const resend = getResend();
-
-    await resend.emails.send({
-      from: `${BUSINESS.name} <notifications@mayellauctions.com>`,
-      to: recipientEmail,
-      subject: `${BUSINESS.name} — Consignment Agreement for Your Review`,
-      html: `
+    const emailSubject = `${BUSINESS.name} — Consignment Agreement for Your Review`;
+    const emailHtml = `
         <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #272D35;">
           <div style="text-align: center; padding: 30px 0; border-bottom: 2px solid #D4C5A0;">
             <h1 style="font-size: 28px; margin: 0; letter-spacing: 2px;">${BUSINESS.name}</h1>
@@ -101,8 +98,23 @@ export async function POST(req: NextRequest) {
             <p>${BUSINESS.name} &bull; Palm Beach County, Florida</p>
           </div>
         </div>
-      `,
+      `;
+    const { data: sent } = await resend.emails.send({
+      from: `${BUSINESS.name} <notifications@mayellauctions.com>`,
+      to: recipientEmail,
+      subject: emailSubject,
+      html: emailHtml,
     });
+    db.insert(emails).values({
+      resendId: sent?.id || null,
+      direction: 'outbound',
+      fromEmail: 'notifications@mayellauctions.com',
+      fromName: BUSINESS.name,
+      toEmail: recipientEmail,
+      subject: emailSubject,
+      bodyHtml: emailHtml,
+      status: 'sent',
+    }).catch((err) => console.error('Failed to log email:', err));
 
     return NextResponse.json({ success: true });
   } catch (error) {

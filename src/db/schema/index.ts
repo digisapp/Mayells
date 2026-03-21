@@ -15,3 +15,6 @@ export * from './newsletter';
 export * from './auction-reminders';
 export * from './ai-chat-settings';
 export * from './inquiries';
+export * from './emails';
+export * from './shipments';
+export * from './automation-settings';

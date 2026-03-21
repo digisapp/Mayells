@@ -12,6 +12,8 @@ import { ShareButtons } from '@/components/lots/ShareButtons';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
+import { generateLotJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
+import { categories } from '@/db/schema';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
 
@@ -97,40 +99,29 @@ export default async function LotDetailPage({
     .orderBy(desc(bids.createdAt))
     .limit(20);
 
-  // Product JSON-LD for Google rich results
-  const currentPrice = lot.currentBidAmount || lot.startingBid || lot.estimateLow;
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: lot.title,
-    description: lot.description,
-    image: lot.primaryImageUrl || undefined,
-    url: `${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`,
-    brand: { '@type': 'Organization', name: 'Mayell Auctions' },
-    offers: {
-      '@type': 'Offer',
-      price: currentPrice ? (currentPrice / 100).toFixed(2) : undefined,
-      priceCurrency: 'USD',
-      availability: lot.status === 'sold'
-        ? 'https://schema.org/SoldOut'
-        : 'https://schema.org/InStock',
-      url: `${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`,
-      ...(lot.estimateLow && lot.estimateHigh ? {
-        priceSpecification: {
-          '@type': 'PriceSpecification',
-          minPrice: (lot.estimateLow / 100).toFixed(2),
-          maxPrice: (lot.estimateHigh / 100).toFixed(2),
-          priceCurrency: 'USD',
-        },
-      } : {}),
-    },
-    ...(lot.artist ? { creator: { '@type': 'Person', name: lot.artist } } : {}),
-    ...(lot.condition ? { itemCondition: `https://schema.org/${lot.condition === 'mint' ? 'NewCondition' : 'UsedCondition'}` } : {}),
-  };
+  // Get category name for structured data
+  const [category] = lot.categoryId
+    ? await db.select().from(categories).where(eq(categories.id, lot.categoryId)).limit(1)
+    : [null];
+
+  // Rich JSON-LD for AI agents + search engines
+  const lotJsonLd = generateLotJsonLd({
+    ...lot,
+    images: images.map(i => ({ url: i.url })),
+    categoryName: category?.name || null,
+  });
+
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
+    { name: 'Home', url: '/' },
+    { name: 'Auctions', url: '/auctions' },
+    ...(auction ? [{ name: auction.title, url: `/auctions/${auction.slug || auction.id}` }] : []),
+    { name: lot.title, url: `/auctions/${auctionId}/lots/${lot.slug || lot.id}` },
+  ]);
 
   return (
     <>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(lotJsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left: Images + Details */}

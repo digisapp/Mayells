@@ -62,6 +62,30 @@ export const consignmentSchema = z.object({
   description: z.string().optional(),
   categorySlug: z.string().min(1, 'Category is required'),
   estimatedValue: z.number().int().positive().optional(),
+  images: z.array(z.string().url()).optional(),
+
+  // Seller's ship-from address
+  pickupStreet: z.string().optional(),
+  pickupStreet2: z.string().optional(),
+  pickupCity: z.string().optional(),
+  pickupState: z.string().optional(),
+  pickupZip: z.string().optional(),
+  pickupCountry: z.string().default('US').optional(),
+  pickupPhone: z.string().optional(),
+
+  // Shipping preferences
+  sellerShipsItem: z.boolean().default(true).optional(),
+  requestPickup: z.boolean().default(false).optional(),
+
+  // Package estimates
+  weightLbs: z.number().int().positive().optional(),
+  lengthIn: z.number().int().positive().optional(),
+  widthIn: z.number().int().positive().optional(),
+  heightIn: z.number().int().positive().optional(),
+  isFragile: z.boolean().default(false).optional(),
+
+  // Agreement
+  agreementAccepted: z.boolean().optional(),
 });
 
 export const lotUpdateSchema = lotSchema.partial().extend({

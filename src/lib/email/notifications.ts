@@ -1,9 +1,33 @@
 import { getResend } from './resend';
 import { formatCurrency } from '@/types';
 import { BUSINESS } from '@/lib/config';
+import { db } from '@/db';
+import { emails } from '@/db/schema';
 
 const FROM = 'Mayell <notifications@mayellauctions.com>';
+const FROM_EMAIL = 'notifications@mayellauctions.com';
 const ADMIN_EMAIL = BUSINESS.email;
+
+async function sendAndLog(params: { to: string; subject: string; html: string }) {
+  const resend = getResend();
+  const { data: sent } = await resend.emails.send({
+    from: FROM,
+    to: params.to,
+    subject: params.subject,
+    html: params.html,
+  });
+  // Log to DB (non-blocking)
+  db.insert(emails).values({
+    resendId: sent?.id || null,
+    direction: 'outbound',
+    fromEmail: FROM_EMAIL,
+    fromName: 'Mayell',
+    toEmail: params.to,
+    subject: params.subject,
+    bodyHtml: params.html,
+    status: 'sent',
+  }).catch((err) => console.error('Failed to log outbound email:', err));
+}
 
 function emailLayout(content: string, title?: string): string {
   return `
@@ -40,9 +64,7 @@ export async function sendOutbidNotification(params: {
   currentBid: number;
   yourBid: number;
 }) {
-  const resend = getResend();
-  await resend.emails.send({
-    from: FROM,
+  await sendAndLog({
     to: params.email,
     subject: `You've been outbid on "${params.lotTitle}"`,
     html: emailLayout(`
@@ -69,9 +91,7 @@ export async function sendInvoiceNotification(params: {
   totalAmount: number;
   dueDate: Date;
 }) {
-  const resend = getResend();
-  await resend.emails.send({
-    from: FROM,
+  await sendAndLog({
     to: params.email,
     subject: `Invoice ${params.invoiceNumber} — Congratulations on your purchase!`,
     html: emailLayout(`
@@ -101,9 +121,7 @@ export async function sendPaymentConfirmation(params: {
   invoiceNumber: string;
   totalAmount: number;
 }) {
-  const resend = getResend();
-  await resend.emails.send({
-    from: FROM,
+  await sendAndLog({
     to: params.email,
     subject: `Payment received for ${params.invoiceNumber}`,
     html: emailLayout(`
@@ -124,7 +142,6 @@ export async function sendAppraisalRequestNotification(
   },
   photoUrls?: string[],
 ) {
-  const resend = getResend();
   const rows = [
     `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Name:</td><td style="padding: 6px 12px; font-weight: bold;">${params.name}</td></tr>`,
     `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Phone:</td><td style="padding: 6px 12px;">${params.phone}</td></tr>`,
@@ -143,8 +160,7 @@ export async function sendAppraisalRequestNotification(
     `
     : '';
 
-  await resend.emails.send({
-    from: FROM,
+  await sendAndLog({
     to: ADMIN_EMAIL,
     subject: `New Service Request from ${params.name}${photoUrls?.length ? ` (${photoUrls.length} photos)` : ''}`,
     html: adminEmailLayout(`
@@ -161,11 +177,8 @@ export async function sendConsignmentNotification(params: {
   description: string;
   category?: string;
 }) {
-  const resend = getResend();
-
   // Notify admin
-  await resend.emails.send({
-    from: FROM,
+  await sendAndLog({
     to: ADMIN_EMAIL,
     subject: `New Consignment Submission: ${params.title}`,
     html: adminEmailLayout(`
@@ -180,8 +193,7 @@ export async function sendConsignmentNotification(params: {
   });
 
   // Confirm to seller
-  await resend.emails.send({
-    from: FROM,
+  await sendAndLog({
     to: params.sellerEmail,
     subject: `We've received your consignment: ${params.title}`,
     html: emailLayout(`
@@ -189,6 +201,116 @@ export async function sendConsignmentNotification(params: {
         <p>Our team will review your submission and contact you within 1-2 business days to discuss next steps.</p>
         ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/consignments`, 'Track Your Consignment')}
     `, 'Consignment Received'),
+  });
+}
+
+/**
+ * Notify seller that their item sold and needs to be shipped.
+ * Includes shipping options: drop off at FedEx/UPS, schedule pickup, or white glove.
+ */
+export async function sendSellerShippingNotification(params: {
+  sellerEmail: string;
+  sellerName: string;
+  lotTitle: string;
+  hammerPrice: number;
+  commission: number;
+  sellerPayout: number;
+  labelUrl?: string | null;
+  shipmentId: string;
+  isWhiteGlove?: boolean;
+}) {
+  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/shipments`;
+
+  const shippingInstructions = params.isWhiteGlove
+    ? `
+      <p>Due to the value and nature of this item, we've arranged <strong>white glove shipping</strong>. A professional art shipper will contact you to schedule pickup at your convenience.</p>
+      <p>Please ensure the item is accessible and in the condition described in the listing.</p>
+    `
+    : `
+      <p>Please ship this item within <strong>3 business days</strong>. You have two options:</p>
+      <div style="margin: 20px 0;">
+        <div style="background: #f9f8f5; border: 1px solid #e5e2d9; border-radius: 8px; padding: 20px; margin-bottom: 12px;">
+          <strong>Option A: Drop Off</strong>
+          <p style="margin: 8px 0 0; color: #666;">Print your prepaid shipping label and drop the package at any FedEx or UPS location.</p>
+          ${params.labelUrl ? ctaButton(params.labelUrl, 'Download Shipping Label') : '<p style="color: #c33;">Label will be available shortly in your dashboard.</p>'}
+        </div>
+        <div style="background: #f9f8f5; border: 1px solid #e5e2d9; border-radius: 8px; padding: 20px;">
+          <strong>Option B: Schedule Pickup</strong>
+          <p style="margin: 8px 0 0; color: #666;">Request a carrier to pick up the package from your address.</p>
+          ${ctaButton(dashboardUrl, 'Schedule Pickup')}
+        </div>
+      </div>
+      <p style="font-size: 13px; color: #666;">Pack the item securely. Once shipped, damage in transit is between the buyer and the carrier.</p>
+    `;
+
+  await sendAndLog({
+    to: params.sellerEmail,
+    subject: `Your item sold! Ship "${params.lotTitle}"`,
+    html: emailLayout(`
+      <p>Congratulations, ${params.sellerName}! Your item has sold.</p>
+      <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Item:</td>
+          <td style="padding: 8px 16px; font-weight: bold;">${params.lotTitle}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Hammer Price:</td>
+          <td style="padding: 8px 16px; font-weight: bold;">${formatCurrency(params.hammerPrice)}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Commission:</td>
+          <td style="padding: 8px 16px;">${formatCurrency(params.commission)}</td>
+        </tr>
+        <tr style="border-top: 2px solid #D4C5A0;">
+          <td style="padding: 8px 16px; color: #666; font-weight: bold;">Your Payout:</td>
+          <td style="padding: 8px 16px; font-weight: bold; font-size: 20px; color: #2a7a2a;">${formatCurrency(params.sellerPayout)}</td>
+        </tr>
+      </table>
+      <h2 style="font-size: 18px; margin-top: 30px;">Shipping Instructions</h2>
+      ${shippingInstructions}
+    `, 'Your Item Sold!'),
+  });
+}
+
+/**
+ * Notify buyer that their item has shipped with tracking info.
+ */
+export async function sendBuyerShippingNotification(params: {
+  buyerEmail: string;
+  buyerName: string;
+  lotTitle: string;
+  trackingNumber: string;
+  trackingUrl?: string | null;
+  carrier: string;
+  estimatedDelivery?: string | null;
+}) {
+  await sendAndLog({
+    to: params.buyerEmail,
+    subject: `Your item "${params.lotTitle}" has shipped!`,
+    html: emailLayout(`
+      <p>Great news! Your item is on its way.</p>
+      <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Item:</td>
+          <td style="padding: 8px 16px; font-weight: bold;">${params.lotTitle}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Carrier:</td>
+          <td style="padding: 8px 16px;">${params.carrier.toUpperCase()}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Tracking:</td>
+          <td style="padding: 8px 16px; font-weight: bold;">${params.trackingNumber}</td>
+        </tr>
+        ${params.estimatedDelivery ? `
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Est. Delivery:</td>
+          <td style="padding: 8px 16px;">${params.estimatedDelivery}</td>
+        </tr>` : ''}
+      </table>
+      ${params.trackingUrl ? ctaButton(params.trackingUrl, 'Track Your Package') : ''}
+      <p style="margin-top: 20px; font-size: 13px; color: #666;">If your item arrives damaged, please contact the carrier directly to file a claim. All shipments are insured.</p>
+    `, 'Your Item Has Shipped'),
   });
 }
 
@@ -200,9 +322,7 @@ export async function sendAppraisalReportEmail(params: {
   totalEstimateLow: number;
   totalEstimateHigh: number;
 }) {
-  const resend = getResend();
-  await resend.emails.send({
-    from: FROM,
+  await sendAndLog({
     to: params.clientEmail,
     subject: `${BUSINESS.name} — Your Estate Appraisal Report`,
     html: `
@@ -241,3 +361,4 @@ export async function sendAppraisalReportEmail(params: {
     `,
   });
 }
+

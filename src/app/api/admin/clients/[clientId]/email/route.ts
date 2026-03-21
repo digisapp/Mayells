@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users, consignments, lots } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
+import { emails } from '@/db/schema';
 import { logger } from '@/lib/logger';
 
 function formatCents(cents: number): string {
@@ -98,12 +99,23 @@ export async function POST(
     `;
 
     const resend = getResend();
-    await resend.emails.send({
+    const emailSubject = subject || 'Your Item Summary — Mayell';
+    const { data: sent } = await resend.emails.send({
       from: 'Mayell <outreach@mayellauctions.com>',
       to: client.email,
-      subject: subject || 'Your Item Summary — Mayell',
+      subject: emailSubject,
       html,
     });
+    db.insert(emails).values({
+      resendId: sent?.id || null,
+      direction: 'outbound',
+      fromEmail: 'outreach@mayellauctions.com',
+      fromName: 'Mayell',
+      toEmail: client.email,
+      subject: emailSubject,
+      bodyHtml: html,
+      status: 'sent',
+    }).catch((err) => console.error('Failed to log email:', err));
 
     return NextResponse.json({ success: true });
   } catch (error) {

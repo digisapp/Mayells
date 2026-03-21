@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { outreachContacts, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
+import { emails } from '@/db/schema';
 import { logger } from '@/lib/logger';
 
 const emailSchema = z.object({
@@ -37,11 +38,7 @@ export async function POST(req: NextRequest) {
       text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     const resend = getResend();
-    await resend.emails.send({
-      from: 'Mayell <outreach@mayellauctions.com>',
-      to,
-      subject,
-      html: `
+    const emailHtml = `
         <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; white-space: pre-wrap; line-height: 1.6;">
           ${escapeHtml(body).replace(/\n/g, '<br />')}
         </div>
@@ -51,8 +48,24 @@ export async function POST(req: NextRequest) {
             <a href="https://mayellauctions.com" style="color: #D4C5A0;">mayellauctions.com</a>
           </p>
         </div>
-      `,
+      `;
+    const { data: sent } = await resend.emails.send({
+      from: 'Mayell <outreach@mayellauctions.com>',
+      to,
+      subject,
+      html: emailHtml,
     });
+    db.insert(emails).values({
+      resendId: sent?.id || null,
+      direction: 'outbound',
+      fromEmail: 'outreach@mayellauctions.com',
+      fromName: 'Mayell',
+      toEmail: to,
+      subject,
+      bodyHtml: emailHtml,
+      bodyText: body,
+      status: 'sent',
+    }).catch((err) => console.error('Failed to log email:', err));
 
     // Update contact's lastContactedAt and status
     await db
