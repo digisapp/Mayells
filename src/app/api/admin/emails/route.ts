@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { to, subject, html, text, inReplyToId } = await req.json();
+    const { to, subject, html, text, inReplyToId, attachments } = await req.json();
     if (!to || !subject || (!html && !text)) {
       return NextResponse.json({ error: 'to, subject, and body required' }, { status: 400 });
     }
@@ -111,13 +111,25 @@ export async function POST(req: NextRequest) {
     const resend = getResend();
     const fromAddress = 'Mayell <notifications@mayellauctions.com>';
 
-    const { data: sent, error: sendError } = await resend.emails.send({
+    // Build send params with optional attachments
+    // Attachments format: [{ content: "base64...", filename: "file.pdf", contentType?: "application/pdf" }]
+    const sendParams: Parameters<typeof resend.emails.send>[0] = {
       from: fromAddress,
       to,
       subject,
       html: html || undefined,
       text: text || undefined,
-    });
+    };
+
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      sendParams.attachments = attachments.map((a: { content: string; filename: string; contentType?: string }) => ({
+        content: Buffer.from(a.content, 'base64'),
+        filename: a.filename,
+        ...(a.contentType && { contentType: a.contentType }),
+      }));
+    }
+
+    const { data: sent, error: sendError } = await resend.emails.send(sendParams);
 
     if (sendError) {
       logger.error('Resend send error', sendError);

@@ -206,11 +206,14 @@ export async function POST(req: NextRequest) {
         isSpam: spam,
       }).returning();
 
-      // Trigger AI draft/auto-reply (non-blocking — don't hold up the webhook response)
+      // Trigger AI draft/auto-reply — must await before returning
+      // (Vercel serverless kills the function after response is sent)
       if (!spam && saved) {
-        processInboundEmail(saved.id).catch((err) =>
-          logger.error('AI email processing failed', err, { emailId: saved.id }),
-        );
+        try {
+          await processInboundEmail(saved.id);
+        } catch (err) {
+          logger.error('AI email processing failed', err, { emailId: saved.id });
+        }
       }
 
       return NextResponse.json({ received: true });

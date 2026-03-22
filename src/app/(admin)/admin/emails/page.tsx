@@ -10,7 +10,7 @@ import {
   Inbox, Send, Mail, Reply, Plus, ChevronDown, ChevronUp, Circle,
   Search, ChevronLeft, ChevronRight, CheckCheck, AlertTriangle, Clock,
   ShieldAlert, User, Bot, Sparkles, Trash2, Check, X, ArrowLeft,
-  MessageSquare,
+  MessageSquare, Paperclip,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -131,6 +131,7 @@ export default function AdminEmailsPage() {
   const [composeTo, setComposeTo] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
+  const [attachments, setAttachments] = useState<{ content: string; filename: string; contentType: string }[]>([]);
 
   // Bulk selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -376,6 +377,28 @@ export default function AdminEmailsPage() {
     }
   }
 
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        setAttachments((prev) => [...prev, {
+          content: base64,
+          filename: file.name,
+          contentType: file.type || 'application/octet-stream',
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleCompose() {
     if (!composeTo.trim() || !composeSubject.trim() || !composeBody.trim()) {
       toast.error('Please fill in all fields');
@@ -391,6 +414,7 @@ export default function AdminEmailsPage() {
           subject: composeSubject,
           html: `<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">${composeBody.replace(/\n/g, '<br />')}</div>`,
           text: composeBody,
+          ...(attachments.length > 0 && { attachments }),
         }),
       });
       if (res.ok) {
@@ -399,6 +423,7 @@ export default function AdminEmailsPage() {
         setComposeTo('');
         setComposeSubject('');
         setComposeBody('');
+        setAttachments([]);
         if (tab === 'sent') fetchEmails('sent', 1, searchQuery);
       } else {
         const data = await res.json();
@@ -527,6 +552,20 @@ export default function AdminEmailsPage() {
               onChange={(e) => setComposeBody(e.target.value)}
               rows={6}
             />
+            {/* Attachments */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {attachments.map((a, i) => (
+                  <div key={i} className="flex items-center gap-1.5 bg-muted/50 rounded-md px-2.5 py-1.5 text-xs">
+                    <Paperclip className="h-3 w-3 text-muted-foreground" />
+                    <span className="max-w-[150px] truncate">{a.filename}</span>
+                    <button onClick={() => removeAttachment(i)} className="text-muted-foreground hover:text-foreground">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -537,7 +576,16 @@ export default function AdminEmailsPage() {
                 <Send className="h-3.5 w-3.5 mr-2" />
                 {sending ? 'Sending...' : 'Send'}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setComposing(false)}>
+              <label className="cursor-pointer">
+                <input type="file" multiple className="hidden" onChange={handleFileSelect} />
+                <Button size="sm" variant="outline" type="button" asChild>
+                  <span>
+                    <Paperclip className="h-3.5 w-3.5 mr-1" />
+                    Attach
+                  </span>
+                </Button>
+              </label>
+              <Button size="sm" variant="outline" onClick={() => { setComposing(false); setAttachments([]); }}>
                 Cancel
               </Button>
             </div>
