@@ -9,7 +9,8 @@ import { SandboxedEmail } from '@/components/admin/SandboxedEmail';
 import {
   Inbox, Send, Mail, Reply, Plus, ChevronDown, ChevronUp, Circle,
   Search, ChevronLeft, ChevronRight, CheckCheck, AlertTriangle, Clock,
-  ShieldAlert, User,
+  ShieldAlert, User, Bot, Sparkles, Trash2, Check, X, ArrowLeft,
+  MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -29,8 +30,16 @@ interface EmailRow {
   threadId: string | null;
   userId: string | null;
   isSpam: boolean;
+  aiDraftHtml: string | null;
+  aiDraftText: string | null;
+  aiDraftedAt: string | null;
+  aiAutoSent: boolean;
+  aiCategory: string | null;
+  aiConfidence: number | null;
+  aiSummary: string | null;
+  readAt: string | null;
+  repliedAt: string | null;
   createdAt: string;
-  user?: { fullName: string | null; email: string } | null;
 }
 
 interface Pagination {
@@ -51,12 +60,40 @@ const statusBadgeStyles: Record<string, { className: string; label: string; icon
   bounced: { className: 'bg-red-100 text-red-800', label: 'Bounced', icon: <AlertTriangle className="h-3 w-3" /> },
 };
 
+const categoryLabels: Record<string, string> = {
+  appraisal_request: 'Appraisal',
+  consignment_inquiry: 'Consignment',
+  purchase_inquiry: 'Purchase',
+  auction_question: 'Auction',
+  estate_evaluation: 'Estate',
+  scheduling: 'Scheduling',
+  general_inquiry: 'General',
+  feedback: 'Feedback',
+  partnership: 'Partnership',
+  support: 'Support',
+  personal: 'Personal',
+  spam: 'Spam',
+  other: 'Other',
+};
+
 function StatusBadge({ status }: { status: string }) {
   const style = statusBadgeStyles[status] || { className: 'bg-gray-100 text-gray-800', label: status };
   return (
     <Badge variant="secondary" className={`${style.className} gap-1 text-xs`}>
       {style.icon}
       {style.label}
+    </Badge>
+  );
+}
+
+function CategoryBadge({ category, confidence }: { category: string; confidence: number | null }) {
+  const label = categoryLabels[category] || category;
+  const confPct = confidence ? Math.round(confidence * 100) : null;
+  return (
+    <Badge variant="outline" className="gap-1 text-xs border-purple-200 text-purple-700">
+      <Bot className="h-2.5 w-2.5" />
+      {label}
+      {confPct !== null && <span className="text-purple-400">{confPct}%</span>}
     </Badge>
   );
 }
@@ -95,6 +132,14 @@ export default function AdminEmailsPage() {
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Thread view
+  const [threadView, setThreadView] = useState<string | null>(null);
+  const [threadEmails, setThreadEmails] = useState<EmailRow[]>([]);
+  const [threadLoading, setThreadLoading] = useState(false);
+
   const fetchEmails = useCallback((currentTab: Tab, page: number, search: string) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
@@ -120,7 +165,9 @@ export default function AdminEmailsPage() {
   }, []);
 
   useEffect(() => {
-    fetchEmails(tab, pagination.page, searchQuery);
+    if (!threadView) {
+      fetchEmails(tab, pagination.page, searchQuery);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, pagination.page, searchQuery]);
 
@@ -134,6 +181,139 @@ export default function AdminEmailsPage() {
     setTab(newTab);
     setPagination((p) => ({ ...p, page: 1 }));
     setExpandedId(null);
+    setSelectedIds(new Set());
+    setThreadView(null);
+  }
+
+  // ─── Thread View ─────────────────────────────────────────────────────────────
+
+  async function openThread(threadId: string) {
+    setThreadLoading(true);
+    setThreadView(threadId);
+    try {
+      const res = await fetch(`/api/admin/emails?thread_id=${threadId}`);
+      const d = await res.json();
+      setThreadEmails(d.data ?? []);
+    } catch {
+      toast.error('Failed to load thread');
+    } finally {
+      setThreadLoading(false);
+    }
+  }
+
+  function closeThread() {
+    setThreadView(null);
+    setThreadEmails([]);
+  }
+
+  // ─── Bulk Actions ────────────────────────────────────────────────────────────
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === emailList.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(emailList.map((e) => e.id)));
+    }
+  }
+
+  async function bulkMarkRead() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await fetch('/api/admin/emails', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, status: 'read' }),
+      });
+      setEmailList((prev) => prev.map((e) => (selectedIds.has(e.id) ? { ...e, status: 'read', readAt: new Date().toISOString() } : e)));
+      setSelectedIds(new Set());
+      toast.success(`Marked ${ids.length} emails as read`);
+    } catch {
+      toast.error('Failed to update emails');
+    }
+  }
+
+  async function bulkDelete() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await fetch('/api/admin/emails', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      setEmailList((prev) => prev.filter((e) => !selectedIds.has(e.id)));
+      setPagination((p) => ({ ...p, total: p.total - ids.length }));
+      setSelectedIds(new Set());
+      toast.success(`Deleted ${ids.length} emails`);
+    } catch {
+      toast.error('Failed to delete emails');
+    }
+  }
+
+  async function deleteEmail(id: string) {
+    try {
+      await fetch('/api/admin/emails', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setEmailList((prev) => prev.filter((e) => e.id !== id));
+      setPagination((p) => ({ ...p, total: p.total - 1 }));
+      setExpandedId(null);
+      toast.success('Email deleted');
+    } catch {
+      toast.error('Failed to delete email');
+    }
+  }
+
+  // ─── Email Actions ───────────────────────────────────────────────────────────
+
+  async function handleSendAiDraft(email: EmailRow) {
+    if (!email.aiDraftText) return;
+    setSending(true);
+    try {
+      const res = await fetch('/api/admin/emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: email.fromEmail,
+          subject: `Re: ${(email.subject || '').replace(/^Re:\s*/i, '')}`,
+          html: `
+            <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
+              ${email.aiDraftText.replace(/\n/g, '<br />')}
+              <br /><br />
+              <div style="border-left: 2px solid #ccc; padding-left: 12px; margin-top: 16px; color: #666; font-size: 13px;">
+                <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:</p>
+                <div>${email.bodyHtml || email.bodyText?.replace(/\n/g, '<br />') || ''}</div>
+              </div>
+            </div>
+          `,
+          text: `${email.aiDraftText}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(email.bodyText || '').split('\n').join('\n> ')}`,
+          inReplyToId: email.id,
+        }),
+      });
+      if (res.ok) {
+        toast.success(`AI reply sent to ${email.fromEmail}`);
+        setEmailList((prev) => prev.map((e) => (e.id === email.id ? { ...e, status: 'replied' } : e)));
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to send');
+      }
+    } catch {
+      toast.error('Network error');
+    } finally {
+      setSending(false);
+    }
   }
 
   async function markAsRead(id: string) {
@@ -142,7 +322,7 @@ export default function AdminEmailsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status: 'read' }),
     });
-    setEmailList((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'read' } : e)));
+    setEmailList((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'read', readAt: new Date().toISOString() } : e)));
   }
 
   function handleExpand(email: EmailRow) {
@@ -232,6 +412,72 @@ export default function AdminEmailsPage() {
   }
 
   const unreadCount = emailList.filter((e) => e.status === 'received' && e.direction === 'inbound').length;
+
+  // ─── Thread View Render ────────────────────────────────────────────────────
+
+  if (threadView) {
+    return (
+      <div>
+        <div className="flex items-center gap-3 mb-6">
+          <Button variant="ghost" size="sm" onClick={closeThread}>
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back
+          </Button>
+          <h1 className="font-display text-display-sm">Thread</h1>
+        </div>
+
+        {threadLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => <div key={i} className="h-32 bg-muted animate-pulse rounded-lg" />)}
+          </div>
+        ) : threadEmails.length === 0 ? (
+          <p className="text-muted-foreground">No emails in this thread.</p>
+        ) : (
+          <div className="space-y-4">
+            {threadEmails.map((email) => (
+              <Card key={email.id} className={email.direction === 'outbound' ? 'ml-8 border-champagne/30' : ''}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">
+                        {email.direction === 'inbound'
+                          ? email.fromName || email.fromEmail
+                          : `Mayell → ${email.toEmail}`}
+                      </span>
+                      <StatusBadge status={email.status} />
+                      {email.aiAutoSent && (
+                        <Badge variant="secondary" className="bg-purple-100 text-purple-700 gap-1 text-xs">
+                          <Bot className="h-2.5 w-2.5" />
+                          AI
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(email.createdAt).toLocaleDateString(undefined, {
+                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{email.subject}</p>
+                </CardHeader>
+                <CardContent>
+                  {email.bodyHtml ? (
+                    <SandboxedEmail html={email.bodyHtml} className="rounded-md" />
+                  ) : email.bodyText ? (
+                    <pre className="text-sm whitespace-pre-wrap">{email.bodyText}</pre>
+                  ) : (
+                    <p className="text-sm text-muted-foreground italic">(no content)</p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Main View Render ──────────────────────────────────────────────────────
 
   return (
     <div>
@@ -370,6 +616,27 @@ export default function AdminEmailsPage() {
         </form>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 mb-4 p-3 bg-muted/30 rounded-lg border border-border/50">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          {tab === 'inbox' && (
+            <Button size="sm" variant="outline" onClick={bulkMarkRead}>
+              <Check className="h-3.5 w-3.5 mr-1" />
+              Mark Read
+            </Button>
+          )}
+          <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700" onClick={bulkDelete}>
+            <Trash2 className="h-3.5 w-3.5 mr-1" />
+            Delete
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+            <X className="h-3.5 w-3.5 mr-1" />
+            Cancel
+          </Button>
+        </div>
+      )}
+
       {/* Email List */}
       {loading ? (
         <div className="space-y-3">
@@ -393,68 +660,113 @@ export default function AdminEmailsPage() {
         </Card>
       ) : (
         <>
+          {/* Select All */}
+          <div className="flex items-center gap-2 mb-2 px-1">
+            <button
+              onClick={toggleSelectAll}
+              className={`h-4 w-4 rounded border flex items-center justify-center transition-colors ${
+                selectedIds.size === emailList.length
+                  ? 'bg-champagne border-champagne'
+                  : 'border-border hover:border-champagne/50'
+              }`}
+            >
+              {selectedIds.size === emailList.length && <Check className="h-3 w-3 text-charcoal" />}
+            </button>
+            <span className="text-xs text-muted-foreground">Select all</span>
+          </div>
+
           <div className="space-y-2">
             {emailList.map((email) => (
               <Card
                 key={email.id}
                 className={`transition-colors ${
-                  email.status === 'received' && email.direction === 'inbound'
-                    ? 'border-champagne/40 bg-champagne/5'
-                    : email.status === 'bounced'
-                      ? 'border-red-200 bg-red-50/30'
-                      : ''
+                  selectedIds.has(email.id)
+                    ? 'border-champagne bg-champagne/5'
+                    : email.status === 'received' && email.direction === 'inbound'
+                      ? 'border-champagne/40 bg-champagne/5'
+                      : email.status === 'bounced'
+                        ? 'border-red-200 bg-red-50/30'
+                        : ''
                 }`}
               >
                 {/* Email Row Header */}
-                <button
-                  onClick={() => handleExpand(email)}
-                  className="w-full text-left px-4 py-3"
-                >
-                  <div className="flex items-center gap-3">
-                    {email.status === 'received' && email.direction === 'inbound' && (
-                      <Circle className="h-2.5 w-2.5 fill-champagne text-champagne flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p className={`text-sm truncate ${email.status === 'received' && email.direction === 'inbound' ? 'font-semibold' : ''}`}>
-                            {tab === 'inbox' || tab === 'spam'
-                              ? email.fromName || email.fromEmail
-                              : email.toName || email.toEmail}
-                          </p>
-                          {email.userId && (
-                            <Badge variant="secondary" className="bg-purple-100 text-purple-800 gap-1 text-xs">
-                              <User className="h-2.5 w-2.5" />
-                              User
-                            </Badge>
-                          )}
-                          <StatusBadge status={email.status} />
+                <div className="flex items-center gap-2 px-4 py-3">
+                  {/* Checkbox */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(email.id); }}
+                    className={`h-4 w-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
+                      selectedIds.has(email.id)
+                        ? 'bg-champagne border-champagne'
+                        : 'border-border hover:border-champagne/50'
+                    }`}
+                  >
+                    {selectedIds.has(email.id) && <Check className="h-3 w-3 text-charcoal" />}
+                  </button>
+
+                  {/* Clickable email row */}
+                  <button
+                    onClick={() => handleExpand(email)}
+                    className="flex-1 text-left min-w-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      {email.status === 'received' && email.direction === 'inbound' && (
+                        <Circle className="h-2.5 w-2.5 fill-champagne text-champagne flex-shrink-0" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                            <p className={`text-sm truncate ${email.status === 'received' && email.direction === 'inbound' ? 'font-semibold' : ''}`}>
+                              {tab === 'inbox' || tab === 'spam'
+                                ? email.fromName || email.fromEmail
+                                : email.toName || email.toEmail}
+                            </p>
+                            {email.userId && (
+                              <Badge variant="secondary" className="bg-purple-100 text-purple-800 gap-1 text-xs">
+                                <User className="h-2.5 w-2.5" />
+                                User
+                              </Badge>
+                            )}
+                            <StatusBadge status={email.status} />
+                            {email.aiCategory && email.aiCategory !== 'spam' && (
+                              <CategoryBadge category={email.aiCategory} confidence={email.aiConfidence} />
+                            )}
+                            {email.threadId && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openThread(email.threadId!); }}
+                                className="text-muted-foreground hover:text-foreground transition-colors"
+                                title="View thread"
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground flex-shrink-0">
+                            {new Date(email.createdAt).toLocaleDateString(undefined, {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                            })}
+                          </span>
                         </div>
-                        <span className="text-xs text-muted-foreground flex-shrink-0">
-                          {new Date(email.createdAt).toLocaleDateString(undefined, {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}
-                        </span>
-                      </div>
-                      <p className={`text-sm truncate mt-0.5 ${email.status === 'received' && email.direction === 'inbound' ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {email.subject || '(no subject)'}
-                      </p>
-                      {expandedId !== email.id && (
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {email.bodyText?.slice(0, 120) || ''}
+                        <p className={`text-sm truncate mt-0.5 ${email.status === 'received' && email.direction === 'inbound' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {email.subject || '(no subject)'}
                         </p>
+                        {/* AI summary or body preview */}
+                        {expandedId !== email.id && (
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">
+                            {email.aiSummary || email.bodyText?.slice(0, 120) || ''}
+                          </p>
+                        )}
+                      </div>
+                      {expandedId === email.id ? (
+                        <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       )}
                     </div>
-                    {expandedId === email.id ? (
-                      <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    )}
-                  </div>
-                </button>
+                  </button>
+                </div>
 
                 {/* Expanded Email Body */}
                 {expandedId === email.id && (
@@ -473,6 +785,16 @@ export default function AdminEmailsPage() {
                       )}
                     </div>
 
+                    {/* AI Classification Info */}
+                    {email.aiCategory && (
+                      <div className="flex items-center gap-3 mb-3 text-xs">
+                        <CategoryBadge category={email.aiCategory} confidence={email.aiConfidence} />
+                        {email.aiSummary && (
+                          <span className="text-muted-foreground italic">{email.aiSummary}</span>
+                        )}
+                      </div>
+                    )}
+
                     {email.bodyHtml ? (
                       <div className="bg-muted/30 rounded-md overflow-hidden">
                         <SandboxedEmail html={email.bodyHtml} className="rounded-md" />
@@ -485,56 +807,128 @@ export default function AdminEmailsPage() {
                       <p className="text-sm text-muted-foreground italic p-4">(no content)</p>
                     )}
 
-                    {/* Reply section (inbox/spam only) */}
-                    {(tab === 'inbox' || tab === 'spam') && (
-                      <div className="mt-4">
-                        {replyingTo === email.id ? (
-                          <div className="space-y-3 border-t pt-3">
-                            <p className="text-xs text-muted-foreground">
-                              Replying to {email.fromName || email.fromEmail}
-                            </p>
-                            <Textarea
-                              placeholder="Write your reply..."
-                              value={replyBody}
-                              onChange={(e) => setReplyBody(e.target.value)}
-                              rows={5}
-                              autoFocus
-                            />
-                            <QuotedOriginal email={email} />
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                onClick={() => handleReply(email)}
-                                disabled={sending}
-                                className="bg-champagne text-charcoal hover:bg-champagne/90"
-                              >
-                                <Send className="h-3.5 w-3.5 mr-2" />
-                                {sending ? 'Sending...' : 'Send Reply'}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setReplyingTo(null);
-                                  setReplyBody('');
-                                }}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
+                    {/* AI Draft */}
+                    {email.aiDraftText && email.direction === 'inbound' && !email.aiAutoSent && email.status !== 'replied' && (
+                      <div className="mt-4 border border-purple-200 bg-purple-50/30 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Bot className="h-4 w-4 text-purple-600" />
+                          <span className="text-sm font-medium text-purple-800">AI Draft Reply</span>
+                          <span className="text-xs text-purple-500">
+                            {email.aiDraftedAt && `Generated ${new Date(email.aiDraftedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
+                          </span>
+                        </div>
+                        <pre className="text-sm whitespace-pre-wrap text-foreground mb-3">{email.aiDraftText}</pre>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleSendAiDraft(email)}
+                            disabled={sending}
+                            className="bg-purple-600 text-white hover:bg-purple-700"
+                          >
+                            <Sparkles className="h-3.5 w-3.5 mr-2" />
+                            {sending ? 'Sending...' : 'Send AI Draft'}
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => setReplyingTo(email.id)}
+                            onClick={() => {
+                              setReplyingTo(email.id);
+                              setReplyBody(email.aiDraftText || '');
+                            }}
                           >
-                            <Reply className="h-3.5 w-3.5 mr-2" />
-                            Reply
+                            Edit & Send
                           </Button>
-                        )}
+                        </div>
                       </div>
                     )}
+
+                    {/* Auto-sent indicator */}
+                    {email.aiAutoSent && email.direction === 'inbound' && (
+                      <div className="mt-4 flex items-center gap-2 text-xs text-purple-600">
+                        <Bot className="h-3.5 w-3.5" />
+                        AI auto-replied to this email
+                        {email.aiCategory && <span>({categoryLabels[email.aiCategory] || email.aiCategory})</span>}
+                      </div>
+                    )}
+
+                    {/* Actions row */}
+                    <div className="mt-4 flex items-center gap-2">
+                      {/* Reply (inbox/spam only) */}
+                      {(tab === 'inbox' || tab === 'spam') && (
+                        <>
+                          {replyingTo === email.id ? (
+                            <div className="w-full space-y-3 border-t pt-3">
+                              <p className="text-xs text-muted-foreground">
+                                Replying to {email.fromName || email.fromEmail}
+                              </p>
+                              <Textarea
+                                placeholder="Write your reply..."
+                                value={replyBody}
+                                onChange={(e) => setReplyBody(e.target.value)}
+                                rows={5}
+                                autoFocus
+                              />
+                              <QuotedOriginal email={email} />
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleReply(email)}
+                                  disabled={sending}
+                                  className="bg-champagne text-charcoal hover:bg-champagne/90"
+                                >
+                                  <Send className="h-3.5 w-3.5 mr-2" />
+                                  {sending ? 'Sending...' : 'Send Reply'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setReplyingTo(null);
+                                    setReplyBody('');
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setReplyingTo(email.id)}
+                            >
+                              <Reply className="h-3.5 w-3.5 mr-2" />
+                              Reply
+                            </Button>
+                          )}
+                        </>
+                      )}
+
+                      {/* Thread button */}
+                      {replyingTo !== email.id && email.threadId && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openThread(email.threadId!)}
+                        >
+                          <MessageSquare className="h-3.5 w-3.5 mr-2" />
+                          View Thread
+                        </Button>
+                      )}
+
+                      {/* Delete button */}
+                      {replyingTo !== email.id && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:text-red-700 ml-auto"
+                          onClick={() => deleteEmail(email.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          Delete
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 )}
               </Card>

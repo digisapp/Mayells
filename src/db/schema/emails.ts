@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, pgEnum, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, pgEnum, boolean, index, real } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
 
@@ -32,8 +32,20 @@ export const emails = pgTable('emails', {
   threadId: uuid('thread_id'),
   // User linking — matches sender/recipient to a registered user
   userId: uuid('user_id').references(() => users.id),
+  // AI draft — generated response awaiting admin approval or auto-sent
+  aiDraftHtml: text('ai_draft_html'),
+  aiDraftText: text('ai_draft_text'),
+  aiDraftedAt: timestamp('ai_drafted_at'),
+  aiAutoSent: boolean('ai_auto_sent').default(false).notNull(),
+  // AI classification
+  aiCategory: varchar('ai_category', { length: 100 }),
+  aiConfidence: real('ai_confidence'),
+  aiSummary: text('ai_summary'),
   // Spam filtering
   isSpam: boolean('is_spam').default(false).notNull(),
+  // Timestamps
+  readAt: timestamp('read_at'),
+  repliedAt: timestamp('replied_at'),
   createdAt: timestamp('created_at').default(sql`now()`).notNull(),
 }, (table) => [
   index('emails_direction_idx').on(table.direction),

@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Webhook } from 'svix';
 import { db } from '@/db';
 import { emails, users } from '@/db/schema';
 import { eq, and, desc, or } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { logger } from '@/lib/logger';
+import { processInboundEmail } from '@/lib/ai/email-reply';
 
 // ─── Spam Filtering ───────────────────────────────────────────────────────────
 
@@ -107,7 +109,33 @@ async function findThread(params: {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // ── Verify Svix signature ────────────────────────────────────────────
+    const rawBody = await req.text();
+    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+
+    if (webhookSecret) {
+      const svixId = req.headers.get('svix-id');
+      const svixTimestamp = req.headers.get('svix-timestamp');
+      const svixSignature = req.headers.get('svix-signature');
+
+      if (!svixId || !svixTimestamp || !svixSignature) {
+        return NextResponse.json({ error: 'Missing webhook signature headers' }, { status: 401 });
+      }
+
+      const wh = new Webhook(webhookSecret);
+      try {
+        wh.verify(rawBody, {
+          'svix-id': svixId,
+          'svix-timestamp': svixTimestamp,
+          'svix-signature': svixSignature,
+        });
+      } catch {
+        logger.error('Webhook signature verification failed');
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+      }
+    }
+
+    const body = JSON.parse(rawBody);
     const { type, data } = body;
 
     // ── Inbound email ──────────────────────────────────────────────────────
@@ -160,7 +188,7 @@ export async function POST(req: NextRequest) {
       // Link to user
       const userId = await findUserByEmail(fromEmail);
 
-      await db.insert(emails).values({
+      const [saved] = await db.insert(emails).values({
         resendId: resendEmailId,
         direction: 'inbound',
         status: 'received',
@@ -176,7 +204,14 @@ export async function POST(req: NextRequest) {
         threadId,
         userId,
         isSpam: spam,
-      });
+      }).returning();
+
+      // Trigger AI draft/auto-reply (non-blocking — don't hold up the webhook response)
+      if (!spam && saved) {
+        processInboundEmail(saved.id).catch((err) =>
+          logger.error('AI email processing failed', err, { emailId: saved.id }),
+        );
+      }
 
       return NextResponse.json({ received: true });
     }

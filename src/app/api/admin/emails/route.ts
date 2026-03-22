@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { emails, users } from '@/db/schema';
-import { eq, desc, and, or, ilike, sql } from 'drizzle-orm';
+import { eq, desc, and, or, ilike, sql, inArray } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { logger } from '@/lib/logger';
 
@@ -17,7 +17,7 @@ async function requireAdmin() {
   return profile;
 }
 
-// GET /api/admin/emails?direction=inbound|outbound&search=...&page=1&spam=true|false
+// GET /api/admin/emails?direction=inbound|outbound&search=...&page=1&spam=true|false&thread_id=...
 export async function GET(req: NextRequest) {
   try {
     const admin = await requireAdmin();
@@ -26,15 +26,26 @@ export async function GET(req: NextRequest) {
     const direction = req.nextUrl.searchParams.get('direction');
     const search = req.nextUrl.searchParams.get('search')?.trim();
     const spamParam = req.nextUrl.searchParams.get('spam');
+    const threadId = req.nextUrl.searchParams.get('thread_id');
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') || '1', 10));
     const offset = (page - 1) * PAGE_SIZE;
+
+    // Thread view: fetch all emails in a conversation
+    if (threadId) {
+      const threadEmails = await db
+        .select()
+        .from(emails)
+        .where(or(eq(emails.id, threadId), eq(emails.threadId, threadId)))
+        .orderBy(emails.createdAt);
+
+      return NextResponse.json({ data: threadEmails, thread: true });
+    }
 
     // Build conditions
     const conditions = [];
     if (direction) {
       conditions.push(eq(emails.direction, direction as 'inbound' | 'outbound'));
     }
-    // Spam filter: 'true' shows only spam, 'false' excludes spam, omitted shows all
     if (spamParam === 'true') {
       conditions.push(eq(emails.isSpam, true));
     } else if (spamParam === 'false') {
@@ -55,7 +66,6 @@ export async function GET(req: NextRequest) {
 
     const whereClause = conditions.length ? and(...conditions) : undefined;
 
-    // Parallel: fetch page + total count
     const [data, countResult] = await Promise.all([
       db
         .select()
@@ -122,14 +132,15 @@ export async function POST(req: NextRequest) {
       if (parent) {
         threadId = parent.threadId || parent.id;
         parentMessageId = parent.messageId || null;
-        // Mark parent inbound email as "replied"
         if (parent.direction === 'inbound' && parent.status !== 'replied') {
-          await db.update(emails).set({ status: 'replied' }).where(eq(emails.id, parent.id));
+          await db.update(emails).set({
+            status: 'replied',
+            repliedAt: new Date(),
+          }).where(eq(emails.id, parent.id));
         }
       }
     }
 
-    // Log sent email to DB
     const [saved] = await db.insert(emails).values({
       resendId: sent?.id || null,
       direction: 'outbound',
@@ -152,27 +163,80 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/admin/emails — update status (mark as read, etc.)
+// PATCH /api/admin/emails — update status (single or bulk)
 export async function PATCH(req: NextRequest) {
   try {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { id, status } = await req.json();
-    if (!id) return NextResponse.json({ error: 'Email ID required' }, { status: 400 });
+    const body = await req.json();
+    const { id, ids, status } = body;
 
     const validStatuses = ['received', 'read', 'replied', 'sent', 'delivered', 'bounced'];
     if (status && !validStatuses.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
+    // Bulk update
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      const updateData: Record<string, unknown> = {};
+      if (status) updateData.status = status;
+      if (status === 'read') updateData.readAt = new Date();
+      if (status === 'replied') updateData.repliedAt = new Date();
+
+      await db.update(emails).set(updateData).where(inArray(emails.id, ids));
+      return NextResponse.json({ success: true, updated: ids.length });
+    }
+
+    // Single update
+    if (!id) return NextResponse.json({ error: 'Email ID required' }, { status: 400 });
+
     if (status) {
-      await db.update(emails).set({ status }).where(eq(emails.id, id));
+      const updateData: Record<string, unknown> = { status };
+      if (status === 'read') updateData.readAt = new Date();
+      if (status === 'replied') updateData.repliedAt = new Date();
+
+      await db.update(emails).set(updateData).where(eq(emails.id, id));
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error('Admin email update error', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+// DELETE /api/admin/emails — delete emails (single or bulk)
+export async function DELETE(req: NextRequest) {
+  try {
+    const admin = await requireAdmin();
+    if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
+    const body = await req.json();
+    const { id, ids } = body;
+
+    const idsToDelete: string[] = ids && Array.isArray(ids) ? ids : id ? [id] : [];
+    if (idsToDelete.length === 0) {
+      return NextResponse.json({ error: 'Email ID(s) required' }, { status: 400 });
+    }
+
+    // Clear thread references pointing to these emails first
+    await db
+      .update(emails)
+      .set({ threadId: null })
+      .where(inArray(emails.threadId, idsToDelete));
+
+    await db
+      .update(emails)
+      .set({ inReplyToId: null })
+      .where(inArray(emails.inReplyToId, idsToDelete));
+
+    // Delete the emails
+    await db.delete(emails).where(inArray(emails.id, idsToDelete));
+
+    return NextResponse.json({ success: true, deleted: idsToDelete.length });
+  } catch (error) {
+    logger.error('Admin email delete error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

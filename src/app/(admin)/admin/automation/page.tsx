@@ -29,6 +29,7 @@ interface Settings {
   defaultCommissionPercent: number;
   highValueCommissionPercent: number;
   highValueThreshold: number;
+  aiEmailAutoReply: boolean;
   notifySellerOnApproval: boolean;
   notifySellerOnSale: boolean;
   notifySellerOnShipment: boolean;
@@ -279,6 +280,23 @@ export default function AutomationSettingsPage() {
           prefix="$"
           suffix="items above this get the lower commission rate"
         />
+      </SettingsSection>
+
+      <Separator className="my-8" />
+
+      {/* AI Email */}
+      <SettingsSection title="AI Email Replies">
+        <Toggle
+          label="AI auto-reply to incoming emails"
+          description="When ON, AI reads incoming emails, drafts a reply, and sends it automatically. When OFF, AI drafts a reply but you review and click Send manually from the inbox."
+          checked={settings.aiEmailAutoReply}
+          onChange={() => toggle('aiEmailAutoReply')}
+        />
+        <p className="text-xs text-muted-foreground ml-1">
+          {settings.aiEmailAutoReply
+            ? '⚡ Auto-reply is ON — AI will respond to all non-spam emails automatically.'
+            : '✋ Manual mode — AI drafts replies in your inbox, you decide when to send.'}
+        </p>
       </SettingsSection>
 
       <Separator className="my-8" />

@@ -42,6 +42,10 @@ export const automationSettings = pgTable('automation_settings', {
   highValueCommissionPercent: integer('high_value_commission_percent').default(15), // lower commission for high-value items
   highValueThreshold: integer('high_value_threshold').default(1000000), // $10,000 threshold for lower commission
 
+  // AI Email Auto-Reply
+  aiEmailAutoReply: boolean('ai_email_auto_reply').default(false).notNull(), // when ON, AI sends replies automatically
+  // when OFF (default), AI drafts a reply but you click Send manually
+
   // Notifications
   notifySellerOnApproval: boolean('notify_seller_on_approval').default(true).notNull(),
   notifySellerOnSale: boolean('notify_seller_on_sale').default(true).notNull(),
