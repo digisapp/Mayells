@@ -314,6 +314,93 @@ export async function sendBuyerShippingNotification(params: {
   });
 }
 
+/**
+ * Send a private upload link to a seller prospect.
+ */
+export async function sendUploadLinkNotification(params: {
+  prospectEmail: string;
+  prospectName: string;
+  uploadUrl: string;
+  message?: string;
+}) {
+  await sendAndLog({
+    to: params.prospectEmail,
+    subject: `${BUSINESS.name} — Upload Your Items for Consignment`,
+    html: emailLayout(`
+      <p>Dear ${params.prospectName},</p>
+      <p>Thank you for your interest in consigning with ${BUSINESS.name}. We've prepared a secure link for you to upload photos of your items.</p>
+      ${params.message ? `<p style="background: #f9f8f5; border-left: 3px solid #D4C5A0; padding: 12px 16px; color: #555;">${params.message}</p>` : ''}
+      <p>Simply click the button below and add photos of each item you'd like us to review. You can also include a brief description or any known history for each piece.</p>
+      <div style="text-align: center; margin: 30px 0;">
+        ${ctaButton(params.uploadUrl, 'Upload Your Items')}
+      </div>
+      <p style="font-size: 13px; color: #666;">Tips for best results:</p>
+      <ul style="font-size: 13px; color: #666;">
+        <li>Photograph each item from multiple angles</li>
+        <li>Include close-ups of any signatures, marks, or labels</li>
+        <li>Capture any damage or wear</li>
+        <li>Use natural lighting when possible</li>
+      </ul>
+      <p>Our team will review your items and follow up within 1-2 business days.</p>
+      <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
+    `, 'Upload Your Items'),
+  });
+}
+
+/**
+ * Notify admin when a seller has uploaded items via their private link.
+ */
+export async function sendItemsReceivedNotification(params: {
+  prospectName: string;
+  prospectEmail?: string;
+  itemCount: number;
+  prospectId: string;
+}) {
+  await sendAndLog({
+    to: ADMIN_EMAIL,
+    subject: `${params.prospectName} uploaded ${params.itemCount} items for review`,
+    html: adminEmailLayout(`
+      <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">
+        <tr><td style="padding: 6px 12px; color: #666;">Seller:</td><td style="padding: 6px 12px; font-weight: bold;">${params.prospectName}${params.prospectEmail ? ` (${params.prospectEmail})` : ''}</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666;">Items Uploaded:</td><td style="padding: 6px 12px; font-weight: bold;">${params.itemCount}</td></tr>
+      </table>
+      ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/admin/prospects/${params.prospectId}`, 'Review Items')}
+    `, 'New Items Uploaded'),
+  });
+}
+
+/**
+ * Notify prospect that their items have been reviewed and accepted.
+ */
+export async function sendProspectAcceptedNotification(params: {
+  prospectEmail: string;
+  prospectName: string;
+  acceptedCount: number;
+  totalEstimateLow: number;
+  totalEstimateHigh: number;
+}) {
+  await sendAndLog({
+    to: params.prospectEmail,
+    subject: `${BUSINESS.name} — Your Items Have Been Accepted`,
+    html: emailLayout(`
+      <p>Dear ${params.prospectName},</p>
+      <p>Great news! After careful review, we are pleased to accept <strong>${params.acceptedCount} item${params.acceptedCount !== 1 ? 's' : ''}</strong> for consignment.</p>
+      <table style="margin: 20px 0; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Items Accepted:</td>
+          <td style="padding: 8px 16px; font-weight: bold;">${params.acceptedCount}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Estimated Value:</td>
+          <td style="padding: 8px 16px; font-weight: bold;">${formatCurrency(params.totalEstimateLow)} — ${formatCurrency(params.totalEstimateHigh)}</td>
+        </tr>
+      </table>
+      <p>We will be sending you a consignment agreement shortly. Once signed, your items will be cataloged and placed into an upcoming auction.</p>
+      <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
+    `, 'Items Accepted for Consignment'),
+  });
+}
+
 export async function sendAppraisalReportEmail(params: {
   clientName: string;
   clientEmail: string;
