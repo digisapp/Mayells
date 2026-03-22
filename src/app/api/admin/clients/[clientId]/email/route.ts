@@ -106,7 +106,7 @@ export async function POST(
       subject: emailSubject,
       html,
     });
-    db.insert(emails).values({
+    await db.insert(emails).values({
       resendId: sent?.id || null,
       direction: 'outbound',
       fromEmail: 'outreach@mayellauctions.com',
@@ -115,7 +115,7 @@ export async function POST(
       subject: emailSubject,
       bodyHtml: html,
       status: 'sent',
-    }).catch((err) => console.error('Failed to log email:', err));
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

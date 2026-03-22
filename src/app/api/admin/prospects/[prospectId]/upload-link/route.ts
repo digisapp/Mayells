@@ -50,7 +50,7 @@ export async function POST(
       .set({ status: 'upload_sent' })
       .where(eq(sellerProspects.id, prospectId));
 
-    const uploadUrl = `${process.env.NEXT_PUBLIC_APP_URL}/upload/${token}`;
+    const uploadUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com'}/upload/${token}`;
 
     // Send email to prospect if they have an email
     const [prospect] = await db

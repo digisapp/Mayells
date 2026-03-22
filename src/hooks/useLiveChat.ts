@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 export interface ChatMessage {
@@ -15,7 +15,8 @@ export interface ChatMessage {
 export function useLiveChat(auctionId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [connected, setConnected] = useState(false);
-  const supabase = createClient();
+  // Memoize supabase client to prevent useEffect re-running on every render
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     const channel = supabase.channel(`live:${auctionId}`);

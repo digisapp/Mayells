@@ -344,12 +344,12 @@ export default function AdminProspectDetailPage() {
       const payload: Record<string, unknown> = { id: itemId, action };
       if (itemOverrides) {
         if (itemOverrides.finalTitle.trim()) payload.finalTitle = itemOverrides.finalTitle.trim();
-        if (itemOverrides.finalEstimateLow.trim())
-          payload.finalEstimateLow = parseInt(itemOverrides.finalEstimateLow, 10);
-        if (itemOverrides.finalEstimateHigh.trim())
-          payload.finalEstimateHigh = parseInt(itemOverrides.finalEstimateHigh, 10);
-        if (itemOverrides.finalReserve.trim())
-          payload.finalReserve = parseInt(itemOverrides.finalReserve, 10);
+        const parsedLow = parseInt(itemOverrides.finalEstimateLow, 10);
+        if (!isNaN(parsedLow)) payload.finalEstimateLow = parsedLow;
+        const parsedHigh = parseInt(itemOverrides.finalEstimateHigh, 10);
+        if (!isNaN(parsedHigh)) payload.finalEstimateHigh = parsedHigh;
+        const parsedReserve = parseInt(itemOverrides.finalReserve, 10);
+        if (!isNaN(parsedReserve)) payload.finalReserve = parsedReserve;
         if (itemOverrides.finalCategory.trim())
           payload.finalCategory = itemOverrides.finalCategory.trim();
       }

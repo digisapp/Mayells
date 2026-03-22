@@ -16,8 +16,7 @@ async function sendAndLog(params: { to: string; subject: string; html: string })
     subject: params.subject,
     html: params.html,
   });
-  // Log to DB (non-blocking)
-  db.insert(emails).values({
+  await db.insert(emails).values({
     resendId: sent?.id || null,
     direction: 'outbound',
     fromEmail: FROM_EMAIL,
@@ -26,7 +25,7 @@ async function sendAndLog(params: { to: string; subject: string; html: string })
     subject: params.subject,
     bodyHtml: params.html,
     status: 'sent',
-  }).catch((err) => console.error('Failed to log outbound email:', err));
+  });
 }
 
 function emailLayout(content: string, title?: string): string {

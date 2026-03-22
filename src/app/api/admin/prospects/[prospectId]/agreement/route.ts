@@ -46,7 +46,7 @@ export async function POST(
     }
 
     const commission = commissionPercent ?? prospect.agreedCommissionPercent ?? 35;
-    const signUrl = `${process.env.NEXT_PUBLIC_APP_URL}/consignment-agreement?prospect=${prospectId}`;
+    const signUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com'}/consignment-agreement?prospect=${prospectId}`;
 
     // Update the prospect
     await db
@@ -141,8 +141,7 @@ export async function POST(
       html: emailHtml,
     });
 
-    // Log to DB (non-blocking)
-    db.insert(emails).values({
+    await db.insert(emails).values({
       resendId: sent?.id || null,
       direction: 'outbound',
       fromEmail,
@@ -151,7 +150,7 @@ export async function POST(
       subject: emailSubject,
       bodyHtml: emailHtml,
       status: 'sent',
-    }).catch((err) => console.error('Failed to log agreement email:', err));
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

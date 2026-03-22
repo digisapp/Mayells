@@ -61,9 +61,9 @@ export async function PATCH(req: NextRequest) {
     if (status) updateData.status = status;
     if (adminNotes !== undefined) updateData.adminNotes = adminNotes;
 
-    await db.update(inquiries).set(updateData).where(eq(inquiries.id, id));
+    const [updated] = await db.update(inquiries).set(updateData).where(eq(inquiries.id, id)).returning();
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ data: updated });
   } catch (error) {
     logger.error('Admin inquiry update error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

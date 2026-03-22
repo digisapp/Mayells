@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       subject,
       html: emailHtml,
     });
-    db.insert(emails).values({
+    await db.insert(emails).values({
       resendId: sent?.id || null,
       direction: 'outbound',
       fromEmail: 'outreach@mayellauctions.com',
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       bodyHtml: emailHtml,
       bodyText: body,
       status: 'sent',
-    }).catch((err) => console.error('Failed to log email:', err));
+    });
 
     // Update contact's lastContactedAt and status
     await db

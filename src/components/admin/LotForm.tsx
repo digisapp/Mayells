@@ -123,10 +123,9 @@ export function LotForm({ initialData, initialImages, lotId, onSubmit, isLoading
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: data.url, isPrimary, sortOrder: images.length }),
           });
+          if (!imgRes.ok) continue;
           const imgData = await imgRes.json();
-          if (imgRes.ok) {
-            newImage.id = imgData.data.id;
-          }
+          newImage.id = imgData.data.id;
         }
         setImages((prev) => [...prev, newImage]);
       } catch {
@@ -140,25 +139,27 @@ export function LotForm({ initialData, initialImages, lotId, onSubmit, isLoading
   async function removeImage(idx: number) {
     const img = images[idx];
     if (img.id && lotId) {
-      await fetch(`/api/lots/${lotId}/images`, {
+      const res = await fetch(`/api/lots/${lotId}/images`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageId: img.id }),
       });
+      if (!res.ok) return;
     }
     setImages((prev) => prev.filter((_, i) => i !== idx));
   }
 
   async function setPrimary(idx: number) {
-    setImages((prev) => prev.map((img, i) => ({ ...img, isPrimary: i === idx })));
     const img = images[idx];
     if (lotId && img.url) {
-      await fetch(`/api/lots/${lotId}`, {
+      const res = await fetch(`/api/lots/${lotId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ primaryImageUrl: img.url }),
       });
+      if (!res.ok) return;
     }
+    setImages((prev) => prev.map((img, i) => ({ ...img, isPrimary: i === idx })));
   }
 
   async function handleSubmit(e: React.FormEvent) {

@@ -14,8 +14,8 @@ export function RecentBidsCard({ bids }: { bids: RecentBid[] }) {
       <CardHeader><CardTitle>Recent Bids</CardTitle></CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {bids.map((bid, i) => (
-            <div key={i} className="flex items-center justify-between">
+          {bids.map((bid) => (
+            <div key={`${bid.created_at}-${bid.amount}-${bid.bidder_name}`} className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium truncate max-w-[200px]">{bid.lot_title}</p>
                 <p className="text-xs text-muted-foreground">{bid.bidder_name}</p>
