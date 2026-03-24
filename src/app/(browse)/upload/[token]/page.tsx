@@ -1,13 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { Upload, Plus, X, Check, Loader2, ImagePlus } from 'lucide-react';
+import { Loader2, X, Check, WifiOff, ArrowRight } from 'lucide-react';
+import { useUploadManager } from '@/hooks/useUploadManager';
+import { CaptureBar } from '@/components/upload/CaptureBar';
+import { ItemCard } from '@/components/upload/ItemCard';
+import { ReviewScreen } from '@/components/upload/ReviewScreen';
+import { PWAInstallPrompt } from '@/components/upload/PWAInstallPrompt';
 
-interface UploadItem {
-  images: string[];
-  sellerTitle: string;
-  sellerNotes: string;
+interface CaptureItem {
+  taskIds: string[];
+  notes: string;
 }
 
 interface LinkData {
@@ -16,18 +20,20 @@ interface LinkData {
   itemCount: number;
 }
 
-type PageState = 'loading' | 'invalid' | 'ready' | 'submitting' | 'success';
+type PageState = 'loading' | 'invalid' | 'capture' | 'review' | 'submitting' | 'success';
 
 export default function UploadPage() {
   const { token } = useParams<{ token: string }>();
   const [state, setState] = useState<PageState>('loading');
   const [linkData, setLinkData] = useState<LinkData | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [items, setItems] = useState<UploadItem[]>([
-    { images: [], sellerTitle: '', sellerNotes: '' },
-  ]);
+  const [items, setItems] = useState<CaptureItem[]>([{ taskIds: [], notes: '' }]);
   const [submittedCount, setSubmittedCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(true);
 
+  const { tasks, addFiles, retryFailed, removeTask, isUploading, hasErrors } = useUploadManager(token);
+
+  // Token validation
   useEffect(() => {
     async function validateToken() {
       try {
@@ -38,7 +44,7 @@ export default function UploadPage() {
         }
         const data = await res.json();
         setLinkData(data);
-        setState('ready');
+        setState('capture');
       } catch {
         setState('invalid');
       }
@@ -46,54 +52,105 @@ export default function UploadPage() {
     validateToken();
   }, [token]);
 
-  function addItem() {
-    if (linkData?.maxItems !== null && linkData?.maxItems !== undefined) {
-      const remaining = linkData.maxItems - linkData.itemCount;
-      if (items.length >= remaining) return;
+  // Register service worker
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {
+        // SW registration is non-critical
+      });
     }
-    setItems([...items, { images: [], sellerTitle: '', sellerNotes: '' }]);
-  }
+  }, []);
 
-  function removeItem(index: number) {
-    if (items.length <= 1) return;
-    setItems(items.filter((_, i) => i !== index));
-  }
+  // Online/offline detection
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    setIsOnline(navigator.onLine);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
-  function updateItem(index: number, field: keyof UploadItem, value: string | string[]) {
-    setItems(items.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
-  }
+  // Handle files from capture bar (add to current item)
+  const handleFilesSelected = useCallback(
+    (files: File[]) => {
+      const taskIds = addFiles(files);
+      setItems((prev) => {
+        const updated = [...prev];
+        const currentIdx = updated.length - 1;
+        updated[currentIdx] = {
+          ...updated[currentIdx],
+          taskIds: [...updated[currentIdx].taskIds, ...taskIds],
+        };
+        return updated;
+      });
+    },
+    [addFiles]
+  );
 
-  function addImageUrl(index: number) {
-    const updated = [...items];
-    updated[index] = { ...updated[index], images: [...updated[index].images, ''] };
-    setItems(updated);
-  }
+  // Start a new item
+  const handleNextItem = useCallback(() => {
+    setItems((prev) => [...prev, { taskIds: [], notes: '' }]);
+  }, []);
 
-  function updateImageUrl(itemIndex: number, imageIndex: number, url: string) {
-    const updated = [...items];
-    const images = [...updated[itemIndex].images];
-    images[imageIndex] = url;
-    updated[itemIndex] = { ...updated[itemIndex], images };
-    setItems(updated);
-  }
+  // Update notes for an item
+  const handleNotesChange = useCallback((index: number, notes: string) => {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, notes } : item)));
+  }, []);
 
-  function removeImageUrl(itemIndex: number, imageIndex: number) {
-    const updated = [...items];
-    const images = updated[itemIndex].images.filter((_, i) => i !== imageIndex);
-    updated[itemIndex] = { ...updated[itemIndex], images };
-    setItems(updated);
-  }
+  // Remove media from an item
+  const handleRemoveMedia = useCallback(
+    (itemIndex: number, taskId: string) => {
+      removeTask(taskId);
+      setItems((prev) =>
+        prev.map((item, i) =>
+          i === itemIndex
+            ? { ...item, taskIds: item.taskIds.filter((id) => id !== taskId) }
+            : item
+        )
+      );
+    },
+    [removeTask]
+  );
 
-  async function handleSubmit() {
-    const validItems = items.filter((item) => item.images.some((url) => url.trim() !== ''));
+  // Remove an entire item
+  const handleRemoveItem = useCallback(
+    (index: number) => {
+      setItems((prev) => {
+        const item = prev[index];
+        // Clean up upload tasks
+        item.taskIds.forEach((id) => removeTask(id));
+        const updated = prev.filter((_, i) => i !== index);
+        return updated.length === 0 ? [{ taskIds: [], notes: '' }] : updated;
+      });
+    },
+    [removeTask]
+  );
+
+  // Submit all items
+  const handleSubmit = useCallback(async () => {
+    // Filter to items that have completed uploads
+    const validItems = items.filter((item) => {
+      const completedUrls = item.taskIds
+        .map((id) => tasks.find((t) => t.id === id))
+        .filter((t) => t?.status === 'complete' && t.resultUrl)
+        .map((t) => t!.resultUrl!);
+      return completedUrls.length > 0;
+    });
+
     if (validItems.length === 0) return;
 
     setState('submitting');
     try {
       const payload = validItems.map((item) => ({
-        images: item.images.filter((url) => url.trim() !== ''),
-        sellerTitle: item.sellerTitle.trim() || undefined,
-        sellerNotes: item.sellerNotes.trim() || undefined,
+        images: item.taskIds
+          .map((id) => tasks.find((t) => t.id === id))
+          .filter((t) => t?.status === 'complete' && t.resultUrl)
+          .map((t) => t!.resultUrl!),
+        sellerNotes: item.notes.trim() || undefined,
       }));
 
       const res = await fetch(`/api/upload/${token}`, {
@@ -105,7 +162,7 @@ export default function UploadPage() {
       if (!res.ok) {
         const data = await res.json();
         setErrorMessage(data.error || 'Something went wrong. Please try again.');
-        setState('ready');
+        setState('review');
         return;
       }
 
@@ -113,17 +170,16 @@ export default function UploadPage() {
       setState('success');
     } catch {
       setErrorMessage('Something went wrong. Please try again.');
-      setState('ready');
+      setState('review');
     }
-  }
+  }, [items, tasks, token]);
 
-  const validItemCount = items.filter((item) => item.images.some((url) => url.trim() !== '')).length;
-  const remaining =
-    linkData?.maxItems !== null && linkData?.maxItems !== undefined
-      ? linkData.maxItems - linkData.itemCount
-      : null;
+  // Items with media (for display)
+  const itemsWithMedia = items.filter((item) => item.taskIds.length > 0);
+  const currentItemHasMedia = items[items.length - 1]?.taskIds.length > 0;
+  const totalMediaCount = items.reduce((sum, item) => sum + item.taskIds.length, 0);
 
-  // ── Loading ──────────────────────────────────────────────
+  // ── Loading ──
   if (state === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8]">
@@ -135,7 +191,7 @@ export default function UploadPage() {
     );
   }
 
-  // ── Invalid ──────────────────────────────────────────────
+  // ── Invalid ──
   if (state === 'invalid') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8] px-4">
@@ -152,11 +208,11 @@ export default function UploadPage() {
     );
   }
 
-  // ── Success ──────────────────────────────────────────────
+  // ── Success ──
   if (state === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FAFAF8] px-4">
-        <div className="max-w-md text-center">
+      <div className="min-h-screen bg-[#FAFAF8] px-4 pt-20">
+        <div className="max-w-md mx-auto text-center">
           <div className="w-16 h-16 rounded-full bg-[#D4C5A0]/20 flex items-center justify-center mx-auto mb-6">
             <Check className="h-8 w-8 text-[#D4C5A0]" />
           </div>
@@ -165,168 +221,160 @@ export default function UploadPage() {
             We&apos;ve received your {submittedCount} {submittedCount === 1 ? 'item' : 'items'}. Our
             team will review them and reach out within 1&ndash;2 business days.
           </p>
+          <PWAInstallPrompt />
         </div>
       </div>
     );
   }
 
-  // ── Ready / Submitting ───────────────────────────────────
+  // ── Review ──
+  if (state === 'review' || state === 'submitting') {
+    return (
+      <>
+        {errorMessage && (
+          <div className="fixed top-0 left-0 right-0 z-50 px-4 pt-2">
+            <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+              {errorMessage}
+              <button
+                type="button"
+                onClick={() => setErrorMessage('')}
+                className="ml-2 text-red-500 font-medium"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
+        <ReviewScreen
+          items={items.filter((item) => item.taskIds.length > 0)}
+          tasks={tasks}
+          onNotesChange={(idx, notes) => {
+            // Map review index back to full items array
+            const withMedia = items
+              .map((item, i) => ({ item, origIdx: i }))
+              .filter(({ item }) => item.taskIds.length > 0);
+            if (withMedia[idx]) {
+              handleNotesChange(withMedia[idx].origIdx, notes);
+            }
+          }}
+          onBack={() => {
+            setErrorMessage('');
+            setState('capture');
+          }}
+          onSubmit={handleSubmit}
+          isSubmitting={state === 'submitting'}
+          isUploading={isUploading}
+          hasErrors={hasErrors}
+          onRetryFailed={retryFailed}
+        />
+      </>
+    );
+  }
+
+  // ── Capture ──
   return (
     <div className="min-h-screen bg-[#FAFAF8]">
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-white text-center py-2 px-4 text-sm flex items-center justify-center gap-2">
+          <WifiOff className="w-4 h-4" />
+          You&apos;re offline. Photos will upload when you&apos;re back online.
+        </div>
+      )}
+
       {/* Header */}
-      <header className="border-b border-[#272D35]/10 bg-white">
-        <div className="max-w-3xl mx-auto px-4 py-8 text-center">
-          <p className="text-xs tracking-[0.35em] uppercase text-[#D4C5A0] font-medium mb-6">
+      <header className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-[#272D35]/10 z-40">
+        <div className="flex items-center justify-between px-4 py-3">
+          <p className="text-xs tracking-[0.35em] uppercase text-[#D4C5A0] font-medium">
             MAYELL
           </p>
-          <h1 className="font-serif text-3xl text-[#272D35] mb-3 flex items-center justify-center gap-3">
-            <Upload className="h-7 w-7 text-[#D4C5A0]" />
-            Upload Your Items
-          </h1>
-          <p className="text-[#272D35]/60 leading-relaxed">
-            Hello {linkData?.prospectName}, please upload photos of items you&apos;d like to
-            consign.
-          </p>
-          {remaining !== null && (
-            <p className="text-sm text-[#D4C5A0] mt-2">
-              {remaining} {remaining === 1 ? 'item' : 'items'} remaining
-            </p>
-          )}
+          <div className="flex items-center gap-3">
+            {totalMediaCount > 0 && (
+              <span className="text-xs text-[#272D35]/50">
+                {itemsWithMedia.length} {itemsWithMedia.length === 1 ? 'item' : 'items'} &middot;{' '}
+                {totalMediaCount} {totalMediaCount === 1 ? 'photo' : 'photos'}
+              </span>
+            )}
+            {itemsWithMedia.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setState('review')}
+                className="flex items-center gap-1.5 px-4 py-2 bg-[#272D35] text-white text-xs font-medium rounded-lg active:scale-[0.97] transition-transform"
+              >
+                Done
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* Items */}
-      <main className="max-w-3xl mx-auto px-4 py-10">
-        {errorMessage && (
-          <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-            {errorMessage}
-          </div>
+      {/* Welcome message when empty */}
+      {totalMediaCount === 0 && (
+        <div className="px-6 pt-12 pb-6 text-center">
+          <h1 className="font-serif text-2xl text-[#272D35] mb-2">
+            Hello{linkData?.prospectName ? `, ${linkData.prospectName}` : ''}
+          </h1>
+          <p className="text-[#272D35]/50 text-sm leading-relaxed max-w-xs mx-auto">
+            Take photos and videos of items you&apos;d like to consign. You can capture multiple angles per item.
+          </p>
+          {linkData?.maxItems && (
+            <p className="text-xs text-[#D4C5A0] mt-3">
+              Up to {linkData.maxItems - linkData.itemCount} items remaining
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Item cards */}
+      <main
+        className="px-4 pb-44"
+        style={{ paddingTop: totalMediaCount === 0 ? '0' : '1rem' }}
+      >
+        {totalMediaCount > 0 && linkData?.prospectName && (
+          <p className="text-[#272D35]/40 text-xs mb-4">
+            Uploading for {linkData.prospectName}
+          </p>
         )}
 
-        <div className="space-y-6">
-          {items.map((item, itemIndex) => (
-            <div
-              key={itemIndex}
-              className="bg-white rounded-xl border border-[#272D35]/10 p-6 relative"
-            >
-              {/* Remove button */}
-              {items.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeItem(itemIndex)}
-                  className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-[#272D35]/30 hover:text-[#272D35]/70 hover:bg-[#272D35]/5 transition-colors"
-                  aria-label="Remove item"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
+        <div className="space-y-4">
+          {items.map((item, idx) => {
+            // Only show items that have media or are the current (last) item
+            if (item.taskIds.length === 0 && idx !== items.length - 1) return null;
+            if (item.taskIds.length === 0) return null; // Don't show empty current item
 
-              <p className="text-xs tracking-[0.2em] uppercase text-[#272D35]/40 mb-5">
-                Item {itemIndex + 1}
-              </p>
+            return (
+              <ItemCard
+                key={idx}
+                index={idx}
+                taskIds={item.taskIds}
+                tasks={tasks}
+                notes={item.notes}
+                onNotesChange={(notes) => handleNotesChange(idx, notes)}
+                onRemoveMedia={(taskId) => handleRemoveMedia(idx, taskId)}
+                onRemoveItem={() => handleRemoveItem(idx)}
+                canRemove={itemsWithMedia.length > 1 || idx !== 0}
+              />
+            );
+          })}
+        </div>
 
-              {/* Image URLs */}
-              <div className="mb-5">
-                <label className="block text-sm font-medium text-[#272D35] mb-2">
-                  Image URLs
-                </label>
-                <div className="space-y-2">
-                  {item.images.map((url, imgIndex) => (
-                    <div key={imgIndex} className="flex gap-2">
-                      <input
-                        type="url"
-                        value={url}
-                        onChange={(e) => updateImageUrl(itemIndex, imgIndex, e.target.value)}
-                        placeholder="https://example.com/photo.jpg"
-                        className="flex-1 px-3 py-2 text-sm border border-[#272D35]/15 rounded-lg bg-white text-[#272D35] placeholder:text-[#272D35]/30 focus:outline-none focus:ring-2 focus:ring-[#D4C5A0]/50 focus:border-[#D4C5A0] transition-colors"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImageUrl(itemIndex, imgIndex)}
-                        className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-lg text-[#272D35]/30 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        aria-label="Remove image URL"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => addImageUrl(itemIndex)}
-                  className="mt-2 flex items-center gap-2 text-sm text-[#D4C5A0] hover:text-[#c4b590] transition-colors"
-                >
-                  <ImagePlus className="h-4 w-4" />
-                  Add image URL
-                </button>
-              </div>
-
-              {/* Title */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-[#272D35] mb-1.5">
-                  What is this item?
-                  <span className="text-[#272D35]/30 font-normal ml-1.5">optional</span>
-                </label>
-                <input
-                  type="text"
-                  value={item.sellerTitle}
-                  onChange={(e) => updateItem(itemIndex, 'sellerTitle', e.target.value)}
-                  placeholder="e.g., Victorian mahogany writing desk"
-                  className="w-full px-3 py-2 text-sm border border-[#272D35]/15 rounded-lg bg-white text-[#272D35] placeholder:text-[#272D35]/30 focus:outline-none focus:ring-2 focus:ring-[#D4C5A0]/50 focus:border-[#D4C5A0] transition-colors"
-                />
-              </div>
-
-              {/* Notes */}
-              <div>
-                <label className="block text-sm font-medium text-[#272D35] mb-1.5">
-                  Any details about this item?
-                  <span className="text-[#272D35]/30 font-normal ml-1.5">optional</span>
-                </label>
-                <textarea
-                  value={item.sellerNotes}
-                  onChange={(e) => updateItem(itemIndex, 'sellerNotes', e.target.value)}
-                  placeholder="History, condition, provenance, dimensions..."
-                  rows={3}
-                  className="w-full px-3 py-2 text-sm border border-[#272D35]/15 rounded-lg bg-white text-[#272D35] placeholder:text-[#272D35]/30 focus:outline-none focus:ring-2 focus:ring-[#D4C5A0]/50 focus:border-[#D4C5A0] transition-colors resize-none"
-                />
-              </div>
+        {/* Empty state hint */}
+        {totalMediaCount === 0 && (
+          <div className="mt-4 text-center">
+            <div className="inline-flex items-center gap-2 text-[#272D35]/30 text-sm">
+              <span>&darr;</span> Use the buttons below to get started <span>&darr;</span>
             </div>
-          ))}
-        </div>
-
-        {/* Add Item Button */}
-        <button
-          type="button"
-          onClick={addItem}
-          disabled={remaining !== null && items.length >= remaining}
-          className="mt-6 w-full py-3 rounded-xl border-2 border-dashed border-[#272D35]/15 text-[#272D35]/50 hover:border-[#D4C5A0] hover:text-[#D4C5A0] transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <Plus className="h-4 w-4" />
-          Add Item
-        </button>
-
-        {/* Submit */}
-        <div className="mt-10 text-center">
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={state === 'submitting' || validItemCount === 0}
-            className="inline-flex items-center justify-center gap-2.5 px-10 py-3.5 bg-[#272D35] text-white text-sm font-medium tracking-wide rounded-lg hover:bg-[#1e2329] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {state === 'submitting' ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4" />
-                Submit {validItemCount} {validItemCount === 1 ? 'Item' : 'Items'}
-              </>
-            )}
-          </button>
-        </div>
+          </div>
+        )}
       </main>
+
+      {/* Bottom capture bar */}
+      <CaptureBar
+        onFilesSelected={handleFilesSelected}
+        onNextItem={handleNextItem}
+        hasCurrentItemMedia={currentItemHasMedia}
+      />
     </div>
   );
 }

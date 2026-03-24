@@ -4,20 +4,7 @@ import { uploadLinks, uploadItems, sellerProspects } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { sendItemsReceivedNotification } from '@/lib/email/notifications';
-
-async function validateLink(token: string) {
-  const [row] = await db
-    .select({
-      link: uploadLinks,
-      prospectName: sellerProspects.fullName,
-    })
-    .from(uploadLinks)
-    .innerJoin(sellerProspects, eq(uploadLinks.prospectId, sellerProspects.id))
-    .where(eq(uploadLinks.token, token))
-    .limit(1);
-
-  return row ?? null;
-}
+import { validateLink } from '@/lib/upload/validate-link';
 
 export async function GET(
   _request: NextRequest,

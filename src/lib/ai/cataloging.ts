@@ -25,8 +25,23 @@ export type CatalogResult = z.infer<typeof catalogSchema>;
  * Analyze lot images and generate a complete catalog entry.
  * Accepts one or more image URLs.
  */
+const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm', '.avi', '.mkv'];
+
+function isVideoUrl(url: string): boolean {
+  const pathname = new URL(url).pathname.toLowerCase();
+  return VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
+}
+
 export async function catalogLotFromImages(imageUrls: string[]): Promise<CatalogResult> {
-  const imageContent = imageUrls.map((url) => ({
+  // Filter out video URLs — vision AI models only process images
+  const filteredUrls = imageUrls.filter((url) => !isVideoUrl(url));
+  if (filteredUrls.length === 0 && imageUrls.length > 0) {
+    // If only videos were provided, use the original URLs and let the model handle it
+    // This is a fallback — typically there should be at least one image
+  }
+  const urlsToProcess = filteredUrls.length > 0 ? filteredUrls : imageUrls;
+
+  const imageContent = urlsToProcess.map((url) => ({
     type: 'image' as const,
     image: new URL(url),
   }));

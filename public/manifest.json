@@ -1,0 +1,28 @@
+{
+  "name": "Mayell Auctions - Seller Upload",
+  "short_name": "Mayell Upload",
+  "description": "Upload items for consignment with Mayell Auctions",
+  "start_url": "/upload",
+  "display": "standalone",
+  "background_color": "#FAFAF8",
+  "theme_color": "#272D35",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
