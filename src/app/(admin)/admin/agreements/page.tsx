@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Send, FileText, QrCode, ExternalLink, Copy, Check, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
-const AGREEMENT_URL = 'https://mayellauctions.com/consignment-agreement';
+const AGREEMENT_URL = 'https://mayells.com/consignment-agreement';
 
 export default function AdminAgreementsPage() {
   const [name, setName] = useState('');

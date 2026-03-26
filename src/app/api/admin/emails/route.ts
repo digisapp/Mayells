@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
     }
 
     const resend = getResend();
-    const fromAddress = 'Mayell <notifications@mayellauctions.com>';
+    const fromAddress = 'Mayell <notifications@mayells.com>';
 
     // Build send params with optional attachments
     // Attachments format: [{ content: "base64...", filename: "file.pdf", contentType?: "application/pdf" }]
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
       resendId: sent?.id || null,
       direction: 'outbound',
       status: 'sent',
-      fromEmail: 'notifications@mayellauctions.com',
+      fromEmail: 'notifications@mayells.com',
       fromName: 'Mayell',
       toEmail: to,
       subject,

@@ -23,12 +23,12 @@ const jsonLd = {
   '@type': 'Organization',
   name: 'Mayell',
   description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.',
-  url: process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com',
+  url: process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com',
   sameAs: [],
   contactPoint: {
     '@type': 'ContactPoint',
     contactType: 'customer service',
-    email: 'info@mayellauctions.com',
+    email: 'info@mayells.com',
   },
 };
 

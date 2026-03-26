@@ -138,7 +138,7 @@ export async function POST(
         .where(eq(users.id, result.previousBidderId))
         .limit(1);
       if (outbidUser?.email) {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
         sendOutbidNotification({
           email: outbidUser.email,
           lotTitle: lot.title,

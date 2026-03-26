@@ -5,7 +5,7 @@
  * and search engines can understand lot listings, auctions, and pricing natively.
  */
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 /**
  * Generate Product + Offer schema for an auction lot.

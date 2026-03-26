@@ -79,7 +79,7 @@ export default async function OGImage() {
             letterSpacing: '0.05em',
           }}
         >
-          mayellauctions.com
+          mayells.com
         </div>
       </div>
     ),

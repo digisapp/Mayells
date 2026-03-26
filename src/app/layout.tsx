@@ -26,7 +26,7 @@ const cormorant = Cormorant_Garamond({
   weight: ['400', '600', '700'],
 });
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),

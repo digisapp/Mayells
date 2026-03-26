@@ -3,7 +3,7 @@ import { PublicNav } from '@/components/layout/PublicNav';
 import { PublicFooter } from '@/components/layout/PublicFooter';
 import { ChatWidget } from '@/components/chat/ChatWidget';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 const websiteJsonLd = {
   '@context': 'https://schema.org',
@@ -24,7 +24,7 @@ const businessJsonLd = {
   name: 'Mayell Auctions',
   url: BASE_URL,
   telephone: '+15612204622',
-  email: 'info@mayellauctions.com',
+  email: 'info@mayells.com',
   description: 'Luxury auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles on LiveAuctioneers.',
   priceRange: '$$$$',
   areaServed: 'US',

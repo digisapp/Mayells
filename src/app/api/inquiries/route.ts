@@ -72,11 +72,11 @@ export async function POST(req: NextRequest) {
             <a href="${process.env.NEXT_PUBLIC_APP_URL}/admin/lots/${lot.id}" style="display: inline-block; background: #D4C5A0; color: #272D35; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 4px;">
               View Lot in Admin
             </a>
-            <p style="margin-top: 30px; font-size: 12px; color: #999;">Submitted via mayellauctions.com</p>
+            <p style="margin-top: 30px; font-size: 12px; color: #999;">Submitted via mayells.com</p>
           </div>
         `;
       const { data: sent } = await resend.emails.send({
-        from: `Mayell <notifications@mayellauctions.com>`,
+        from: `Mayell <notifications@mayells.com>`,
         to: BUSINESS.email,
         subject: emailSubject,
         html: emailHtml,
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       db.insert(emails).values({
         resendId: sent?.id || null,
         direction: 'outbound',
-        fromEmail: 'notifications@mayellauctions.com',
+        fromEmail: 'notifications@mayells.com',
         fromName: 'Mayell',
         toEmail: BUSINESS.email,
         subject: emailSubject,

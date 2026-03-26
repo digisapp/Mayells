@@ -18,7 +18,7 @@ Key information:
 - We Sell: Through curated auctions and our online gallery.
 - We Consign: Sellers earn top dollar through our auction process.
 - Categories we handle: Art, Antiques and Collectibles, Luxury Goods, Fashion and Accessories, Jewelry and Watches, Design and Interiors.
-- Our website is mayellauctions.com where visitors can browse auctions, gallery items, and private sales.
+- Our website is mayells.com where visitors can browse auctions, gallery items, and private sales.
 
 How to help callers:
 - If they want to sell or consign, offer to schedule a free appraisal or take their contact info.

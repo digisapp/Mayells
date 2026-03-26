@@ -15,7 +15,7 @@ import { formatCurrency } from '@/types';
 import { generateLotJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
 import { categories } from '@/db/schema';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 async function getLot(lotId: string) {
   let [lot] = await db.select().from(lots).where(eq(lots.slug, lotId)).limit(1);

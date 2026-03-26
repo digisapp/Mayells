@@ -262,7 +262,7 @@ export async function processInboundEmail(emailId: string) {
     });
 
     const { data: sent } = await resend.emails.send({
-      from: `Mayell <notifications@mayellauctions.com>`,
+      from: `Mayell <notifications@mayells.com>`,
       to: email.fromEmail,
       subject: replySubject,
       html: brandedHtml,
@@ -274,7 +274,7 @@ export async function processInboundEmail(emailId: string) {
       resendId: sent?.id || null,
       direction: 'outbound',
       status: 'sent',
-      fromEmail: 'notifications@mayellauctions.com',
+      fromEmail: 'notifications@mayells.com',
       fromName: 'Mayell',
       toEmail: email.fromEmail,
       subject: replySubject,

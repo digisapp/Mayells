@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { auctions, lots, categories } from '@/db/schema';
 import { inArray, eq, and } from 'drizzle-orm';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [

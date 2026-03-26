@@ -4,8 +4,8 @@ import { BUSINESS } from '@/lib/config';
 import { db } from '@/db';
 import { emails } from '@/db/schema';
 
-const FROM = 'Mayell <notifications@mayellauctions.com>';
-const FROM_EMAIL = 'notifications@mayellauctions.com';
+const FROM = 'Mayell <notifications@mayells.com>';
+const FROM_EMAIL = 'notifications@mayells.com';
 const ADMIN_EMAIL = BUSINESS.email;
 
 async function sendAndLog(params: { to: string; subject: string; html: string }) {
@@ -46,7 +46,7 @@ function adminEmailLayout(content: string, title?: string): string {
         ${title ? `<h1 style="color: #272D35; font-size: 24px;">${title}</h1>` : ''}
         ${content}
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
-          Submitted via mayellauctions.com
+          Submitted via mayells.com
         </p>
       </div>
     `;

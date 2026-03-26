@@ -11,7 +11,7 @@ import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { Calendar, Clock, Gavel, ExternalLink } from 'lucide-react';
 import { generateAuctionJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com';
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 async function getAuction(auctionId: string) {
   let [auction] = await db.select().from(auctions).where(eq(auctions.slug, auctionId)).limit(1);

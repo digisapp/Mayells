@@ -46,7 +46,7 @@ export async function POST(
     }
 
     const commission = commissionPercent ?? prospect.agreedCommissionPercent ?? 35;
-    const signUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayellauctions.com'}/consignment-agreement?prospect=${prospectId}`;
+    const signUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com'}/consignment-agreement?prospect=${prospectId}`;
 
     // Update the prospect
     await db
@@ -133,7 +133,7 @@ export async function POST(
 
     // Send email using sendAndLog pattern
     const resend = getResend();
-    const fromEmail = 'notifications@mayellauctions.com';
+    const fromEmail = 'notifications@mayells.com';
     const { data: sent } = await resend.emails.send({
       from: `${BUSINESS.name} <${fromEmail}>`,
       to: prospect.email,
