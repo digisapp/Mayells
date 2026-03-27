@@ -6,9 +6,10 @@ import Image from 'next/image';
 import { db } from '@/db';
 import { lots, lotImages, auctionLots, auctions, bids } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
-import { BidPanel } from '@/components/bidding/BidPanel';
-import { RemindMeButton } from '@/components/bidding/RemindMeButton';
 import { ShareButtons } from '@/components/lots/ShareButtons';
+import { Button } from '@/components/ui/button';
+import { ExternalLink, Phone, Mail } from 'lucide-react';
+import { BUSINESS } from '@/lib/config';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
@@ -169,7 +170,6 @@ export default async function LotDetailPage({
               <p className="text-lg text-muted-foreground">{lot.subtitle}</p>
             )}
             <div className="flex flex-wrap items-center gap-3 mt-3">
-              {auction && <RemindMeButton lotId={lot.id} />}
               <ShareButtons title={lot.title} url={`${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`} />
             </div>
           </div>
@@ -243,29 +243,52 @@ export default async function LotDetailPage({
           )}
         </div>
 
-        {/* Right: Bid Panel */}
-        <div>
-          {auction && auctionLot ? (
-            <BidPanel
-              lotId={lot.id}
-              auctionId={auction.id}
-              currentBid={lot.currentBidAmount}
-              bidCount={lot.bidCount}
-              closingAt={auctionLot.closingAt}
-              estimateLow={lot.estimateLow}
-              estimateHigh={lot.estimateHigh}
-              startingBid={lot.startingBid}
-            />
-          ) : (
-            <div className="bg-card border border-border/50 rounded-lg p-6">
-              <p className="text-muted-foreground">This lot is not currently in an active auction.</p>
-              {lot.estimateLow && lot.estimateHigh && (
-                <p className="mt-2 text-sm">
-                  Estimate: {formatCurrency(lot.estimateLow)} — {formatCurrency(lot.estimateHigh)}
+        {/* Right: Auction Info + Bid CTA */}
+        <div className="space-y-4 sticky top-24">
+          <div className="bg-card border border-border/50 rounded-xl p-6 space-y-5 shadow-luxury">
+            {/* Estimate / Current Bid */}
+            {lot.currentBidAmount > 0 ? (
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Current Bid</p>
+                <p className="font-display text-display-md">{formatCurrency(lot.currentBidAmount)}</p>
+                <p className="text-sm text-muted-foreground mt-1">{lot.bidCount} bid{lot.bidCount !== 1 ? 's' : ''}</p>
+              </div>
+            ) : lot.estimateLow && lot.estimateHigh ? (
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Estimate</p>
+                <p className="font-display text-display-md">
+                  {formatCurrency(lot.estimateLow)} — {formatCurrency(lot.estimateHigh)}
                 </p>
-              )}
+              </div>
+            ) : null}
+
+            {/* LiveAuctioneers CTA */}
+            {auction?.liveauctioneersUrl ? (
+              <a href={auction.liveauctioneersUrl} target="_blank" rel="noopener noreferrer">
+                <Button variant="champagne" size="xl" className="w-full gap-2">
+                  <ExternalLink className="h-5 w-5" />
+                  Bid on LiveAuctioneers
+                </Button>
+              </a>
+            ) : auction ? (
+              <p className="text-sm text-muted-foreground">Bidding link coming soon.</p>
+            ) : (
+              <p className="text-sm text-muted-foreground">This lot is not currently in an active auction.</p>
+            )}
+
+            {/* Alternative bidding */}
+            <div className="border-t border-border/30 pt-4 space-y-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Or bid by phone / absentee</p>
+              <a href={BUSINESS.phoneHref} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Phone className="h-4 w-4" />
+                {BUSINESS.phone}
+              </a>
+              <a href={`mailto:${BUSINESS.email}?subject=Bid Inquiry: ${encodeURIComponent(lot.title)}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Mail className="h-4 w-4" />
+                {BUSINESS.email}
+              </a>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

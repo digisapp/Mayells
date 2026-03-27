@@ -46,6 +46,11 @@ export const automationSettings = pgTable('automation_settings', {
   aiEmailAutoReply: boolean('ai_email_auto_reply').default(false).notNull(), // when ON, AI sends replies automatically
   // when OFF (default), AI drafts a reply but you click Send manually
 
+  // Prospect follow-up automation
+  autoFollowUpProspects: boolean('auto_follow_up_prospects').default(false).notNull(), // auto-send follow-up emails to unresponsive prospects
+  followUpDelayHours: integer('follow_up_delay_hours').default(48), // hours to wait before sending first follow-up
+  followUpUploadReminderHours: integer('follow_up_upload_reminder_hours').default(72), // hours to wait before reminding about upload link
+
   // Notifications
   notifySellerOnApproval: boolean('notify_seller_on_approval').default(true).notNull(),
   notifySellerOnSale: boolean('notify_seller_on_sale').default(true).notNull(),

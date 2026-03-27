@@ -400,6 +400,44 @@ export async function sendProspectAcceptedNotification(params: {
   });
 }
 
+/**
+ * Send a follow-up email to a prospect who hasn't responded.
+ * Used by the cron job to nudge prospects who submitted via consign form.
+ */
+export async function sendProspectFollowUpEmail(params: {
+  prospectEmail: string;
+  prospectName: string;
+  uploadUrl?: string;
+}) {
+  await sendAndLog({
+    to: params.prospectEmail,
+    subject: `${BUSINESS.name} — We'd Love to Help You`,
+    html: emailLayout(`
+      <p>Dear ${params.prospectName},</p>
+      <p>We wanted to follow up and let you know that our team is here to help whenever you're ready. Whether you have questions about the consignment process or need assistance getting started, we're just a phone call or email away.</p>
+      ${params.uploadUrl ? `
+      <p>If you'd like to share photos of your items, you can use the secure link below — it only takes a few minutes:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        ${ctaButton(params.uploadUrl, 'Upload Your Items')}
+      </div>
+      ` : ''}
+      <p>Feel free to reach out directly anytime:</p>
+      <table style="margin: 16px 0; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 6px 12px; color: #666;">Phone:</td>
+          <td style="padding: 6px 12px; font-weight: bold;">${BUSINESS.phone}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 12px; color: #666;">Email:</td>
+          <td style="padding: 6px 12px; font-weight: bold;">${BUSINESS.email}</td>
+        </tr>
+      </table>
+      <p>We look forward to working with you.</p>
+      <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
+    `, "We're Here to Help"),
+  });
+}
+
 export async function sendAppraisalReportEmail(params: {
   clientName: string;
   clientEmail: string;

@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Search, User, Menu, X } from 'lucide-react';
+import { Search, Menu, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 const navLinks = [
@@ -14,7 +13,6 @@ const navLinks = [
 ];
 
 export function PublicNav() {
-  const { isAuthenticated, profile } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -60,23 +58,9 @@ export function PublicNav() {
               </Button>
             </Link>
 
-            {isAuthenticated ? (
-              <Link href="/dashboard" className="hidden sm:block">
-                <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
-                  <User className="h-4 w-4" />
-                  <span className="text-[13px]">{profile?.displayName || profile?.fullName || 'Account'}</span>
-                </Button>
-              </Link>
-            ) : (
-              <div className="hidden sm:flex items-center gap-2">
-                <Link href="/login">
-                  <Button variant="ghost" size="sm" className="text-[13px]">Sign In</Button>
-                </Link>
-                <Link href="/signup">
-                  <Button variant="champagne" size="sm" className="text-[13px]">Register</Button>
-                </Link>
-              </div>
-            )}
+            <Link href="/how-to-buy" className="hidden sm:block">
+              <Button variant="champagne" size="sm" className="text-[13px]">How to Buy</Button>
+            </Link>
 
             <Button
               variant="ghost"
@@ -112,27 +96,6 @@ export function PublicNav() {
               >
                 How to Buy
               </Link>
-            </div>
-            <div className="mt-4 pt-4 border-t border-border/30 px-3">
-              {isAuthenticated ? (
-                <Link
-                  href="/dashboard"
-                  className="flex items-center gap-2 py-3 text-[15px] text-muted-foreground hover:text-foreground"
-                  onClick={() => setMobileOpen(false)}
-                >
-                  <User className="h-4 w-4" />
-                  {profile?.displayName || profile?.fullName || 'My Account'}
-                </Link>
-              ) : (
-                <div className="flex gap-3">
-                  <Link href="/login" className="flex-1" onClick={() => setMobileOpen(false)}>
-                    <Button variant="outline" size="lg" className="w-full text-[14px]">Sign In</Button>
-                  </Link>
-                  <Link href="/signup" className="flex-1" onClick={() => setMobileOpen(false)}>
-                    <Button variant="champagne" size="lg" className="w-full text-[14px]">Register</Button>
-                  </Link>
-                </div>
-              )}
             </div>
           </nav>
         )}

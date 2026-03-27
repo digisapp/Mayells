@@ -1,14 +1,7 @@
-'use client';
-
 import Link from 'next/link';
 import Image from 'next/image';
-import { Heart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/types';
-import { useAuth } from '@/context/AuthContext';
-import { toast } from 'sonner';
-import { useState } from 'react';
 import type { Lot } from '@/db/schema/lots';
 
 interface LotCardProps {
@@ -16,44 +9,15 @@ interface LotCardProps {
   auctionSlug?: string;
   showBidInfo?: boolean;
   isGallery?: boolean;
-  isWatchlisted?: boolean;
 }
 
-export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, isWatchlisted = false }: LotCardProps) {
-  const { isAuthenticated } = useAuth();
-  const [saved, setSaved] = useState(isWatchlisted);
-  const [loading, setLoading] = useState(false);
+export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: LotCardProps) {
   const galleryMode = isGallery || lot.saleType === 'gallery' || lot.saleType === 'private';
   const href = galleryMode
     ? `/gallery/${lot.slug || lot.id}`
     : auctionSlug
       ? `/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`
       : `/lots/${lot.slug || lot.id}`;
-
-  async function toggleWatchlist(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isAuthenticated) {
-      toast.error('Sign in to save items to your watchlist');
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch('/api/watchlist', {
-        method: saved ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lotId: lot.id }),
-      });
-      if (res.ok) {
-        setSaved(!saved);
-        toast.success(saved ? 'Removed from watchlist' : 'Added to watchlist');
-      }
-    } catch {
-      toast.error('Failed to update watchlist');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <Link href={href} className="group block">
@@ -80,16 +44,6 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, isWat
               Featured
             </Badge>
           )}
-
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-white/90 backdrop-blur-sm hover:bg-white h-8 w-8 rounded-full sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 shadow-sm"
-            onClick={toggleWatchlist}
-            disabled={loading}
-          >
-            <Heart className={`h-3.5 w-3.5 ${saved ? 'fill-red-500 text-red-500' : 'text-charcoal'}`} />
-          </Button>
         </div>
 
         <div className="p-3 sm:p-4 space-y-1 sm:space-y-1.5">

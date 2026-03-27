@@ -10,7 +10,9 @@ import {
   ArrowRight,
   X,
   MessageCircle,
+  Clock,
 } from 'lucide-react';
+import { BUSINESS } from '@/lib/config';
 
 
 const steps = [
@@ -150,6 +152,25 @@ export default function ConsignPage() {
         </div>
       </section>
 
+      {/* Social Proof Stats */}
+      <section className="border-b border-white/10 bg-charcoal">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            {[
+              { value: '500+', label: 'Items Sold' },
+              { value: '24hr', label: 'Average Response' },
+              { value: '$2M+', label: 'in Sales' },
+              { value: 'Free', label: 'Appraisals' },
+            ].map((stat) => (
+              <div key={stat.label}>
+                <span className="text-lg font-display text-champagne">{stat.value}</span>
+                <p className="text-[11px] uppercase tracking-wider text-white/50 mt-0.5">{stat.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* How It Works */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h2 className="font-display text-display-sm text-center mb-12">How Consignment Works</h2>
@@ -221,9 +242,33 @@ export default function ConsignPage() {
             <div className="text-center py-8">
               <CheckCircle className="h-12 w-12 text-champagne mx-auto mb-4" />
               <h2 className="font-display text-xl text-charcoal mb-2">Submission Received</h2>
-              <p className="text-muted-foreground text-sm mb-6">
-                Thank you! Our team will review your consignment and contact you within 1-2 business days.
+              <p className="text-muted-foreground text-sm mb-8">
+                Thank you! We&apos;ll review your submission and call you within 24 hours.
               </p>
+
+              <div className="bg-gray-50 rounded-xl border border-gray-100 p-6 mb-8 text-left">
+                <h3 className="font-semibold text-sm text-charcoal mb-4 text-center">What happens next</h3>
+                <div className="space-y-3">
+                  {[
+                    { num: '1', text: 'We review your photos and item details' },
+                    { num: '2', text: 'We call to discuss value and next steps' },
+                    { num: '3', text: 'We come to you for free pickup' },
+                  ].map((step) => (
+                    <div key={step.num} className="flex items-start gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-champagne/20 text-champagne text-xs font-semibold flex items-center justify-center">{step.num}</span>
+                      <p className="text-sm text-muted-foreground">{step.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-sm text-muted-foreground mb-6">
+                Want to talk sooner? Call us at{' '}
+                <a href={BUSINESS.phoneHref} className="text-champagne font-medium hover:underline">
+                  {BUSINESS.phone}
+                </a>
+              </p>
+
               <div className="flex gap-3 justify-center">
                 <Button variant="outline" className="border-gray-200 text-charcoal hover:bg-gray-50" onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', items: '' }); setPhotos([]); setPhotoPreviews([]); }}>
                   Submit Another
@@ -236,9 +281,13 @@ export default function ConsignPage() {
           ) : (
             <>
               <h2 className="font-display text-display-sm text-center mb-2 text-charcoal">Submit Your Item</h2>
-              <p className="text-center text-muted-foreground text-sm mb-8">
-                Tell us about your piece — we&apos;ll get back to you within 1-2 business days.
+              <p className="text-center text-muted-foreground text-sm mb-4">
+                Tell us about your piece — no obligation, completely confidential.
               </p>
+              <div className="flex items-center justify-center gap-1.5 mb-8">
+                <Clock className="h-3.5 w-3.5 text-champagne" />
+                <span className="text-xs text-muted-foreground">Most sellers hear back the same day</span>
+              </div>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <input
@@ -310,7 +359,7 @@ export default function ConsignPage() {
                 </div>
 
                 <Button type="submit" variant="champagne" size="lg" className="w-full" disabled={submitting}>
-                  {submitting ? 'Submitting...' : 'Submit for Review'}
+                  {submitting ? 'Submitting...' : 'Get Your Free Appraisal'}
                   {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
                 </Button>
                 <p className="text-[11px] text-muted-foreground text-center">

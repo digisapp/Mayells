@@ -30,6 +30,9 @@ interface Settings {
   highValueCommissionPercent: number;
   highValueThreshold: number;
   aiEmailAutoReply: boolean;
+  autoFollowUpProspects: boolean;
+  followUpDelayHours: number;
+  followUpUploadReminderHours: number;
   notifySellerOnApproval: boolean;
   notifySellerOnSale: boolean;
   notifySellerOnShipment: boolean;
@@ -297,6 +300,34 @@ export default function AutomationSettingsPage() {
             ? '⚡ Auto-reply is ON — AI will respond to all non-spam emails automatically.'
             : '✋ Manual mode — AI drafts replies in your inbox, you decide when to send.'}
         </p>
+      </SettingsSection>
+
+      <Separator className="my-8" />
+
+      {/* Prospect Follow-Up */}
+      <SettingsSection title="Prospect Follow-Up">
+        <Toggle
+          label="Auto follow-up with prospects"
+          description="Automatically email prospects who haven't responded after the configured delay"
+          checked={settings.autoFollowUpProspects}
+          onChange={() => toggle('autoFollowUpProspects')}
+        />
+        {settings.autoFollowUpProspects && (
+          <div className="ml-8 space-y-4 mt-4 p-4 bg-muted/10 rounded-lg border border-border/30">
+            <NumberInput
+              label="Follow-up delay"
+              value={settings.followUpDelayHours}
+              onChange={v => setNumber('followUpDelayHours', String(v))}
+              suffix="hours before sending first follow-up"
+            />
+            <NumberInput
+              label="Upload reminder delay"
+              value={settings.followUpUploadReminderHours}
+              onChange={v => setNumber('followUpUploadReminderHours', String(v))}
+              suffix="hours before reminding about upload link"
+            />
+          </div>
+        )}
       </SettingsSection>
 
       <Separator className="my-8" />

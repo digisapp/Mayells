@@ -41,7 +41,7 @@ export function PublicFooter() {
               <li><Link href="/consign" className="hover:text-champagne transition-colors duration-300">Consign With Us</Link></li>
               <li><Link href="/consign" className="hover:text-champagne transition-colors duration-300">Free Appraisal</Link></li>
               <li><Link href="/consignment-agreement" className="hover:text-champagne transition-colors duration-300">Consignment Agreement</Link></li>
-              <li><Link href="/login" className="hover:text-champagne transition-colors duration-300">Seller Login</Link></li>
+              <li><Link href="/about" className="hover:text-champagne transition-colors duration-300">About Us</Link></li>
             </ul>
           </div>
 

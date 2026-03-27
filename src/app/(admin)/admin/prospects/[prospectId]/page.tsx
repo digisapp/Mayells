@@ -710,6 +710,90 @@ export default function AdminProspectDetailPage() {
         )}
       </div>
 
+      {/* ── Next Action Banner ── */}
+      {(() => {
+        // Determine the recommended next action based on prospect state
+        const catalogedCount = items.filter((i) => i.status === 'cataloged').length;
+        const lotCreatedCount = items.filter((i) => i.status === 'lot_created').length;
+
+        if (prospect.status === 'new' && totalItems === 0) {
+          return (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-900">Next step: Send an upload link</p>
+                <p className="text-xs text-blue-700 mt-0.5">This prospect hasn&apos;t uploaded any items yet. Send them a link to get started.</p>
+              </div>
+              <Button size="sm" onClick={handleSendUploadLink} disabled={sendingUploadLink} className="bg-blue-600 hover:bg-blue-700 text-white shrink-0">
+                {sendingUploadLink ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+                Send Upload Link
+              </Button>
+            </div>
+          );
+        }
+
+        if (uploadedCount > 0) {
+          return (
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-900">Next step: Run AI processing on {uploadedCount} new item{uploadedCount !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-purple-700 mt-0.5">AI will catalog, appraise, and categorize each item automatically.</p>
+              </div>
+              <Button size="sm" onClick={handleRunAI} disabled={processingAI} className="bg-purple-600 hover:bg-purple-700 text-white shrink-0">
+                {processingAI ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Brain className="h-4 w-4 mr-2" />}
+                {processingAI ? 'Processing...' : 'Run AI Processing'}
+              </Button>
+            </div>
+          );
+        }
+
+        if (catalogedCount > 0 && acceptedCount === 0) {
+          return (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-yellow-900">Next step: Review and accept {catalogedCount} cataloged item{catalogedCount !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-yellow-700 mt-0.5">Review AI suggestions below, then accept or decline each item. Or bulk accept all.</p>
+              </div>
+              <Button size="sm" onClick={handleBulkAcceptAll} className="bg-yellow-600 hover:bg-yellow-700 text-white shrink-0">
+                <Check className="h-4 w-4 mr-2" />
+                Accept All Cataloged
+              </Button>
+            </div>
+          );
+        }
+
+        if (hasAcceptedItems && prospect.status !== 'agreement_sent' && prospect.status !== 'agreement_signed' && prospect.status !== 'accepted') {
+          return (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-orange-900">Next step: Send consignment agreement</p>
+                <p className="text-xs text-orange-700 mt-0.5">{acceptedCount} item{acceptedCount !== 1 ? 's' : ''} accepted ({formatCurrency(estLow)} — {formatCurrency(estHigh)}). Send the agreement at {commissionPercent}% commission.</p>
+              </div>
+              <Button size="sm" onClick={handleSendAgreement} disabled={sendingAgreement || !prospect.email} className="bg-orange-600 hover:bg-orange-700 text-white shrink-0">
+                {sendingAgreement ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSignature className="h-4 w-4 mr-2" />}
+                Send Agreement
+              </Button>
+            </div>
+          );
+        }
+
+        if ((prospect.status === 'agreement_signed' || prospect.status === 'accepted') && hasAcceptedItems && lotCreatedCount < acceptedCount) {
+          return (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-green-900">Next step: Create lots from accepted items</p>
+                <p className="text-xs text-green-700 mt-0.5">Agreement signed. Create auction lots to start selling.</p>
+              </div>
+              <Button size="sm" onClick={handleCreateLots} disabled={creatingLots} className="bg-green-600 hover:bg-green-700 text-white shrink-0">
+                {creatingLots ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Package className="h-4 w-4 mr-2" />}
+                Create Lots
+              </Button>
+            </div>
+          );
+        }
+
+        return null;
+      })()}
+
       {/* ── 2. Stats Cards Row ── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card>

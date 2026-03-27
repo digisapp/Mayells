@@ -1,11 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/types';
-import { ShoppingBag, Shield, Truck } from 'lucide-react';
+import { ShoppingBag, Shield, Truck, Phone, Mail } from 'lucide-react';
+import { BUSINESS } from '@/lib/config';
 
 interface BuyNowPanelProps {
   lotId: string;
@@ -16,42 +15,7 @@ interface BuyNowPanelProps {
 }
 
 export function BuyNowPanel({ lotId, title, buyNowPrice, estimateLow, estimateHigh }: BuyNowPanelProps) {
-  const { isAuthenticated } = useAuth();
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [error, setError] = useState('');
-
-  async function handlePurchase() {
-    if (!isAuthenticated) {
-      router.push(`/login?next=/gallery/${lotId}`);
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const res = await fetch('/api/gallery/purchase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lotId }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || 'Purchase failed');
-        setIsLoading(false);
-        return;
-      }
-
-      // Redirect to invoice/checkout
-      router.push(`/invoices/${data.data.invoiceId}`);
-    } catch {
-      setError('Something went wrong. Please try again.');
-      setIsLoading(false);
-    }
-  }
+  const [showContact, setShowContact] = useState(false);
 
   return (
     <div className="bg-card border border-border/50 rounded-xl p-6 space-y-6 shadow-luxury sticky top-24">
@@ -66,54 +30,37 @@ export function BuyNowPanel({ lotId, title, buyNowPrice, estimateLow, estimateHi
         )}
       </div>
 
-      {/* Buy Now / Confirm */}
-      {error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
-      )}
-
-      {!showConfirm ? (
+      {/* Inquire / Contact */}
+      {!showContact ? (
         <Button
           variant="champagne"
           size="xl"
           className="w-full gap-2"
-          onClick={() => {
-            if (!isAuthenticated) {
-              router.push(`/login?next=/gallery/${lotId}`);
-              return;
-            }
-            setShowConfirm(true);
-          }}
+          onClick={() => setShowContact(true)}
         >
           <ShoppingBag className="h-5 w-5" />
-          Buy Now
+          Inquire to Purchase
         </Button>
       ) : (
         <div className="space-y-3">
           <div className="bg-muted/50 rounded-lg p-4 text-sm">
-            <p className="font-medium mb-1">Confirm Purchase</p>
-            <p className="text-muted-foreground">
-              You are purchasing <span className="font-medium text-foreground">{title}</span> for{' '}
-              <span className="font-semibold text-foreground">{formatCurrency(buyNowPrice)}</span>.
-              A buyer&apos;s premium may apply.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => setShowConfirm(false)}
-              disabled={isLoading}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="champagne"
-              className="flex-1"
-              onClick={handlePurchase}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Processing...' : 'Confirm Purchase'}
-            </Button>
+            <p className="font-medium mb-2">Contact us to purchase</p>
+            <div className="space-y-2">
+              <a
+                href={`mailto:${BUSINESS.email}?subject=Purchase Inquiry: ${encodeURIComponent(title)}`}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Mail className="h-4 w-4" />
+                {BUSINESS.email}
+              </a>
+              <a
+                href={BUSINESS.phoneHref}
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Phone className="h-4 w-4" />
+                {BUSINESS.phone}
+              </a>
+            </div>
           </div>
         </div>
       )}

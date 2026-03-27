@@ -4,7 +4,6 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { AuthProvider } from '@/context/AuthContext';
 import './globals.css';
 
 const inter = Inter({
@@ -82,11 +81,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${playfair.variable} ${cormorant.variable} font-sans`}>
-        <AuthProvider>
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
-        </AuthProvider>
+        <TooltipProvider>
+          {children}
+        </TooltipProvider>
         <Toaster position="top-right" />
         <Analytics />
         <SpeedInsights />

@@ -2,9 +2,6 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 
-const protectedRoutes = ['/dashboard', '/bids', '/won', '/watchlist', '/invoices', '/settings', '/payouts'];
-const adminRoutes = ['/admin'];
-const authRoutes = ['/login', '/signup', '/reset-password'];
 const adminAuthRoutes = ['/admin/login'];
 
 async function getUserProfile(userId: string) {
@@ -48,50 +45,27 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const pathname = request.nextUrl.pathname;
 
-  // Handle /admin/login separately — if already logged in as admin, go to /admin
+  // Handle /admin/login — if already logged in as admin, go to /admin
   if (adminAuthRoutes.some((route) => pathname.startsWith(route))) {
     if (user) {
       const profile = await getUserProfile(user.id);
       if (isAdminUser(profile)) {
         return NextResponse.redirect(new URL('/admin', request.url));
       }
-      // Non-admin trying to access admin login — send to client dashboard
-      return NextResponse.redirect(new URL('/dashboard', request.url));
     }
-    // Not logged in — allow access to admin login page
     return response;
   }
 
-  // Redirect authenticated users away from client auth pages
-  if (user && authRoutes.some((route) => pathname.startsWith(route))) {
-    const profile = await getUserProfile(user.id);
-    const dest = isAdminUser(profile) ? '/admin' : '/dashboard';
-    return NextResponse.redirect(new URL(dest, request.url));
-  }
-
-  // Admin routes: require auth + admin role (check before protected routes since /admin also starts with /admin)
-  if (adminRoutes.some((route) => pathname.startsWith(route))) {
+  // Admin routes: require auth + admin role
+  if (pathname.startsWith('/admin')) {
     if (!user) {
       return NextResponse.redirect(new URL('/admin/login', request.url));
     }
     const profile = await getUserProfile(user.id);
     if (!isAdminUser(profile)) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      return NextResponse.redirect(new URL('/admin/login', request.url));
     }
     return response;
-  }
-
-  // Redirect unauthenticated users to login
-  if (!user && protectedRoutes.some((route) => pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL(`/login?next=${pathname}`, request.url));
-  }
-
-  // If an admin user tries to access /dashboard, redirect them to /admin
-  if (user && pathname.startsWith('/dashboard')) {
-    const profile = await getUserProfile(user.id);
-    if (isAdminUser(profile)) {
-      return NextResponse.redirect(new URL('/admin', request.url));
-    }
   }
 
   return response;
