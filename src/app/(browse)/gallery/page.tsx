@@ -7,8 +7,18 @@ import { LotGrid } from '@/components/lots/LotGrid';
 import type { Lot } from '@/db/schema/lots';
 
 export const metadata = {
-  title: 'Gallery | Mayell',
-  description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices.',
+  title: 'Gallery',
+  description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices from Mayell Auctions.',
+  openGraph: {
+    title: 'Gallery | Mayell Auctions',
+    description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices.',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Gallery | Mayell Auctions',
+    description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices.',
+  },
 };
 
 export default async function GalleryPage({

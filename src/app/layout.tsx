@@ -41,9 +41,16 @@ export const metadata: Metadata = {
     siteName: 'Mayell Auctions',
     url: BASE_URL,
     locale: 'en_US',
+    images: [{
+      url: `${BASE_URL}/opengraph-image`,
+      width: 1200,
+      height: 630,
+      alt: 'Mayell Auctions — Fine Art, Antiques, Jewelry, Collectibles',
+    }],
   },
   twitter: {
     card: 'summary_large_image',
+    images: [`${BASE_URL}/opengraph-image`],
   },
   alternates: {
     canonical: BASE_URL,
@@ -60,7 +67,7 @@ export const metadata: Metadata = {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'black-translucent',
-    'apple-mobile-web-app-title': 'Mayell Upload',
+    'apple-mobile-web-app-title': 'Mayell',
   },
   verification: {
     google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,

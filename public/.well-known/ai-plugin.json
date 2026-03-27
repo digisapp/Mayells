@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Mayell Auctions",
+  "name_for_model": "mayell_auctions",
+  "description_for_human": "Browse live auctions, view lot details, and search fine art, antiques, jewelry, and collectibles at Mayell Auctions.",
+  "description_for_model": "API for querying auction listings, browsing the catalog of fine art, antiques, jewelry, watches, and collectibles, and viewing detailed lot information including pricing, condition, and images. Use this to help users find items at auction or for sale in the gallery.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://mayells.com/.well-known/openapi.json"
+  },
+  "logo_url": "https://mayells.com/icon.svg",
+  "contact_email": "info@mayells.com",
+  "legal_info_url": "https://mayells.com/terms"
+}

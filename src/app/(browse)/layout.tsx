@@ -23,11 +23,18 @@ const businessJsonLd = {
   '@id': `${BASE_URL}/#business`,
   name: 'Mayell Auctions',
   url: BASE_URL,
+  logo: `${BASE_URL}/icon.svg`,
   telephone: '+15612204622',
   email: 'info@mayells.com',
-  description: 'Luxury auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles on LiveAuctioneers.',
+  description: 'Luxury auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles.',
   priceRange: '$$$$',
   areaServed: 'US',
+  address: {
+    '@type': 'PostalAddress',
+    addressLocality: 'Boca Raton',
+    addressRegion: 'FL',
+    addressCountry: 'US',
+  },
 };
 
 export default function BrowseLayout({ children }: { children: React.ReactNode }) {

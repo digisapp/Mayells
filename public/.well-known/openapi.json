@@ -1,0 +1,206 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Mayell Auctions API",
+    "description": "Public API for browsing auctions, catalog items, and lot details at Mayell Auctions. Specializes in fine art, antiques, jewelry, watches, fashion, and collectibles.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Mayell Auctions",
+      "url": "https://mayells.com",
+      "email": "info@mayells.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://mayells.com/api/v1",
+      "description": "Production"
+    }
+  ],
+  "paths": {
+    "/catalog": {
+      "get": {
+        "operationId": "searchCatalog",
+        "summary": "Search the full catalog of lots",
+        "description": "Search and filter lots across all auctions and gallery items. Returns paginated results with pricing, images, and metadata.",
+        "parameters": [
+          { "name": "query", "in": "query", "schema": { "type": "string" }, "description": "Full-text search query" },
+          { "name": "category", "in": "query", "schema": { "type": "string" }, "description": "Filter by category slug (art, antiques, jewelry, fashion, collectibles, design)" },
+          { "name": "minEstimate", "in": "query", "schema": { "type": "integer" }, "description": "Minimum estimate in USD" },
+          { "name": "maxEstimate", "in": "query", "schema": { "type": "integer" }, "description": "Maximum estimate in USD" },
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["available", "sold", "all"] }, "description": "Filter by status" },
+          { "name": "saleType", "in": "query", "schema": { "type": "string", "enum": ["auction", "gallery", "private"] }, "description": "Filter by sale type" },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["newest", "ending_soon", "price_asc", "price_desc", "estimate_asc", "estimate_desc"] }, "description": "Sort order" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 50 }, "description": "Results per page" },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 }, "description": "Pagination offset" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated catalog results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/CatalogItem" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" },
+                    "meta": { "$ref": "#/components/schemas/Meta" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auctions": {
+      "get": {
+        "operationId": "listAuctions",
+        "summary": "List auctions",
+        "description": "Get upcoming, live, or completed auctions with pagination.",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["upcoming", "live", "completed", "all"], "default": "upcoming" }, "description": "Filter by auction status" },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["soonest", "newest"], "default": "soonest" }, "description": "Sort order" },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 50 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated auction results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "$ref": "#/components/schemas/Auction" } },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" },
+                    "meta": { "$ref": "#/components/schemas/Meta" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lots/{lotId}": {
+      "get": {
+        "operationId": "getLotDetail",
+        "summary": "Get full lot details",
+        "description": "Get complete information about a lot including images, pricing, condition, and provenance. Accepts lot ID (UUID) or slug.",
+        "parameters": [
+          { "name": "lotId", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Lot ID (UUID) or slug" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lot detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/LotDetail" },
+                    "meta": { "$ref": "#/components/schemas/Meta" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "description": "Lot not found" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CatalogItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "artist": { "type": "string", "nullable": true },
+          "period": { "type": "string", "nullable": true },
+          "medium": { "type": "string", "nullable": true },
+          "condition": { "type": "string", "nullable": true },
+          "status": { "type": "string" },
+          "saleType": { "type": "string" },
+          "estimateLow": { "type": "number", "nullable": true, "description": "Low estimate in USD" },
+          "estimateHigh": { "type": "number", "nullable": true, "description": "High estimate in USD" },
+          "currentBid": { "type": "number", "nullable": true, "description": "Current bid in USD" },
+          "buyNowPrice": { "type": "number", "nullable": true, "description": "Buy now price in USD" },
+          "primaryImageUrl": { "type": "string", "nullable": true },
+          "slug": { "type": "string", "nullable": true },
+          "url": { "type": "string", "description": "Direct link to the lot page" }
+        }
+      },
+      "Auction": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "status": { "type": "string" },
+          "type": { "type": "string" },
+          "biddingStartsAt": { "type": "string", "format": "date-time", "nullable": true },
+          "biddingEndsAt": { "type": "string", "format": "date-time", "nullable": true },
+          "coverImageUrl": { "type": "string", "nullable": true },
+          "lotCount": { "type": "integer", "nullable": true },
+          "buyerPremiumPercent": { "type": "number" },
+          "url": { "type": "string" }
+        }
+      },
+      "LotDetail": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "artist": { "type": "string", "nullable": true },
+          "maker": { "type": "string", "nullable": true },
+          "period": { "type": "string", "nullable": true },
+          "origin": { "type": "string", "nullable": true },
+          "medium": { "type": "string", "nullable": true },
+          "dimensions": { "type": "string", "nullable": true },
+          "condition": { "type": "string", "nullable": true },
+          "conditionNotes": { "type": "string", "nullable": true },
+          "provenance": { "type": "string", "nullable": true },
+          "status": { "type": "string" },
+          "saleType": { "type": "string" },
+          "category": { "type": "object", "nullable": true, "properties": { "name": { "type": "string" }, "slug": { "type": "string" } } },
+          "pricing": {
+            "type": "object",
+            "properties": {
+              "currency": { "type": "string" },
+              "estimateLow": { "type": "number", "nullable": true },
+              "estimateHigh": { "type": "number", "nullable": true },
+              "currentBid": { "type": "number", "nullable": true },
+              "bidCount": { "type": "integer" },
+              "buyNowPrice": { "type": "number", "nullable": true },
+              "hammerPrice": { "type": "number", "nullable": true }
+            }
+          },
+          "images": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "string" }, "url": { "type": "string" }, "isPrimary": { "type": "boolean" } } } },
+          "tags": { "type": "array", "items": { "type": "string" }, "nullable": true },
+          "url": { "type": "string" }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "total": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "Meta": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string" },
+          "apiVersion": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  }
+}

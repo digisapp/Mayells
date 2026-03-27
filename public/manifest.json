@@ -1,8 +1,9 @@
 {
-  "name": "Mayell Auctions - Seller Upload",
-  "short_name": "Mayell Upload",
-  "description": "Upload items for consignment with Mayell Auctions",
-  "start_url": "/upload",
+  "name": "Mayell Auctions — Fine Art, Antiques, Jewelry, Collectibles",
+  "short_name": "Mayell",
+  "description": "Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#FAFAF8",
   "theme_color": "#272D35",

@@ -36,7 +36,7 @@ export function generateLotJsonLd(lot: {
   saleType: string;
   categoryName?: string | null;
 }) {
-  const url = `${APP_URL}/browse/lots/${lot.slug || lot.id}`;
+  const url = `${APP_URL}/gallery/${lot.slug || lot.id}`;
   const imageUrls = lot.images?.map(i => i.url) || (lot.primaryImageUrl ? [lot.primaryImageUrl] : []);
 
   const isAvailable = ['for_sale', 'in_auction', 'approved'].includes(lot.status);
@@ -136,7 +136,7 @@ export function generateAuctionJsonLd(auction: {
   coverImageUrl?: string | null;
   lotCount?: number | null;
 }) {
-  const url = `${APP_URL}/browse/auctions/${auction.slug || auction.id}`;
+  const url = `${APP_URL}/auctions/${auction.slug || auction.id}`;
   const isUpcoming = ['scheduled', 'preview'].includes(auction.status);
   const isLive = ['open', 'live'].includes(auction.status);
 
