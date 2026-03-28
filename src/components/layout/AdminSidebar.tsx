@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,8 @@ import {
   Settings,
   Truck,
   SlidersHorizontal,
+  Menu,
+  X,
 } from 'lucide-react';
 
 const adminLinks = [
@@ -46,11 +49,11 @@ const adminLinks = [
   { href: '/admin/automation', label: 'Automation', icon: SlidersHorizontal },
 ];
 
-export function AdminSidebar() {
-  const pathname = usePathname();
+export { adminLinks };
 
+function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
-    <aside className="w-64 border-r border-border/50 bg-background min-h-screen p-4 relative">
+    <>
       <Link href="/" className="font-logo text-xl block mb-2">
         MAYELLS
       </Link>
@@ -61,6 +64,7 @@ export function AdminSidebar() {
           <Link
             key={link.href}
             href={link.href}
+            onClick={onNavigate}
             className={cn(
               'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
               (link.href === '/admin' ? pathname === '/admin' : pathname.startsWith(link.href))
@@ -76,13 +80,69 @@ export function AdminSidebar() {
 
       <div className="absolute bottom-4 left-4 right-4">
         <Link
-          href="/admin"
+          href="/"
+          onClick={onNavigate}
           className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-colors"
         >
           <Settings className="h-4 w-4" />
-          Back to Dashboard
+          Back to Site
         </Link>
       </div>
-    </aside>
+    </>
+  );
+}
+
+export function AdminSidebar() {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  return (
+    <>
+      {/* Mobile hamburger button */}
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-background border border-border/50 shadow-sm"
+        aria-label="Open navigation"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-50"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile sidebar */}
+      <aside
+        className={cn(
+          'lg:hidden fixed inset-y-0 left-0 z-50 w-64 border-r border-border/50 bg-background p-4 relative transition-transform duration-200',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setMobileOpen(false)}
+          className="absolute top-4 right-4 p-1 rounded-md text-muted-foreground hover:text-foreground"
+          aria-label="Close navigation"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <SidebarContent pathname={pathname} onNavigate={() => setMobileOpen(false)} />
+      </aside>
+
+      {/* Desktop sidebar */}
+      <aside className="hidden lg:block w-64 border-r border-border/50 bg-background min-h-screen p-4 relative shrink-0">
+        <SidebarContent pathname={pathname} />
+      </aside>
+    </>
   );
 }

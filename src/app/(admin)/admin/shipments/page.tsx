@@ -52,7 +52,7 @@ export default function AdminShipmentsPage() {
 
   if (loading) {
     return (
-      <div className="p-8">
+      <div>
         <h1 className="font-display text-display-sm mb-6">Shipments</h1>
         <div className="space-y-3">
           {[1, 2, 3, 4].map(i => <div key={i} className="h-16 bg-muted/30 rounded animate-pulse" />)}
@@ -66,7 +66,7 @@ export default function AdminShipmentsPage() {
   const completed = shipments.filter(s => ['delivered', 'returned', 'exception'].includes(s.shipment.status));
 
   return (
-    <div className="p-8">
+    <div>
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="font-display text-display-sm flex items-center gap-3">

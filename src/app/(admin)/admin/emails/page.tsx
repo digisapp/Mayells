@@ -14,6 +14,16 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+/** Escape HTML entities to prevent XSS when embedding text into HTML strings */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 interface EmailRow {
   id: string;
   resendId: string | null;
@@ -122,7 +132,7 @@ export default function AdminEmailsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState('');
-  const [sending, setSending] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
@@ -246,6 +256,7 @@ export default function AdminEmailsPage() {
   async function bulkDelete() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} email${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
     try {
       await fetch('/api/admin/emails', {
         method: 'DELETE',
@@ -262,6 +273,7 @@ export default function AdminEmailsPage() {
   }
 
   async function deleteEmail(id: string) {
+    if (!confirm('Delete this email? This cannot be undone.')) return;
     try {
       await fetch('/api/admin/emails', {
         method: 'DELETE',
@@ -281,7 +293,7 @@ export default function AdminEmailsPage() {
 
   async function handleSendAiDraft(email: EmailRow) {
     if (!email.aiDraftText) return;
-    setSending(true);
+    setSendingId(`ai-${email.id}`);
     try {
       const res = await fetch('/api/admin/emails', {
         method: 'POST',
@@ -291,11 +303,11 @@ export default function AdminEmailsPage() {
           subject: `Re: ${(email.subject || '').replace(/^Re:\s*/i, '')}`,
           html: `
             <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
-              ${email.aiDraftText.replace(/\n/g, '<br />')}
+              ${escapeHtml(email.aiDraftText).replace(/\n/g, '<br />')}
               <br /><br />
               <div style="border-left: 2px solid #ccc; padding-left: 12px; margin-top: 16px; color: #666; font-size: 13px;">
-                <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:</p>
-                <div>${email.bodyHtml || email.bodyText?.replace(/\n/g, '<br />') || ''}</div>
+                <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${escapeHtml(email.fromName || email.fromEmail)} wrote:</p>
+                <div>${email.bodyHtml || escapeHtml(email.bodyText || '').replace(/\n/g, '<br />') || ''}</div>
               </div>
             </div>
           `,
@@ -313,7 +325,7 @@ export default function AdminEmailsPage() {
     } catch {
       toast.error('Network error');
     } finally {
-      setSending(false);
+      setSendingId(null);
     }
   }
 
@@ -339,7 +351,7 @@ export default function AdminEmailsPage() {
 
   async function handleReply(email: EmailRow) {
     if (!replyBody.trim()) return;
-    setSending(true);
+    setSendingId(`reply-${email.id}`);
     try {
       const res = await fetch('/api/admin/emails', {
         method: 'POST',
@@ -349,11 +361,11 @@ export default function AdminEmailsPage() {
           subject: `Re: ${(email.subject || '').replace(/^Re:\s*/i, '')}`,
           html: `
             <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
-              ${replyBody.replace(/\n/g, '<br />')}
+              ${escapeHtml(replyBody).replace(/\n/g, '<br />')}
               <br /><br />
               <div style="border-left: 2px solid #ccc; padding-left: 12px; margin-top: 16px; color: #666; font-size: 13px;">
-                <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:</p>
-                <div>${email.bodyHtml || email.bodyText?.replace(/\n/g, '<br />') || ''}</div>
+                <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${escapeHtml(email.fromName || email.fromEmail)} wrote:</p>
+                <div>${email.bodyHtml || escapeHtml(email.bodyText || '').replace(/\n/g, '<br />') || ''}</div>
               </div>
             </div>
           `,
@@ -373,7 +385,7 @@ export default function AdminEmailsPage() {
     } catch {
       toast.error('Network error');
     } finally {
-      setSending(false);
+      setSendingId(null);
     }
   }
 
@@ -404,7 +416,7 @@ export default function AdminEmailsPage() {
       toast.error('Please fill in all fields');
       return;
     }
-    setSending(true);
+    setSendingId('compose');
     try {
       const res = await fetch('/api/admin/emails', {
         method: 'POST',
@@ -412,7 +424,7 @@ export default function AdminEmailsPage() {
         body: JSON.stringify({
           to: composeTo,
           subject: composeSubject,
-          html: `<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">${composeBody.replace(/\n/g, '<br />')}</div>`,
+          html: `<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">${escapeHtml(composeBody).replace(/\n/g, '<br />')}</div>`,
           text: composeBody,
           ...(attachments.length > 0 && { attachments }),
         }),
@@ -432,7 +444,7 @@ export default function AdminEmailsPage() {
     } catch {
       toast.error('Network error');
     } finally {
-      setSending(false);
+      setSendingId(null);
     }
   }
 
@@ -570,11 +582,11 @@ export default function AdminEmailsPage() {
               <Button
                 size="sm"
                 onClick={handleCompose}
-                disabled={sending}
+                disabled={sendingId === 'compose'}
                 className="bg-champagne text-charcoal hover:bg-champagne/90"
               >
                 <Send className="h-3.5 w-3.5 mr-2" />
-                {sending ? 'Sending...' : 'Send'}
+                {sendingId === 'compose' ? 'Sending...' : 'Send'}
               </Button>
               <label className="cursor-pointer">
                 <input type="file" multiple className="hidden" onChange={handleFileSelect} />
@@ -870,11 +882,11 @@ export default function AdminEmailsPage() {
                           <Button
                             size="sm"
                             onClick={() => handleSendAiDraft(email)}
-                            disabled={sending}
+                            disabled={sendingId === `ai-${email.id}`}
                             className="bg-purple-600 text-white hover:bg-purple-700"
                           >
                             <Sparkles className="h-3.5 w-3.5 mr-2" />
-                            {sending ? 'Sending...' : 'Send AI Draft'}
+                            {sendingId === `ai-${email.id}` ? 'Sending...' : 'Send AI Draft'}
                           </Button>
                           <Button
                             size="sm"
@@ -921,11 +933,11 @@ export default function AdminEmailsPage() {
                                 <Button
                                   size="sm"
                                   onClick={() => handleReply(email)}
-                                  disabled={sending}
+                                  disabled={sendingId === `reply-${email.id}`}
                                   className="bg-champagne text-charcoal hover:bg-champagne/90"
                                 >
                                   <Send className="h-3.5 w-3.5 mr-2" />
-                                  {sending ? 'Sending...' : 'Send Reply'}
+                                  {sendingId === `reply-${email.id}` ? 'Sending...' : 'Send Reply'}
                                 </Button>
                                 <Button
                                   size="sm"

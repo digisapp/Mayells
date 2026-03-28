@@ -92,7 +92,10 @@ async function findThread(params: {
             eq(emails.toEmail, params.fromEmail),
             eq(emails.fromEmail, params.fromEmail),
           ),
-          eq(emails.subject, cleanSubject),
+          or(
+            eq(emails.subject, cleanSubject),
+            eq(emails.subject, `Re: ${cleanSubject}`),
+          ),
         ),
       )
       .orderBy(desc(emails.createdAt))

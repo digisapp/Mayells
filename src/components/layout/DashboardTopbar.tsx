@@ -1,18 +1,27 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Bell, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
+import { adminLinks } from '@/components/layout/AdminSidebar';
 
 export function DashboardTopbar() {
+  const pathname = usePathname();
+
+  // Find current page label from sidebar links
+  const currentPage = adminLinks.find((link) =>
+    link.href === '/admin' ? pathname === '/admin' : pathname.startsWith(link.href)
+  );
+
   return (
     <header className="h-16 border-b border-border/50 bg-background flex items-center justify-between px-6">
-      <div className="lg:hidden">
-        <Link href="/" className="font-logo text-xl">
-          MAYELLS
-        </Link>
+      {/* Mobile: show current page title (offset for hamburger button) */}
+      <div className="lg:hidden pl-10">
+        <span className="font-medium text-sm">{currentPage?.label || 'Admin'}</span>
       </div>
 
+      {/* Desktop: back to site link */}
       <div className="hidden lg:flex items-center">
         <Link
           href="/"
@@ -24,9 +33,11 @@ export function DashboardTopbar() {
       </div>
 
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" className="text-muted-foreground">
-          <Bell className="h-5 w-5" />
-        </Button>
+        <Link href="/admin/emails">
+          <Button variant="ghost" size="sm" className="text-muted-foreground text-xs">
+            Inbox
+          </Button>
+        </Link>
       </div>
     </header>
   );
