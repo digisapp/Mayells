@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Trash2, Plus, X } from 'lucide-react';
+import { ArrowLeft, Trash2, Plus, X, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 
@@ -200,6 +200,27 @@ export default function EditAuctionPage() {
     }
   }
 
+  async function exportForLiveAuctioneers() {
+    try {
+      const res = await fetch(`/api/auctions/${auctionId}/export-csv`);
+      if (!res.ok) {
+        const data = await res.json();
+        toast.error(data.error || 'Export failed');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'export.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV exported for LiveAuctioneers');
+    } catch {
+      toast.error('Export failed');
+    }
+  }
+
   // Filter out lots already assigned
   const assignedIds = new Set(assignedLots.map((l) => l.id));
   const unassignedLots = availableLots.filter((l) => !assignedIds.has(l.id));
@@ -246,6 +267,15 @@ export default function EditAuctionPage() {
         </TabsContent>
 
         <TabsContent value="lots" className="mt-6 space-y-6">
+          {assignedLots.length > 0 && (
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={exportForLiveAuctioneers} className="gap-2">
+                <Download className="h-4 w-4" />
+                Export for LiveAuctioneers
+              </Button>
+            </div>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Assigned Lots ({assignedLots.length})</CardTitle>

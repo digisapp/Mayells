@@ -1,6 +1,11 @@
+export const dynamic = 'force-dynamic';
+
 import Link from 'next/link';
 import { Monitor, Phone, FileText, ArrowRight, ExternalLink } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
+import { db } from '@/db';
+import { auctions } from '@/db/schema';
+import { and, isNotNull, inArray } from 'drizzle-orm';
 
 export const metadata = {
   title: 'How to Buy',
@@ -8,11 +13,11 @@ export const metadata = {
 };
 
 const faqData = [
-  { q: 'Do I need an account to bid?', a: 'Yes — you\'ll need a free LiveAuctioneers account. Registration takes less than a minute.' },
   { q: 'Is there a buyer\'s premium?', a: 'Yes, a 25% buyer\'s premium is added to the hammer price. This is standard practice in the auction industry.' },
-  { q: 'How do I pay for items I win?', a: 'Payment is processed securely through LiveAuctioneers. They accept credit cards, wire transfers, and other payment methods.' },
-  { q: 'How do I receive my items?', a: 'We offer shipping worldwide through trusted partners. Local pickup is also available by appointment. Shipping costs are calculated after the sale.' },
-  { q: 'Can I preview items before the auction?', a: 'Yes — preview dates are listed on each auction page. Contact us to schedule an in-person preview appointment.' },
+  { q: 'Can I preview items in person?', a: 'Yes — preview dates are listed on each auction page. Contact us to schedule a private viewing at our Boca Raton gallery.' },
+  { q: 'Do you ship internationally?', a: 'We ship worldwide through trusted fine art and antique shipping partners. Shipping costs are calculated after the sale. Local pickup is also available by appointment.' },
+  { q: 'Can I request a condition report?', a: 'Absolutely. Contact us for detailed condition reports and additional photographs on any lot. We\'re happy to provide as much information as you need.' },
+  { q: 'What if I can\'t bid live?', a: 'You can leave an absentee bid on LiveAuctioneers, or contact us directly to arrange phone bidding or submit an absentee bid form.' },
 ];
 
 const faqJsonLd = {
@@ -25,7 +30,19 @@ const faqJsonLd = {
   })),
 };
 
-export default function HowToBuyPage() {
+export default async function HowToBuyPage() {
+  // Find an active auction with a LiveAuctioneers link
+  const [liveAuction] = await db
+    .select({ liveauctioneersUrl: auctions.liveauctioneersUrl, title: auctions.title })
+    .from(auctions)
+    .where(
+      and(
+        isNotNull(auctions.liveauctioneersUrl),
+        inArray(auctions.status, ['scheduled', 'preview', 'open', 'live'])
+      )
+    )
+    .limit(1);
+
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }} />
@@ -44,17 +61,19 @@ export default function HowToBuyPage() {
               Bidding is easy. Our auctions are hosted on LiveAuctioneers, giving you
               access to a trusted global platform with secure payments and buyer protection.
             </p>
-            <div className="mt-8">
-              <a
-                href="https://www.liveauctioneers.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-6 py-3 text-sm font-medium transition-colors"
-              >
-                Visit LiveAuctioneers
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            </div>
+            {liveAuction && (
+              <div className="mt-8">
+                <a
+                  href={liveAuction.liveauctioneersUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-6 py-3 text-sm font-medium transition-colors"
+                >
+                  Bid Now on LiveAuctioneers
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </div>
+            )}
           </div>
         </div>
       </section>
