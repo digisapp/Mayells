@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Webhook } from 'svix';
 import { db } from '@/db';
-import { emails, users } from '@/db/schema';
+import { emails, users, webhookLogs } from '@/db/schema';
 import { eq, and, desc, or } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { logger } from '@/lib/logger';
@@ -68,7 +68,6 @@ async function findThread(params: {
   fromEmail: string;
   subject: string;
 }): Promise<{ inReplyToId: string | null; threadId: string | null }> {
-  // Strategy 1: Match by In-Reply-To header → most reliable
   if (params.inReplyToHeader) {
     const [parent] = await db
       .select({ id: emails.id, threadId: emails.threadId })
@@ -80,7 +79,6 @@ async function findThread(params: {
     }
   }
 
-  // Strategy 2: Match by sender + subject (strip Re:/Fwd: prefixes)
   const cleanSubject = params.subject.replace(/^(Re|Fwd|Fw):\s*/gi, '').trim();
   if (cleanSubject) {
     const [match] = await db
@@ -111,8 +109,16 @@ async function findThread(params: {
 // ─── Webhook Handler ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const startMs = Date.now();
+  let eventType = 'unknown';
+  let status: 'success' | 'failed' | 'ignored' = 'ignored';
+  let errorMessage: string | undefined;
+  let relatedType: string | undefined;
+  let relatedId: string | undefined;
+  let payload: Record<string, unknown> = {};
+  const eventId = req.headers.get('svix-id') ?? undefined;
+
   try {
-    // ── Verify Svix signature ────────────────────────────────────────────
     const rawBody = await req.text();
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
 
@@ -139,11 +145,12 @@ export async function POST(req: NextRequest) {
     }
 
     const body = JSON.parse(rawBody);
+    payload = body;
     const { type, data } = body;
+    eventType = type || 'unknown';
 
     // ── Inbound email ──────────────────────────────────────────────────────
     if (type === 'email.received') {
-      // Resend webhook payload: data.from is a string, data.to is string[]
       const { email: fromEmail, name: fromName } = parseEmailAddress(data.from || '');
       const toRaw = data.to?.[0] || '';
       const { email: toEmail } = parseEmailAddress(toRaw);
@@ -151,7 +158,6 @@ export async function POST(req: NextRequest) {
       const resendEmailId = data.email_id || data.id || null;
       const messageId = data.message_id || null;
 
-      // Fetch full email content (html, text, headers) from Resend API
       let bodyHtml: string | null = null;
       let bodyText: string | null = null;
       let inReplyToHeader: string | null = null;
@@ -170,17 +176,9 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Spam check
       const spam = isSpamEmail(fromEmail, subject);
+      const { inReplyToId, threadId } = await findThread({ inReplyToHeader, fromEmail, subject });
 
-      // Thread detection
-      const { inReplyToId, threadId } = await findThread({
-        inReplyToHeader,
-        fromEmail,
-        subject,
-      });
-
-      // If this is a reply to an outbound email, mark the original as "replied"
       if (inReplyToId) {
         await db
           .update(emails)
@@ -188,7 +186,6 @@ export async function POST(req: NextRequest) {
           .where(and(eq(emails.id, inReplyToId), eq(emails.direction, 'outbound')));
       }
 
-      // Link to user
       const userId = await findUserByEmail(fromEmail);
 
       const [saved] = await db.insert(emails).values({
@@ -209,8 +206,6 @@ export async function POST(req: NextRequest) {
         isSpam: spam,
       }).returning();
 
-      // Trigger AI draft/auto-reply — must await before returning
-      // (Vercel serverless kills the function after response is sent)
       if (!spam && saved) {
         try {
           await processInboundEmail(saved.id);
@@ -219,30 +214,46 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      return NextResponse.json({ received: true });
-    }
-
-    // ── Delivery status updates ────────────────────────────────────────────
-    if (type === 'email.delivered' && data?.email_id) {
+      relatedType = 'email';
+      relatedId = saved?.id;
+      status = 'success';
+    } else if (type === 'email.delivered' && data?.email_id) {
       await db
         .update(emails)
         .set({ status: 'delivered' })
         .where(eq(emails.resendId, data.email_id));
-      return NextResponse.json({ received: true });
-    }
-
-    if (type === 'email.bounced' && data?.email_id) {
+      relatedType = 'email';
+      relatedId = data.email_id;
+      status = 'success';
+    } else if (type === 'email.bounced' && data?.email_id) {
       await db
         .update(emails)
         .set({ status: 'bounced' })
         .where(eq(emails.resendId, data.email_id));
-      return NextResponse.json({ received: true });
+      relatedType = 'email';
+      relatedId = data.email_id;
+      status = 'success';
+    } else {
+      status = 'ignored';
     }
 
-    // Unhandled event — acknowledge
     return NextResponse.json({ received: true });
   } catch (error) {
     logger.error('Email webhook error', error);
+    status = 'failed';
+    errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
+  } finally {
+    db.insert(webhookLogs).values({
+      provider: 'resend',
+      eventType,
+      eventId: eventId ?? null,
+      status,
+      errorMessage: errorMessage ?? null,
+      processingMs: Date.now() - startMs,
+      payload,
+      relatedType: relatedType ?? null,
+      relatedId: relatedId ?? null,
+    }).catch((err) => logger.warn('Failed to persist webhook log', { err: String(err) }));
   }
 }

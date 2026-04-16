@@ -29,6 +29,13 @@
       "when": 1774136788628,
       "tag": "0003_lethal_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776321671188,
+      "tag": "0004_outstanding_talos",
+      "breakpoints": true
     }
   ]
 }

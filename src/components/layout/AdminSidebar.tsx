@@ -24,6 +24,7 @@ import {
   Settings,
   Truck,
   SlidersHorizontal,
+  Webhook,
   Menu,
   X,
 } from 'lucide-react';
@@ -47,6 +48,7 @@ const adminLinks = [
   { href: '/admin/agreements', label: 'Agreements', icon: FileSignature },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/automation', label: 'Automation', icon: SlidersHorizontal },
+  { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },
 ];
 
 export { adminLinks };
