@@ -29,14 +29,17 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   const title = `${auction.title} | Mayell Auctions`;
   const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayell.`;
 
+  const canonicalUrl = `${BASE_URL}/auctions/${auction.slug || auction.id}`;
+
   return {
     title,
     description,
+    alternates: { canonical: canonicalUrl },
     openGraph: {
       title: auction.title,
       description,
       type: 'website',
-      url: `${BASE_URL}/auctions/${auction.slug}`,
+      url: canonicalUrl,
       images: auction.coverImageUrl ? [{ url: auction.coverImageUrl, width: 1200, height: 630, alt: auction.title }] : undefined,
     },
     twitter: {

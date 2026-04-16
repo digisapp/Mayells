@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { logger } from '@/lib/logger';
 
 export default function Error({
   error,
@@ -11,7 +12,7 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error('Page error:', error);
+    logger.error('Unhandled page error', error, { digest: error.digest });
   }, [error]);
 
   return (
@@ -21,6 +22,11 @@ export default function Error({
         <p className="text-muted-foreground mb-8">
           An unexpected error occurred. Please try again.
         </p>
+        {error.digest && (
+          <p className="text-xs text-muted-foreground mb-6 font-mono">
+            Error ID: {error.digest}
+          </p>
+        )}
         <Button
           onClick={reset}
           className="bg-champagne text-charcoal hover:bg-champagne/90"

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { getResend } from '@/lib/email/resend';
+import { escapeHtml } from '@/lib/email/escape';
 import { BUSINESS } from '@/lib/config';
 import { emails } from '@/db/schema';
 
@@ -63,11 +64,11 @@ export async function POST(req: NextRequest) {
           <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #272D35; font-size: 24px;">New Private Sale Inquiry</h1>
             <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">
-              <tr><td style="padding: 6px 12px; color: #666;">Item:</td><td style="padding: 6px 12px; font-weight: bold;">${lot.title}</td></tr>
-              <tr><td style="padding: 6px 12px; color: #666;">From:</td><td style="padding: 6px 12px; font-weight: bold;">${parsed.data.name}</td></tr>
-              <tr><td style="padding: 6px 12px; color: #666;">Email:</td><td style="padding: 6px 12px;">${parsed.data.email}</td></tr>
-              ${parsed.data.phone ? `<tr><td style="padding: 6px 12px; color: #666;">Phone:</td><td style="padding: 6px 12px;">${parsed.data.phone}</td></tr>` : ''}
-              ${parsed.data.message ? `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Message:</td><td style="padding: 6px 12px;">${parsed.data.message}</td></tr>` : ''}
+              <tr><td style="padding: 6px 12px; color: #666;">Item:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(lot.title)}</td></tr>
+              <tr><td style="padding: 6px 12px; color: #666;">From:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(parsed.data.name)}</td></tr>
+              <tr><td style="padding: 6px 12px; color: #666;">Email:</td><td style="padding: 6px 12px;">${escapeHtml(parsed.data.email)}</td></tr>
+              ${parsed.data.phone ? `<tr><td style="padding: 6px 12px; color: #666;">Phone:</td><td style="padding: 6px 12px;">${escapeHtml(parsed.data.phone)}</td></tr>` : ''}
+              ${parsed.data.message ? `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Message:</td><td style="padding: 6px 12px; white-space: pre-wrap;">${escapeHtml(parsed.data.message)}</td></tr>` : ''}
             </table>
             <a href="${process.env.NEXT_PUBLIC_APP_URL}/admin/lots/${lot.id}" style="display: inline-block; background: #D4C5A0; color: #272D35; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 4px;">
               View Lot in Admin
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
         subject: emailSubject,
         html: emailHtml,
       });
-      db.insert(emails).values({
+      await db.insert(emails).values({
         resendId: sent?.id || null,
         direction: 'outbound',
         fromEmail: 'notifications@mayells.com',
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
         subject: emailSubject,
         bodyHtml: emailHtml,
         status: 'sent',
-      }).catch((err) => console.error('Failed to log email:', err));
+      }).catch((err) => logger.error('Failed to log inquiry email', err));
     } catch (emailError) {
       logger.error('Failed to send inquiry notification email', emailError, { inquiryId: inquiry.id });
     }

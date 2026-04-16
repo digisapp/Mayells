@@ -27,7 +27,7 @@ async function getLot(lotId: string) {
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ auctionId: string; lotId: string }> }): Promise<Metadata> {
-  const { lotId } = await params;
+  const { auctionId, lotId } = await params;
   const lot = await getLot(lotId);
   if (!lot) return {};
 
@@ -35,15 +35,17 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
     ? `Est. ${formatCurrency(lot.estimateLow)} – ${formatCurrency(lot.estimateHigh)}`
     : undefined;
   const description = lot.description?.slice(0, 160) || `${lot.title}${estimate ? ` ${estimate}` : ''} at Mayell Auctions.`;
+  const canonicalUrl = `${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`;
 
   return {
     title: lot.title,
     description,
+    alternates: { canonical: canonicalUrl },
     openGraph: {
       title: lot.title,
       description,
       type: 'website',
-      url: `${BASE_URL}/auctions/${lot.id}/lots/${lot.slug || lot.id}`,
+      url: canonicalUrl,
       images: lot.primaryImageUrl ? [{ url: lot.primaryImageUrl, width: 1200, height: 630, alt: lot.title }] : undefined,
     },
     twitter: {

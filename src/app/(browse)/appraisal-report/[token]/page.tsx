@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { db } from '@/db';
 import { estateVisits, estateVisitItems } from '@/db/schema';
 import { eq, asc } from 'drizzle-orm';
@@ -66,11 +67,13 @@ export default async function AppraisalReportPage({
         {completedItems.map((item, i) => (
           <div key={item.id} className="border rounded-xl overflow-hidden">
             <div className="grid sm:grid-cols-[280px_1fr]">
-              <div className="aspect-square sm:aspect-auto sm:h-full">
-                <img
+              <div className="relative aspect-square sm:aspect-auto sm:h-full">
+                <Image
                   src={item.imageUrl}
                   alt={item.title || `Item ${i + 1}`}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="(max-width: 640px) 100vw, 280px"
+                  className="object-cover"
                 />
               </div>
               <div className="p-6">

@@ -30,14 +30,17 @@ export async function generateMetadata({ params }: { params: Promise<{ lotId: st
   const title = `${lot.title}${price ? ` — ${price}` : ''} | Mayell Gallery`;
   const description = lot.description?.slice(0, 160) || `${lot.title} available at Mayell Gallery.`;
 
+  const canonicalUrl = `${BASE_URL}/gallery/${lot.slug || lot.id}`;
+
   return {
     title,
     description,
+    alternates: { canonical: canonicalUrl },
     openGraph: {
       title: lot.title,
       description,
       type: 'website',
-      url: `${BASE_URL}/gallery/${lot.slug || lot.id}`,
+      url: canonicalUrl,
       images: lot.primaryImageUrl ? [{ url: lot.primaryImageUrl, width: 1200, height: 630, alt: lot.title }] : undefined,
     },
     twitter: {

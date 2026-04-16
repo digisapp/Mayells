@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera } from 'lucide-react';
 
@@ -14,13 +15,14 @@ interface SubmissionImage {
 export default function AdminSubmissionsPage() {
   const [images, setImages] = useState<SubmissionImage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/submissions')
       .then((r) => r.json())
       .then((d) => setImages(d.data ?? []))
-      .catch(console.error)
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -37,6 +39,12 @@ export default function AdminSubmissionsPage() {
             <div key={i} className="aspect-square bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
+      ) : error ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-destructive text-sm">Failed to load submission photos. Please refresh and try again.</p>
+          </CardContent>
+        </Card>
       ) : images.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
@@ -54,11 +62,12 @@ export default function AdminSubmissionsPage() {
                 onClick={() => setSelected(selected === img.url ? null : img.url)}
                 className="relative aspect-square rounded-lg overflow-hidden bg-muted border border-border/50 hover:ring-2 ring-champagne transition-all cursor-pointer"
               >
-                <img
+                <Image
                   src={img.url}
                   alt={img.name}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
+                  fill
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 17vw"
+                  className="object-cover"
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
                   <p className="text-[10px] text-white truncate">
