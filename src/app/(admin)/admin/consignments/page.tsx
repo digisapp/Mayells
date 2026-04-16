@@ -50,7 +50,7 @@ export default function AdminConsignmentsPage() {
     fetch('/api/admin/consignments')
       .then((r) => r.json())
       .then((d) => setItems(d.data ?? []))
-      .catch(console.error)
+      .catch(() => toast.error('Failed to load consignments'))
       .finally(() => setLoading(false));
   }, []);
 

@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { outreachContacts, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
+import { escapeHtml } from '@/lib/email/escape';
 import { emails } from '@/db/schema';
 import { logger } from '@/lib/logger';
 
@@ -32,10 +33,6 @@ export async function POST(req: NextRequest) {
     }
 
     const { to, subject, body, contactId } = parsed.data;
-
-    // HTML-escape user input to prevent XSS
-    const escapeHtml = (text: string) =>
-      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     const resend = getResend();
     const emailHtml = `

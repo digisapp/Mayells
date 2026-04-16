@@ -78,7 +78,7 @@ export default function AdminClientDetailPage() {
     fetch(`/api/admin/clients/${clientId}`)
       .then((r) => r.json())
       .then((d) => setData(d.data ?? null))
-      .catch(console.error)
+      .catch(() => toast.error('Failed to load client data'))
       .finally(() => setLoading(false));
   }, [clientId]);
 

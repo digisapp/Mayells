@@ -4,15 +4,12 @@ import { db } from '@/db';
 import { users, consignments, lots } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
+import { escapeHtml } from '@/lib/email/escape';
 import { emails } from '@/db/schema';
 import { logger } from '@/lib/logger';
 
 function formatCents(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(cents / 100);
-}
-
-function escapeHtml(text: string) {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 export async function POST(

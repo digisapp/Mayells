@@ -11,6 +11,7 @@ import { shipments, invoices, lots, users, automationSettings } from '@/db/schem
 import { eq } from 'drizzle-orm';
 import { getRates, purchaseLabel, getTracking } from './client';
 import type { ShippingAddress, PackageDimensions } from './types';
+import { logger } from '@/lib/logger';
 
 /**
  * Create a shipment record when an invoice is paid.
@@ -102,7 +103,7 @@ export async function createShipmentForInvoice(invoiceId: string) {
     try {
       await generateLabelForShipment(shipment.id);
     } catch (err) {
-      console.error('Auto label generation failed, seller will need to request manually:', err);
+      logger.error('Auto label generation failed, seller will need to request manually', err);
     }
   }
 

@@ -39,9 +39,18 @@ export async function GET(request: NextRequest) {
   const query = params.get('query');
   const minEstimate = params.get('minEstimate') ? parseInt(params.get('minEstimate')!) * 100 : undefined;
   const maxEstimate = params.get('maxEstimate') ? parseInt(params.get('maxEstimate')!) * 100 : undefined;
-  const status = params.get('status') || 'available';
-  const saleType = params.get('saleType') || 'all';
-  const sort = params.get('sort') || 'newest';
+  // Whitelist all enum params — unknown values fall back to the default
+  const VALID_STATUSES = ['available', 'sold', 'all'] as const;
+  const VALID_SALE_TYPES = ['auction', 'gallery', 'private', 'all'] as const;
+  const VALID_SORTS = ['newest', 'ending_soon', 'price_asc', 'price_desc', 'estimate_asc', 'estimate_desc'] as const;
+
+  const rawStatus = params.get('status') ?? 'available';
+  const rawSaleType = params.get('saleType') ?? 'all';
+  const rawSort = params.get('sort') ?? 'newest';
+
+  const status = (VALID_STATUSES as readonly string[]).includes(rawStatus) ? rawStatus : 'available';
+  const saleType = (VALID_SALE_TYPES as readonly string[]).includes(rawSaleType) ? rawSaleType : 'all';
+  const sort = (VALID_SORTS as readonly string[]).includes(rawSort) ? rawSort : 'newest';
   const limit = Math.min(parseInt(params.get('limit') || '50'), 100);
   const offset = parseInt(params.get('offset') || '0');
 

@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
+import { rateLimit } from '@/lib/rate-limit';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB per file
 const BUCKET = 'lot-images';
 
+const appraisalSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(200),
+  phone: z.string().min(1, 'Phone is required').max(50),
+  email: z.string().email('Invalid email').max(320).optional().or(z.literal('')),
+  items: z.string().max(5000).optional(),
+  service: z.string().max(200).optional(),
+  message: z.string().max(5000).optional(),
+});
+
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const { success: allowed } = await rateLimit(`appraisal:${ip}`, {
+      maxRequests: 5,
+      windowSeconds: 3600,
+    });
+    if (!allowed) {
+      return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });
+    }
+
     const contentType = req.headers.get('content-type') || '';
 
     let name: string;
@@ -60,9 +80,11 @@ export async function POST(req: NextRequest) {
       message = body.message;
     }
 
-    if (!name || !phone) {
-      return NextResponse.json({ error: 'Name and phone are required' }, { status: 400 });
+    const parsed = appraisalSchema.safeParse({ name, phone, email, items, service, message });
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
+    ({ name, phone, email, items, service, message } = parsed.data as typeof parsed.data & { name: string; phone: string });
 
     sendAppraisalRequestNotification(
       { name, phone, email, service, items, message },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getResend } from '@/lib/email/resend';
+import { escapeHtml } from '@/lib/email/escape';
 import { BUSINESS } from '@/lib/config';
 import { emails } from '@/db/schema';
 import { createClient } from '@/lib/supabase/server';
@@ -31,9 +32,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // HTML-escape user input to prevent XSS in emails
-    const escapeHtml = (text: string) =>
-      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const safeName = escapeHtml(recipientName);
 
     const agreementUrl = `${BUSINESS.url}/consignment-agreement`;

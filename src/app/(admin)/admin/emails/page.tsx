@@ -13,16 +13,7 @@ import {
   MessageSquare, Paperclip,
 } from 'lucide-react';
 import { toast } from 'sonner';
-
-/** Escape HTML entities to prevent XSS when embedding text into HTML strings */
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+import { escapeHtml } from '@/lib/email/escape';
 
 interface EmailRow {
   id: string;

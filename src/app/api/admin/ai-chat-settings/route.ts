@@ -1,8 +1,18 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users, aiChatSettings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+
+const aiChatSettingsSchema = z.object({
+  personality: z.string().max(5000).optional().nullable(),
+  customKnowledge: z.string().max(20000).optional().nullable(),
+  upsellItems: z.string().max(5000).optional().nullable(),
+  disallowedTopics: z.string().max(5000).optional().nullable(),
+  greetingMessage: z.string().max(1000).optional().nullable(),
+  enabled: z.boolean().optional(),
+});
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -34,28 +44,32 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { personality, customKnowledge, upsellItems, disallowedTopics, greetingMessage, enabled } = body;
+    const parsed = aiChatSettingsSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+
+    const { personality, customKnowledge, upsellItems, disallowedTopics, greetingMessage, enabled } = parsed.data;
 
     const [existing] = await db.select({ id: aiChatSettings.id }).from(aiChatSettings).limit(1);
 
     if (existing) {
       await db.update(aiChatSettings).set({
-        personality: personality || null,
-        customKnowledge: customKnowledge || null,
-        upsellItems: upsellItems || null,
-        disallowedTopics: disallowedTopics || null,
-        greetingMessage: greetingMessage || null,
+        personality: personality ?? null,
+        customKnowledge: customKnowledge ?? null,
+        upsellItems: upsellItems ?? null,
+        disallowedTopics: disallowedTopics ?? null,
+        greetingMessage: greetingMessage ?? null,
         enabled: enabled ?? true,
         updatedAt: new Date(),
       }).where(eq(aiChatSettings.id, existing.id));
     } else {
       await db.insert(aiChatSettings).values({
-        personality: personality || null,
-        customKnowledge: customKnowledge || null,
-        upsellItems: upsellItems || null,
-        disallowedTopics: disallowedTopics || null,
-        greetingMessage: greetingMessage || null,
+        personality: personality ?? null,
+        customKnowledge: customKnowledge ?? null,
+        upsellItems: upsellItems ?? null,
+        disallowedTopics: disallowedTopics ?? null,
+        greetingMessage: greetingMessage ?? null,
         enabled: enabled ?? true,
       });
     }

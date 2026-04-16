@@ -5,6 +5,7 @@ import { sellerProspects, users, emails } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { getResend } from '@/lib/email/resend';
+import { escapeHtml } from '@/lib/email/escape';
 import { BUSINESS } from '@/lib/config';
 import { formatCurrency } from '@/types';
 
@@ -58,10 +59,6 @@ export async function POST(
         updatedAt: new Date(),
       })
       .where(eq(sellerProspects.id, prospectId));
-
-    // HTML-escape user input
-    const escapeHtml = (text: string) =>
-      text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
     const safeName = escapeHtml(prospect.fullName);
     const safeMessage = message ? escapeHtml(message) : null;

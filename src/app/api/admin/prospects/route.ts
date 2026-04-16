@@ -1,9 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { sellerProspects, uploadLinks, uploadItems, users } from '@/db/schema';
 import { eq, desc, count, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+
+const PROSPECT_SOURCES = ['phone', 'email', 'website', 'referral', 'estate_visit', 'walk_in', 'other'] as const;
+const PROSPECT_STATUSES = ['new', 'contacted', 'upload_sent', 'items_received', 'under_review', 'agreement_sent', 'agreement_signed', 'accepted', 'declined', 'archived'] as const;
+
+const prospectBaseFields = {
+  fullName: z.string().min(1, 'Full name is required').max(200),
+  email: z.string().email().max(320).optional().or(z.literal('')),
+  phone: z.string().max(50).optional(),
+  company: z.string().max(200).optional(),
+  address: z.string().max(500).optional(),
+  city: z.string().max(100).optional(),
+  state: z.string().max(100).optional(),
+  zip: z.string().max(20).optional(),
+  source: z.enum(PROSPECT_SOURCES).optional(),
+  sourceNotes: z.string().max(2000).optional(),
+  estimatedItemCount: z.number().int().min(0).optional(),
+  itemSummary: z.string().max(5000).optional(),
+  notes: z.string().max(5000).optional(),
+};
+
+const prospectCreateSchema = z.object(prospectBaseFields);
+
+const prospectPatchSchema = z.object({
+  id: z.string().uuid('Valid prospect ID is required'),
+  ...Object.fromEntries(
+    Object.entries(prospectBaseFields).map(([k, v]) => [k, v.optional()])
+  ) as Record<string, z.ZodTypeAny>,
+  status: z.enum(PROSPECT_STATUSES).optional(),
+  agreedCommissionPercent: z.number().int().min(0).max(100).optional(),
+  acceptedItems: z.number().int().min(0).optional(),
+  totalEstimateLow: z.number().int().min(0).optional(),
+  totalEstimateHigh: z.number().int().min(0).optional(),
+});
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,43 +95,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const {
-      fullName,
-      email,
-      phone,
-      company,
-      address,
-      city,
-      state,
-      zip,
-      source,
-      sourceNotes,
-      estimatedItemCount,
-      itemSummary,
-      notes,
-    } = await req.json();
-
-    if (!fullName) {
-      return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
+    const parsed = prospectCreateSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
     const [created] = await db
       .insert(sellerProspects)
-      .values({
-        fullName,
-        email,
-        phone,
-        company,
-        address,
-        city,
-        state,
-        zip,
-        source,
-        sourceNotes,
-        estimatedItemCount,
-        itemSummary,
-        notes,
-      })
+      .values(parsed.data)
       .returning();
 
     return NextResponse.json({ data: created }, { status: 201 });
@@ -120,10 +125,12 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { id, ...fields } = await req.json();
-    if (!id) {
-      return NextResponse.json({ error: 'Prospect ID is required' }, { status: 400 });
+    const parsed = prospectPatchSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
+
+    const { id, ...fields } = parsed.data;
 
     const [updated] = await db
       .update(sellerProspects)
