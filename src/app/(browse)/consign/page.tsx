@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { track } from '@vercel/analytics';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -120,6 +121,7 @@ export default function ConsignPage() {
       });
       if (res.ok) {
         setSubmitted(true);
+        track('consignment_started', { photoCount: photos.length });
       } else {
         toast.error('Failed to submit. Please try again.');
       }

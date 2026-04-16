@@ -9,6 +9,7 @@ import { getResend } from '@/lib/email/resend';
 import { escapeHtml } from '@/lib/email/escape';
 import { BUSINESS } from '@/lib/config';
 import { emails } from '@/db/schema';
+import { track } from '@vercel/analytics/server';
 
 const inquirySchema = z.object({
   lotId: z.string().uuid(),
@@ -96,6 +97,7 @@ export async function POST(req: NextRequest) {
       logger.error('Failed to send inquiry notification email', emailError, { inquiryId: inquiry.id });
     }
 
+    void track('inquiry_submitted', { lotId: lot.id, saleType: lot.saleType });
     return NextResponse.json({
       data: { message: 'Inquiry submitted successfully' },
     }, { status: 201 });

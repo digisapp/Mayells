@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
 import { generateLotJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
+import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -62,6 +63,8 @@ export default async function GalleryDetailPage({
 
   const lot = await getLot(lotId);
   if (!lot || lot.saleType !== 'gallery') notFound();
+
+  void track('gallery_item_viewed', { lotId: lot.id, status: lot.status });
 
   // Get images
   const images = await db

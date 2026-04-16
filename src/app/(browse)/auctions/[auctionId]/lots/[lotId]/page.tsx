@@ -15,6 +15,7 @@ import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
 import { generateLotJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
 import { categories } from '@/db/schema';
+import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -106,6 +107,8 @@ export default async function LotDetailPage({
   const [category] = lot.categoryId
     ? await db.select().from(categories).where(eq(categories.id, lot.categoryId)).limit(1)
     : [null];
+
+  void track('lot_viewed', { lotId: lot.id, saleType: lot.saleType, status: lot.status });
 
   // Rich JSON-LD for AI agents + search engines
   const lotJsonLd = generateLotJsonLd({

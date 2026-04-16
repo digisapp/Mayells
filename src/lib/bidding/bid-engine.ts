@@ -4,6 +4,7 @@ import { eq, and, desc, ne, sql } from 'drizzle-orm';
 import { redis } from '@/lib/redis';
 import { getMinIncrement } from './bid-increments';
 import { checkAndExtendAuction } from './anti-snipe';
+import { track } from '@vercel/analytics/server';
 
 interface PlaceBidInput {
   lotId: string;
@@ -164,6 +165,14 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
 
   // Step 4: Process max bids (proxy bidding)
   await processMaxBids(lotId, auctionId, bidderId, amount, antiSnipeSettings);
+
+  void track('bid_placed', {
+    lotId,
+    auctionId,
+    bidType,
+    amount: amount / 100,
+    extended: antiSnipeResult.extended ?? false,
+  });
 
   return {
     success: true,
