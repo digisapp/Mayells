@@ -4,6 +4,8 @@ import { getModel } from '@/lib/ai/client';
 import { chatTools } from '@/lib/ai/chat-tools';
 import { db } from '@/db';
 import { aiChatSettings } from '@/db/schema';
+import { rateLimit } from '@/lib/rate-limit';
+import { NextRequest } from 'next/server';
 
 const BASE_PROMPT = `You are a helpful concierge for Mayell, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
 
@@ -62,7 +64,16 @@ async function getSystemPrompt(): Promise<{ prompt: string; enabled: boolean }> 
   }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const { success } = await rateLimit(`ai:chat:${ip}`, { maxRequests: 30, windowSeconds: 3600 });
+  if (!success) {
+    return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '3600' },
+    });
+  }
+
   const { prompt, enabled } = await getSystemPrompt();
 
   if (!enabled) {
@@ -72,7 +83,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const { messages } = await req.json();
+  const body = await req.json();
+  const messages = Array.isArray(body?.messages) ? body.messages.slice(-20) : [];
+
+  if (messages.length === 0) {
+    return new Response(JSON.stringify({ error: 'Messages are required' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   const result = streamText({
     model: getModel('chat'),

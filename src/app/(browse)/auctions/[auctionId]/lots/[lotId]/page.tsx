@@ -72,41 +72,23 @@ export default async function LotDetailPage({
   }
   if (!lot) notFound();
 
-  // Get images
-  const images = await db
-    .select()
-    .from(lotImages)
-    .where(eq(lotImages.lotId, lot.id))
-    .orderBy(lotImages.sortOrder);
+  // Fetch all lot-dependent data in parallel
+  const [images, [auctionLot], bidHistory, categoryResult] = await Promise.all([
+    db.select().from(lotImages).where(eq(lotImages.lotId, lot.id)).orderBy(lotImages.sortOrder),
+    db.select().from(auctionLots).where(eq(auctionLots.lotId, lot.id)).limit(1),
+    db.select().from(bids).where(eq(bids.lotId, lot.id)).orderBy(desc(bids.createdAt)).limit(20),
+    lot.categoryId
+      ? db.select().from(categories).where(eq(categories.id, lot.categoryId)).limit(1)
+      : Promise.resolve([null]),
+  ]);
 
-  // Get auction info
-  const [auctionLot] = await db
-    .select()
-    .from(auctionLots)
-    .where(eq(auctionLots.lotId, lot.id))
-    .limit(1);
+  const [category] = categoryResult;
 
+  // Auction record requires auctionLot.auctionId — one additional round-trip
   let auction = null;
   if (auctionLot) {
-    [auction] = await db
-      .select()
-      .from(auctions)
-      .where(eq(auctions.id, auctionLot.auctionId))
-      .limit(1);
+    [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionLot.auctionId)).limit(1);
   }
-
-  // Get bid history
-  const bidHistory = await db
-    .select()
-    .from(bids)
-    .where(eq(bids.lotId, lot.id))
-    .orderBy(desc(bids.createdAt))
-    .limit(20);
-
-  // Get category name for structured data
-  const [category] = lot.categoryId
-    ? await db.select().from(categories).where(eq(categories.id, lot.categoryId)).limit(1)
-    : [null];
 
   void track('lot_viewed', { lotId: lot.id, saleType: lot.saleType, status: lot.status });
 

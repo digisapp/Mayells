@@ -3,9 +3,16 @@ import { createClient } from '@/lib/supabase/server';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { loginSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import { rateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const { success: ipOk } = await rateLimit(`auth:login:ip:${ip}`, { maxRequests: 10, windowSeconds: 900 });
+    if (!ipOk) {
+      return NextResponse.json({ error: 'Too many login attempts. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': '900' } });
+    }
+
     const body = await req.json();
     const parsed = loginSchema.safeParse(body);
 
@@ -17,6 +24,13 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password } = parsed.data;
+
+    // Per-email rate limit catches distributed attacks across many IPs
+    const { success: emailOk } = await rateLimit(`auth:login:email:${email.toLowerCase()}`, { maxRequests: 10, windowSeconds: 900 });
+    if (!emailOk) {
+      return NextResponse.json({ error: 'Too many login attempts for this account. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': '900' } });
+    }
+
     const supabase = await createClient();
 
     const { data, error } = await supabase.auth.signInWithPassword({

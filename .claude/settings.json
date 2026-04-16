@@ -175,7 +175,8 @@
       "Bash(ls /Users/examodels/Desktop/Mayells/sentry*)",
       "Bash(node -e \"require\\('@vercel/analytics/server'\\)\")",
       "Bash(node -e \"const m = require\\('@vercel/analytics'\\); console.log\\(Object.keys\\(m\\)\\)\")",
-      "Bash(grep -v \":0$\")"
+      "Bash(grep -v \":0$\")",
+      "Bash(grep -l \"export async function POST\" /Users/examodels/Desktop/Mayells/src/app/api/**/*.ts)"
     ],
     "additionalDirectories": [
       "/Users/examodels/Desktop/Mayells/src/components/chat",
