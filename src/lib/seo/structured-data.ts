@@ -87,7 +87,7 @@ export function generateLotJsonLd(lot: {
       availability: isAvailable ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
       seller: {
         '@type': 'Organization',
-        name: 'Mayell Auctions',
+        name: 'Mayells',
       },
     };
   } else if (lot.saleType === 'auction') {
@@ -161,7 +161,7 @@ export function generateAuctionJsonLd(auction: {
     },
     organizer: {
       '@type': 'Organization',
-      name: 'Mayell Auctions',
+      name: 'Mayells',
       url: APP_URL,
     },
     offers: {

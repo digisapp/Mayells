@@ -35,7 +35,7 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   const estimate = lot.estimateLow && lot.estimateHigh
     ? `Est. ${formatCurrency(lot.estimateLow)} – ${formatCurrency(lot.estimateHigh)}`
     : undefined;
-  const description = lot.description?.slice(0, 160) || `${lot.title}${estimate ? ` ${estimate}` : ''} at Mayell Auctions.`;
+  const description = lot.description?.slice(0, 160) || `${lot.title}${estimate ? ` ${estimate}` : ''} at Mayells.`;
   const canonicalUrl = `${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`;
 
   return {

@@ -9,13 +9,13 @@ export const metadata = {
   title: 'Auctions',
   description: 'Browse upcoming and current auctions at Mayell. Fine art, antiques, jewelry, watches, fashion, and collectibles.',
   openGraph: {
-    title: 'Auctions | Mayell Auctions',
+    title: 'Auctions | Mayells',
     description: 'Browse upcoming, live, and past auctions for fine art, antiques, jewelry, and collectibles.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Auctions | Mayell Auctions',
+    title: 'Auctions | Mayells',
     description: 'Browse upcoming, live, and past auctions for fine art, antiques, jewelry, and collectibles.',
   },
 };

@@ -10,6 +10,7 @@ import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { Calendar, Clock, Gavel, ExternalLink } from 'lucide-react';
 import { generateAuctionJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
+import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -26,7 +27,7 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   const auction = await getAuction(auctionId);
   if (!auction) return {};
 
-  const title = `${auction.title} | Mayell Auctions`;
+  const title = `${auction.title} | Mayells`;
   const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayell.`;
 
   const canonicalUrl = `${BASE_URL}/auctions/${auction.slug || auction.id}`;
@@ -60,6 +61,8 @@ export default async function AuctionDetailPage({
 
   const auction = await getAuction(auctionId);
   if (!auction) notFound();
+
+  void track('auction_viewed', { auctionId: auction.id, status: auction.status, lotCount: auction.lotCount ?? 0 });
 
   const auctionLotsResult = await db
     .select({ lot: lots, auctionLot: auctionLots })

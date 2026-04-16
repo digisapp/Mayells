@@ -9,13 +9,13 @@ export const metadata = {
   title: 'Browse Lots',
   description: 'Browse auction lots at Mayell. Paintings, sculptures, antique furniture, jewelry, watches, designer fashion, and collectibles with expert cataloging.',
   openGraph: {
-    title: 'Browse Lots | Mayell Auctions',
+    title: 'Browse Lots | Mayells',
     description: 'Browse auction lots — paintings, sculptures, antique furniture, jewelry, watches, and collectibles.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Browse Lots | Mayell Auctions',
+    title: 'Browse Lots | Mayells',
     description: 'Browse auction lots — paintings, sculptures, antique furniture, jewelry, watches, and collectibles.',
   },
 };

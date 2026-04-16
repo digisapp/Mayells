@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!category) return { title: 'Category Not Found' };
   return {
     title: category.name,
-    description: category.description || `Browse ${category.name} lots at Mayell Auctions. Expert cataloging, authentication, and appraisal.`,
+    description: category.description || `Browse ${category.name} lots at Mayells. Expert cataloging, authentication, and appraisal.`,
   };
 }
 

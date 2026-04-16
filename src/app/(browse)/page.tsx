@@ -7,18 +7,18 @@ import Image from 'next/image';
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 export const metadata: Metadata = {
-  title: 'Mayell Auctions | Fine Art Antiques Design Fashion Collectibles',
+  title: 'Mayells | Fine Art Antiques Design Fashion Collectibles',
   description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
   openGraph: {
-    title: 'Mayell Auctions | Fine Art Antiques Design Fashion Collectibles',
+    title: 'Mayells | Fine Art Antiques Design Fashion Collectibles',
     description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
     type: 'website',
     url: BASE_URL,
-    images: [{ url: `${BASE_URL}/opengraph-image`, width: 1200, height: 630, alt: 'Mayell Auctions' }],
+    images: [{ url: `${BASE_URL}/opengraph-image`, width: 1200, height: 630, alt: 'Mayells' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Mayell Auctions | Fine Art Antiques Design Fashion Collectibles',
+    title: 'Mayells | Fine Art Antiques Design Fashion Collectibles',
     description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.',
     images: [`${BASE_URL}/opengraph-image`],
   },

@@ -8,15 +8,15 @@ import type { Lot } from '@/db/schema/lots';
 
 export const metadata = {
   title: 'Gallery',
-  description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices from Mayell Auctions.',
+  description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices from Mayells.',
   openGraph: {
-    title: 'Gallery | Mayell Auctions',
+    title: 'Gallery | Mayells',
     description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Gallery | Mayell Auctions',
+    title: 'Gallery | Mayells',
     description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices.',
   },
 };

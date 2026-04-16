@@ -1,6 +1,6 @@
 export const metadata = {
   title: 'Privacy Policy',
-  description: 'Learn how Mayell Auctions collects, uses, and protects your personal information. Your privacy and data security are our priority.',
+  description: 'Learn how Mayells collects, uses, and protects your personal information. Your privacy and data security are our priority.',
 };
 
 export default function PrivacyPage() {

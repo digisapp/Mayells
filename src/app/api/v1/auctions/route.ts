@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
       data: formatted,
       pagination: { total: count, limit, offset, hasMore: offset + limit < count },
       meta: {
-        provider: 'Mayell Auctions',
+        provider: 'Mayells',
         apiVersion: 'v1',
         timestamp: new Date().toISOString(),
       },

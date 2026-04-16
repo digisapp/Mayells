@@ -1,6 +1,6 @@
 export const metadata = {
   title: 'Terms of Service',
-  description: 'Terms of Service governing your use of the Mayell Auctions platform, including bidding, consignment, and purchasing conditions.',
+  description: 'Terms of Service governing your use of the Mayells platform, including bidding, consignment, and purchasing conditions.',
 };
 
 export default function TermsPage() {

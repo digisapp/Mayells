@@ -103,7 +103,7 @@ export async function GET(
     const response = NextResponse.json({
       data: formatted,
       meta: {
-        provider: 'Mayell Auctions',
+        provider: 'Mayells',
         apiVersion: 'v1',
         timestamp: new Date().toISOString(),
       },

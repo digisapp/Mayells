@@ -8,7 +8,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 const websiteJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
-  name: 'Mayell Auctions',
+  name: 'Mayells',
   url: BASE_URL,
   potentialAction: {
     '@type': 'SearchAction',
@@ -21,7 +21,7 @@ const businessJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'LocalBusiness',
   '@id': `${BASE_URL}/#business`,
-  name: 'Mayell Auctions',
+  name: 'Mayells',
   url: BASE_URL,
   logo: `${BASE_URL}/icon.svg`,
   telephone: '+15612204622',

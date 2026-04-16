@@ -59,7 +59,7 @@ export function PublicFooter() {
         {/* Bottom bar */}
         <div className="border-t border-white/10 mt-10 sm:mt-14 pt-6 sm:pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
           <p className="text-[12px] text-white/40">
-            &copy; {new Date().getFullYear()} Mayell Auctions. All rights reserved.
+            &copy; {new Date().getFullYear()} Mayells. All rights reserved.
           </p>
           <div className="flex gap-6 text-[12px] text-white/40">
             <Link href="/terms" className="hover:text-white/60 transition-colors duration-300">Terms</Link>
