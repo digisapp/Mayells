@@ -7,13 +7,29 @@ import { lots, categories } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { LotGrid } from '@/components/lots/LotGrid';
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const [category] = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
   if (!category) return { title: 'Category Not Found' };
+  const description = category.description || `Browse ${category.name} lots at Mayells. Expert cataloging, authentication, and appraisal.`;
   return {
     title: category.name,
-    description: category.description || `Browse ${category.name} lots at Mayells. Expert cataloging, authentication, and appraisal.`,
+    description,
+    alternates: { canonical: `${BASE_URL}/categories/${slug}` },
+    openGraph: {
+      title: `${category.name} | Mayells`,
+      description,
+      url: `${BASE_URL}/categories/${slug}`,
+      type: 'website',
+      images: [{ url: `${BASE_URL}/opengraph-image`, width: 1200, height: 630, alt: 'Mayells' }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${category.name} | Mayells`,
+      description,
+    },
   };
 }
 

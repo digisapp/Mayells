@@ -5,6 +5,7 @@ import { lots, categories } from '@/db/schema';
 import { eq, and, desc, asc, ilike, sql } from 'drizzle-orm';
 import { LotGrid } from '@/components/lots/LotGrid';
 import type { Lot } from '@/db/schema/lots';
+import { logger } from '@/lib/logger';
 
 export const metadata = {
   title: 'Gallery',
@@ -57,8 +58,8 @@ export default async function GalleryPage({
       .where(and(...conditions))
       .orderBy(orderBy)
       .limit(48);
-  } catch {
-    // DB error — show empty state
+  } catch (error) {
+    logger.error('Gallery page DB error', error);
   }
 
   return (

@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { rateLimit } from '@/lib/rate-limit';
+
+const chatSchema = z.object({
+  message: z.string().min(1).max(500),
+  type: z.enum(['chat', 'reaction', 'bid_notification']).optional().default('chat'),
+});
 
 /**
  * Chat messages are broadcast via Supabase Realtime, not stored permanently.
@@ -21,12 +28,18 @@ export async function POST(
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    const { message, type = 'chat' } = await request.json();
-
-    if (!message || typeof message !== 'string' || message.length > 500) {
-      return NextResponse.json({ error: 'Invalid message' }, { status: 400 });
+    const { success } = await rateLimit(`live:chat:${user.id}`, { maxRequests: 60, windowSeconds: 60 });
+    if (!success) {
+      return NextResponse.json({ error: 'Too many messages — slow down' }, { status: 429 });
     }
+
+    const parsed = chatSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+    const { message, type } = parsed.data;
+
+    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
 
     // Broadcast via Supabase Realtime
     const channel = supabase.channel(`live:${auctionId}`);
@@ -38,7 +51,7 @@ export async function POST(
         displayName: profile?.displayName || profile?.fullName || 'Anonymous',
         role: profile?.role,
         message,
-        messageType: type, // 'chat', 'reaction', 'bid_notification'
+        messageType: type,
         timestamp: new Date().toISOString(),
       },
     });
