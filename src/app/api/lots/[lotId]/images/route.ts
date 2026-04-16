@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lotImages, lots, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+
+const imagePostSchema = z.object({
+  url: z.string().url('Valid image URL required').max(2000),
+  altText: z.string().max(500).optional(),
+  isPrimary: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+const imageDeleteSchema = z.object({
+  imageId: z.string().uuid('Valid image ID required'),
+});
 
 export async function POST(
   req: NextRequest,
@@ -22,12 +34,12 @@ export async function POST(
     }
 
     const { lotId } = await params;
-    const body = await req.json();
-    const { url, altText, isPrimary, sortOrder } = body;
-
-    if (!url) {
-      return NextResponse.json({ error: 'url is required' }, { status: 400 });
+    const parsed = imagePostSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
+
+    const { url, altText, isPrimary, sortOrder } = parsed.data;
 
     const [image] = await db
       .insert(lotImages)
@@ -78,11 +90,12 @@ export async function DELETE(
     }
 
     const { lotId } = await params;
-    const { imageId } = await req.json();
-
-    if (!imageId) {
-      return NextResponse.json({ error: 'imageId is required' }, { status: 400 });
+    const parsed = imageDeleteSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
+
+    const { imageId } = parsed.data;
 
     const [deleted] = await db
       .delete(lotImages)

@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq, desc, or, ilike, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+
+const userPatchSchema = z.object({
+  id: z.string().uuid('Valid user ID required'),
+  role: z.enum(['buyer', 'seller', 'admin', 'auctioneer']).optional(),
+  accountStatus: z.enum(['active', 'suspended', 'banned']).optional(),
+});
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -66,20 +73,21 @@ export async function PATCH(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { id, role, accountStatus } = await req.json();
-    if (!id) return NextResponse.json({ error: 'User ID required' }, { status: 400 });
+    const parsed = userPatchSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+
+    const { id, role, accountStatus } = parsed.data;
 
     // Prevent admin from changing their own role
     if (id === admin.id && role && role !== admin.role) {
       return NextResponse.json({ error: 'Cannot change your own role' }, { status: 400 });
     }
 
-    const validRoles = ['buyer', 'seller', 'admin', 'auctioneer'];
-    const validStatuses = ['active', 'suspended', 'banned'];
-
     const updateData: Record<string, unknown> = {};
-    if (role && validRoles.includes(role)) updateData.role = role;
-    if (accountStatus && validStatuses.includes(accountStatus)) updateData.accountStatus = accountStatus;
+    if (role) updateData.role = role;
+    if (accountStatus) updateData.accountStatus = accountStatus;
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });

@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { consignments, users, lots, categories, automationSettings } from '@/db/schema';
 import { eq, desc, ilike } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+
+const consignmentReviewSchema = z.object({
+  id: z.string().uuid('Valid consignment ID required'),
+  status: z.enum(['submitted', 'under_review', 'approved', 'declined', 'listed', 'sold', 'returned']),
+  reviewNotes: z.string().max(5000).optional(),
+  commissionPercent: z.number().int().min(0).max(100).optional(),
+});
 
 export async function GET() {
   try {
@@ -51,15 +59,17 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { id, status, reviewNotes, commissionPercent } = await request.json();
-    if (!id || !status) {
-      return NextResponse.json({ error: 'id and status required' }, { status: 400 });
+    const parsed = consignmentReviewSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
+
+    const { id, status, reviewNotes, commissionPercent } = parsed.data;
 
     const [updated] = await db
       .update(consignments)
       .set({
-        status: status as 'submitted' | 'under_review' | 'approved' | 'declined' | 'listed' | 'sold' | 'returned',
+        status,
         reviewNotes,
         commissionPercent,
         reviewedById: user.id,

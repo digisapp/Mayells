@@ -1,10 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { emails, users } from '@/db/schema';
 import { eq, desc, and, or, ilike, sql, inArray } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { logger } from '@/lib/logger';
+
+const EMAIL_STATUSES = ['received', 'read', 'replied', 'sent', 'delivered', 'bounced'] as const;
+
+const emailSendSchema = z.object({
+  to: z.string().email('Valid recipient email required').max(320),
+  subject: z.string().min(1).max(500),
+  html: z.string().max(500_000).optional(),
+  text: z.string().max(100_000).optional(),
+  inReplyToId: z.string().uuid().optional(),
+  attachments: z.array(z.object({
+    content: z.string().max(10_000_000), // base64, ~7.5MB decoded
+    filename: z.string().max(255),
+    contentType: z.string().max(100).optional(),
+  })).max(5).optional(),
+}).refine(d => d.html || d.text, { message: 'html or text body is required' });
+
+const emailPatchSchema = z.object({
+  id: z.string().uuid().optional(),
+  ids: z.array(z.string().uuid()).max(500).optional(),
+  status: z.enum(EMAIL_STATUSES).optional(),
+}).refine(d => d.id || (d.ids && d.ids.length > 0), { message: 'id or ids required' });
+
+const emailDeleteSchema = z.object({
+  id: z.string().uuid().optional(),
+  ids: z.array(z.string().uuid()).max(500).optional(),
+}).refine(d => d.id || (d.ids && d.ids.length > 0), { message: 'id or ids required' });
 
 const PAGE_SIZE = 30;
 
@@ -103,33 +130,34 @@ export async function POST(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { to, subject, html, text, inReplyToId, attachments } = await req.json();
-    if (!to || !subject || (!html && !text)) {
-      return NextResponse.json({ error: 'to, subject, and body required' }, { status: 400 });
+    const parsedSend = emailSendSchema.safeParse(await req.json());
+    if (!parsedSend.success) {
+      return NextResponse.json({ error: parsedSend.error.issues[0].message }, { status: 400 });
     }
 
-    const resend = getResend();
-    const fromAddress = 'Mayell <notifications@mayells.com>';
+    const { to, subject, html, text, inReplyToId, attachments } = parsedSend.data;
 
-    // Build send params with optional attachments
-    // Attachments format: [{ content: "base64...", filename: "file.pdf", contentType?: "application/pdf" }]
-    const sendParams: Parameters<typeof resend.emails.send>[0] = {
+    const resend = getResend();
+    const fromAddress = 'Mayells <notifications@mayells.com>';
+
+    const sendPayload = {
       from: fromAddress,
       to,
       subject,
-      html: html || undefined,
-      text: text || undefined,
-    };
+      ...(html ? { html } : {}),
+      ...(text ? { text } : {}),
+      ...(attachments && attachments.length > 0
+        ? {
+            attachments: attachments.map(a => ({
+              content: Buffer.from(a.content, 'base64'),
+              filename: a.filename,
+              ...(a.contentType && { contentType: a.contentType }),
+            })),
+          }
+        : {}),
+    } as Parameters<typeof resend.emails.send>[0];
 
-    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
-      sendParams.attachments = attachments.map((a: { content: string; filename: string; contentType?: string }) => ({
-        content: Buffer.from(a.content, 'base64'),
-        filename: a.filename,
-        ...(a.contentType && { contentType: a.contentType }),
-      }));
-    }
-
-    const { data: sent, error: sendError } = await resend.emails.send(sendParams);
+    const { data: sent, error: sendError } = await resend.emails.send(sendPayload);
 
     if (sendError) {
       logger.error('Resend send error', sendError);
@@ -181,36 +209,27 @@ export async function PATCH(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const body = await req.json();
-    const { id, ids, status } = body;
-
-    const validStatuses = ['received', 'read', 'replied', 'sent', 'delivered', 'bounced'];
-    if (status && !validStatuses.includes(status)) {
-      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    const parsedPatch = emailPatchSchema.safeParse(await req.json());
+    if (!parsedPatch.success) {
+      return NextResponse.json({ error: parsedPatch.error.issues[0].message }, { status: 400 });
     }
 
-    // Bulk update
-    if (ids && Array.isArray(ids) && ids.length > 0) {
-      const updateData: Record<string, unknown> = {};
-      if (status) updateData.status = status;
-      if (status === 'read') updateData.readAt = new Date();
-      if (status === 'replied') updateData.repliedAt = new Date();
+    const { id, ids, status } = parsedPatch.data;
 
-      await db.update(emails).set(updateData).where(inArray(emails.id, ids));
+    const buildUpdate = (s?: typeof status) => {
+      const u: Record<string, unknown> = {};
+      if (s) u.status = s;
+      if (s === 'read') u.readAt = new Date();
+      if (s === 'replied') u.repliedAt = new Date();
+      return u;
+    };
+
+    if (ids && ids.length > 0) {
+      await db.update(emails).set(buildUpdate(status)).where(inArray(emails.id, ids));
       return NextResponse.json({ success: true, updated: ids.length });
     }
 
-    // Single update
-    if (!id) return NextResponse.json({ error: 'Email ID required' }, { status: 400 });
-
-    if (status) {
-      const updateData: Record<string, unknown> = { status };
-      if (status === 'read') updateData.readAt = new Date();
-      if (status === 'replied') updateData.repliedAt = new Date();
-
-      await db.update(emails).set(updateData).where(eq(emails.id, id));
-    }
-
+    await db.update(emails).set(buildUpdate(status)).where(eq(emails.id, id!));
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error('Admin email update error', error);
@@ -224,13 +243,13 @@ export async function DELETE(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const body = await req.json();
-    const { id, ids } = body;
-
-    const idsToDelete: string[] = ids && Array.isArray(ids) ? ids : id ? [id] : [];
-    if (idsToDelete.length === 0) {
-      return NextResponse.json({ error: 'Email ID(s) required' }, { status: 400 });
+    const parsedDelete = emailDeleteSchema.safeParse(await req.json());
+    if (!parsedDelete.success) {
+      return NextResponse.json({ error: parsedDelete.error.issues[0].message }, { status: 400 });
     }
+
+    const { id, ids } = parsedDelete.data;
+    const idsToDelete: string[] = ids && ids.length > 0 ? ids : id ? [id] : [];
 
     // Clear thread references pointing to these emails first
     await db
