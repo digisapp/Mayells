@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { getResend } from '@/lib/email/resend';
+
+const agreementSendSchema = z.object({
+  recipientName: z.string().min(1, 'Recipient name is required').max(200),
+  recipientEmail: z.string().email('Valid recipient email required').max(320),
+});
 import { escapeHtml } from '@/lib/email/escape';
 import { BUSINESS } from '@/lib/config';
 import { emails } from '@/db/schema';
@@ -22,15 +28,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const body = await req.json();
-    const { recipientName, recipientEmail } = body;
-
-    if (!recipientEmail || !recipientName) {
-      return NextResponse.json(
-        { error: 'Recipient name and email are required' },
-        { status: 400 },
-      );
+    const parsed = agreementSendSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
+    const { recipientName, recipientEmail } = parsed.data;
 
     const safeName = escapeHtml(recipientName);
 

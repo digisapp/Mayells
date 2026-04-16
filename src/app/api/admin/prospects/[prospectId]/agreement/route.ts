@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
+
+const agreementSchema = z.object({
+  commissionPercent: z.number().int().min(0).max(100).optional(),
+  message: z.string().max(5000).optional(),
+});
 import { sellerProspects, users, emails } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
@@ -21,11 +27,11 @@ export async function POST(
     if (!profile || profile.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { prospectId } = await params;
-    const body = await req.json();
-    const { commissionPercent, message } = body as {
-      commissionPercent?: number;
-      message?: string;
-    };
+    const parsed = agreementSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+    const { commissionPercent, message } = parsed.data;
 
     // Get the prospect
     const [prospect] = await db

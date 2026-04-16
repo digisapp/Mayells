@@ -1,9 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { uploadItems, sellerProspects, users } from '@/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+
+const itemReviewSchema = z.object({
+  items: z.array(z.object({
+    id: z.string().uuid('Valid item ID required'),
+    action: z.enum(['accept', 'decline']),
+    adminNotes: z.string().max(5000).optional(),
+    finalTitle: z.string().max(500).optional(),
+    finalDescription: z.string().max(10000).optional(),
+    finalEstimateLow: z.number().int().min(0).optional(),
+    finalEstimateHigh: z.number().int().min(0).optional(),
+    finalReserve: z.number().int().min(0).optional(),
+    finalCategory: z.string().max(200).optional(),
+  })).min(1, 'At least one item is required').max(200),
+});
 
 export async function GET(
   _req: NextRequest,
@@ -43,33 +58,12 @@ export async function PATCH(
     if (!profile || profile.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { prospectId } = await params;
-    const body = await req.json();
-    const { items } = body as {
-      items: Array<{
-        id: string;
-        action: 'accept' | 'decline';
-        adminNotes?: string;
-        finalTitle?: string;
-        finalDescription?: string;
-        finalEstimateLow?: number;
-        finalEstimateHigh?: number;
-        finalReserve?: number;
-        finalCategory?: string;
-      }>;
-    };
-
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: 'items array is required' }, { status: 400 });
+    const parsed = itemReviewSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    for (const item of items) {
-      if (!item.id || !item.action || !['accept', 'decline'].includes(item.action)) {
-        return NextResponse.json(
-          { error: `Invalid item entry: each item needs an id and action (accept/decline)` },
-          { status: 400 },
-        );
-      }
-    }
+    const { items } = parsed.data;
 
     // Process each item
     for (const item of items) {

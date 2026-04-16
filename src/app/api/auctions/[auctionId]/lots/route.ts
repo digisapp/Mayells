@@ -122,11 +122,11 @@ export async function DELETE(
     }
 
     const { auctionId } = await params;
-    const { lotId } = await req.json();
-
-    if (!lotId) {
+    const body = await req.json();
+    if (!body?.lotId || typeof body.lotId !== 'string') {
       return NextResponse.json({ error: 'lotId is required' }, { status: 400 });
     }
+    const { lotId } = body as { lotId: string };
 
     const [existing] = await db
       .select()
