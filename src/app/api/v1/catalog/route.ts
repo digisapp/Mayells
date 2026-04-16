@@ -97,7 +97,8 @@ export async function GET(request: NextRequest) {
     // Sort
     const orderBy = {
       newest: desc(lots.createdAt),
-      ending_soon: asc(lots.createdAt), // TODO: sort by auction end time when lots are joined to auctions
+      // Correlated subquery: earliest upcoming closing time across any auction this lot is in
+      ending_soon: sql`(SELECT MIN(closing_at) FROM auction_lots WHERE lot_id = lots.id AND closing_at > now()) NULLS LAST`,
       price_asc: asc(lots.currentBidAmount),
       price_desc: desc(lots.currentBidAmount),
       estimate_asc: asc(lots.estimateLow),
