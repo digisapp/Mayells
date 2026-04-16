@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { logger } from '@/lib/logger';
 
 const envSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
@@ -19,8 +20,10 @@ export type Env = z.infer<typeof envSchema>;
 export function validateEnv() {
   const result = envSchema.safeParse(process.env);
   if (!result.success) {
-    console.error('Missing environment variables:', result.error.format());
-    throw new Error('Invalid environment variables');
+    logger.error('Missing or invalid environment variables', undefined, {
+      issues: result.error.format(),
+    });
+    throw new Error('Invalid environment variables — check server logs for details');
   }
   return result.data;
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { auctions } from '@/db/schema';
 import { inArray, desc, asc, sql, and } from 'drizzle-orm';
+import { rateLimit } from '@/lib/rate-limit';
 
 /**
  * Public Auctions API — discoverable by AI agents.
@@ -15,6 +16,18 @@ import { inArray, desc, asc, sql, and } from 'drizzle-orm';
  *   offset — pagination offset
  */
 export async function GET(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const { success, remaining, resetAt } = await rateLimit(`v1:auctions:${ip}`, {
+    maxRequests: 200,
+    windowSeconds: 3600,
+  });
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please slow down your requests.' },
+      { status: 429, headers: { 'Retry-After': String(resetAt - Math.floor(Date.now() / 1000)), 'X-RateLimit-Remaining': '0' } },
+    );
+  }
+
   const params = request.nextUrl.searchParams;
 
   const status = params.get('status') || 'upcoming';

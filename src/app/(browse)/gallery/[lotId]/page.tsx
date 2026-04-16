@@ -10,6 +10,7 @@ import { BuyNowPanel } from '@/components/gallery/BuyNowPanel';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
+import { generateLotJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -69,31 +70,21 @@ export default async function GalleryDetailPage({
     .where(eq(lotImages.lotId, lot.id))
     .orderBy(lotImages.sortOrder);
 
-  // JSON-LD Product structured data
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: lot.title,
-    description: lot.description,
-    image: lot.primaryImageUrl || undefined,
-    url: `${BASE_URL}/gallery/${lot.slug || lot.id}`,
-    brand: { '@type': 'Organization', name: 'Mayell' },
-    ...(lot.buyNowPrice ? {
-      offers: {
-        '@type': 'Offer',
-        price: (lot.buyNowPrice / 100).toFixed(2),
-        priceCurrency: 'USD',
-        availability: lot.status === 'for_sale' ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
-        url: `${BASE_URL}/gallery/${lot.slug || lot.id}`,
-      },
-    } : {}),
-    ...(lot.artist ? { creator: { '@type': 'Person', name: lot.artist } } : {}),
-    ...(lot.condition ? { itemCondition: `https://schema.org/${lot.condition === 'mint' ? 'NewCondition' : 'UsedCondition'}` } : {}),
-  };
+  const jsonLd = generateLotJsonLd({
+    ...lot,
+    images: images.map(i => ({ url: i.url })),
+  });
+
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd([
+    { name: 'Home', url: '/' },
+    { name: 'Gallery', url: '/gallery' },
+    { name: lot.title, url: `/gallery/${lot.slug || lot.id}` },
+  ]);
 
   return (
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left: Images + Details */}

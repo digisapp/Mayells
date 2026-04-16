@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { eq, and, gte, lte, ilike, inArray, desc, asc, sql, or } from 'drizzle-orm';
+import { rateLimit } from '@/lib/rate-limit';
 
 /**
  * Public Catalog API — discoverable by AI agents, search engines, and third-party tools.
@@ -20,6 +21,18 @@ import { eq, and, gte, lte, ilike, inArray, desc, asc, sql, or } from 'drizzle-o
  *   offset      — pagination offset
  */
 export async function GET(request: NextRequest) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const { success, remaining, resetAt } = await rateLimit(`v1:catalog:${ip}`, {
+    maxRequests: 200,
+    windowSeconds: 3600,
+  });
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please slow down your requests.' },
+      { status: 429, headers: { 'Retry-After': String(resetAt - Math.floor(Date.now() / 1000)), 'X-RateLimit-Remaining': '0' } },
+    );
+  }
+
   const params = request.nextUrl.searchParams;
 
   const categorySlug = params.get('category');

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { lots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { rateLimit } from '@/lib/rate-limit';
 
 /**
  * Public Lot Detail API — full lot information for AI agents.
@@ -14,6 +15,18 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ lotId: string }> }
 ) {
+  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const { success, resetAt } = await rateLimit(`v1:lots:${ip}`, {
+    maxRequests: 300,
+    windowSeconds: 3600,
+  });
+  if (!success) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please slow down your requests.' },
+      { status: 429, headers: { 'Retry-After': String(resetAt - Math.floor(Date.now() / 1000)), 'X-RateLimit-Remaining': '0' } },
+    );
+  }
+
   const { lotId } = await params;
 
   try {
