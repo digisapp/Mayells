@@ -3,12 +3,14 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil } from 'lucide-react';
+import { Plus, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/types';
+
+const PAGE_SIZE = 50;
 
 const statusColors: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-800',
@@ -21,18 +23,35 @@ const statusColors: Record<string, string> = {
   withdrawn: 'bg-gray-100 text-gray-600',
 };
 
-export default async function AdminLotsPage() {
-  const allLots = await db
-    .select({ lot: lots, category: categories })
-    .from(lots)
-    .leftJoin(categories, eq(lots.categoryId, categories.id))
-    .orderBy(desc(lots.createdAt))
-    .limit(100);
+export default async function AdminLotsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { page: pageParam } = await searchParams;
+  const page = Math.max(1, parseInt(pageParam || '1'));
+  const offset = (page - 1) * PAGE_SIZE;
+
+  const [allLots, [{ total }]] = await Promise.all([
+    db
+      .select({ lot: lots, category: categories })
+      .from(lots)
+      .leftJoin(categories, eq(lots.categoryId, categories.id))
+      .orderBy(desc(lots.createdAt))
+      .limit(PAGE_SIZE)
+      .offset(offset),
+    db.select({ total: sql<number>`count(*)::int` }).from(lots),
+  ]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
-        <h1 className="font-display text-display-sm">Lots</h1>
+        <div>
+          <h1 className="font-display text-display-sm">Lots</h1>
+          <p className="text-sm text-muted-foreground mt-1">{total} total</p>
+        </div>
         <Link href="/admin/lots/new">
           <Button className="gap-2"><Plus className="h-4 w-4" /> New Lot</Button>
         </Link>
@@ -57,7 +76,8 @@ export default async function AdminLotsPage() {
               <TableRow key={lot.id}>
                 <TableCell>
                   {lot.primaryImageUrl ? (
-                    <img src={lot.primaryImageUrl} alt={lot.title} className="w-10 h-10 object-cover rounded" />
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={lot.primaryImageUrl} alt={lot.title} className="w-10 h-10 object-cover rounded" loading="lazy" />
                   ) : (
                     <div className="w-10 h-10 bg-muted rounded" />
                   )}
@@ -103,6 +123,26 @@ export default async function AdminLotsPage() {
           </TableBody>
         </Table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Link href={`/admin/lots?page=${page - 1}`}>
+              <Button variant="outline" size="sm" disabled={page <= 1} className="gap-1">
+                <ChevronLeft className="h-3.5 w-3.5" /> Prev
+              </Button>
+            </Link>
+            <Link href={`/admin/lots?page=${page + 1}`}>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} className="gap-1">
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,9 +3,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Users2, Search } from 'lucide-react';
+import { Users2, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/types';
+
+const PAGE_SIZE = 50;
 
 interface ClientRow {
   id: string;
@@ -25,27 +28,33 @@ export default function AdminClientsPage() {
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
 
-  const fetchClients = useCallback(async (query: string) => {
+  const fetchClients = useCallback(async (query: string, pageOffset: number) => {
+    setLoading(true);
     try {
-      const res = await fetch(`/api/admin/clients${query ? `?search=${encodeURIComponent(query)}` : ''}`);
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(pageOffset) });
+      if (query) params.set('search', query);
+      const res = await fetch(`/api/admin/clients?${params}`);
       const data = await res.json();
       setClients(data.data ?? []);
+      setTotal(data.pagination?.total ?? 0);
     } catch {
-      console.error('Failed to fetch clients');
+      setClients([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchClients('');
+    fetchClients('', 0);
   }, [fetchClients]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      setLoading(true);
-      fetchClients(search);
+      setOffset(0);
+      fetchClients(search, 0);
     }, 300);
     return () => clearTimeout(timeout);
   }, [search, fetchClients]);
@@ -115,6 +124,42 @@ export default function AdminClientsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-muted-foreground">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={offset === 0}
+              onClick={() => {
+                const next = Math.max(0, offset - PAGE_SIZE);
+                setOffset(next);
+                fetchClients(search, next);
+              }}
+              className="gap-1"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> Prev
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={offset + PAGE_SIZE >= total}
+              onClick={() => {
+                const next = offset + PAGE_SIZE;
+                setOffset(next);
+                fetchClients(search, next);
+              }}
+              className="gap-1"
+            >
+              Next <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       )}
     </div>

@@ -20,6 +20,8 @@ import {
   Copy,
   Check,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -104,11 +106,15 @@ const emptyForm = {
   notes: '',
 };
 
+const PAGE_SIZE = 50;
+
 export default function AdminProspectsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<ProspectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [showDialog, setShowDialog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -116,20 +122,22 @@ export default function AdminProspectsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchProspects = useCallback(async () => {
+  const fetchProspects = useCallback(async (pageOffset = 0) => {
+    setLoading(true);
     try {
-      const res = await fetch('/api/admin/prospects');
+      const res = await fetch(`/api/admin/prospects?limit=${PAGE_SIZE}&offset=${pageOffset}`);
       const data = await res.json();
       setRows(data.data ?? []);
+      setTotalCount(data.pagination?.total ?? 0);
     } catch {
-      console.error('Failed to fetch prospects');
+      setRows([]);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchProspects();
+    fetchProspects(0);
   }, [fetchProspects]);
 
   const filtered = rows.filter((row) => {
@@ -144,8 +152,8 @@ export default function AdminProspectsPage() {
     );
   });
 
-  // Stats
-  const total = rows.length;
+  // Stats — computed from current page; totalCount from API for header
+  const total = totalCount;
   const pending = rows.filter((r) => r.prospect.status === 'new').length;
   const itemsReceived = rows.filter((r) => r.prospect.status === 'items_received').length;
   const signed = rows.filter((r) => r.prospect.status === 'agreement_signed').length;
@@ -434,6 +442,42 @@ export default function AdminProspectsPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {totalCount > PAGE_SIZE && !search && (
+        <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-muted-foreground">
+            {offset + 1}–{Math.min(offset + PAGE_SIZE, totalCount)} of {totalCount}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={offset === 0}
+              onClick={() => {
+                const next = Math.max(0, offset - PAGE_SIZE);
+                setOffset(next);
+                fetchProspects(next);
+              }}
+              className="gap-1"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> Prev
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={offset + PAGE_SIZE >= totalCount}
+              onClick={() => {
+                const next = offset + PAGE_SIZE;
+                setOffset(next);
+                fetchProspects(next);
+              }}
+              className="gap-1"
+            >
+              Next <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       )}
 

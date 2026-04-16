@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 import { Button } from '@/components/ui/button';
 import { logger } from '@/lib/logger';
 
@@ -13,6 +14,7 @@ export default function Error({
 }) {
   useEffect(() => {
     logger.error('Unhandled page error', error, { digest: error.digest });
+    Sentry.captureException(error);
   }, [error]);
 
   return (

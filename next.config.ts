@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   images: {
@@ -30,4 +31,18 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // Suppress Sentry build output unless SENTRY_DSN is set
+  silent: !process.env.SENTRY_DSN,
+
+  // Automatically tree-shake Sentry logger statements in production
+  disableLogger: true,
+
+  // Upload source maps only when building for production with a DSN
+  sourcemaps: {
+    disable: !process.env.SENTRY_DSN,
+  },
+
+  // Automatically instrument Next.js data fetching methods
+  autoInstrumentServerFunctions: true,
+});
