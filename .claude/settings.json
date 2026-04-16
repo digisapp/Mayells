@@ -176,7 +176,9 @@
       "Bash(node -e \"require\\('@vercel/analytics/server'\\)\")",
       "Bash(node -e \"const m = require\\('@vercel/analytics'\\); console.log\\(Object.keys\\(m\\)\\)\")",
       "Bash(grep -v \":0$\")",
-      "Bash(grep -l \"export async function POST\" /Users/examodels/Desktop/Mayells/src/app/api/**/*.ts)"
+      "Bash(grep -l \"export async function POST\" /Users/examodels/Desktop/Mayells/src/app/api/**/*.ts)",
+      "Bash(grep -l \"export async function PATCH\" /Users/examodels/Desktop/Mayells/src/app/api/admin/**/*.ts)",
+      "Bash(xargs -I {} sh -c 'echo \"=== {} ===\" && grep -A 15 \"export async function PATCH\" {} | head -20')"
     ],
     "additionalDirectories": [
       "/Users/examodels/Desktop/Mayells/src/components/chat",

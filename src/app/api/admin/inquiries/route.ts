@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { inquiries, lots, users } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+
+const inquiryPatchSchema = z.object({
+  id: z.string().uuid('Valid inquiry ID required'),
+  status: z.enum(['new', 'contacted', 'in_progress', 'closed']).optional(),
+  adminNotes: z.string().max(5000).optional(),
+});
 
 export async function GET() {
   try {
@@ -52,14 +59,13 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { id, status, adminNotes } = await req.json();
-    if (!id) {
-      return NextResponse.json({ error: 'Inquiry ID required' }, { status: 400 });
+    const parsed = inquiryPatchSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    const updateData: Record<string, unknown> = { updatedAt: new Date() };
-    if (status) updateData.status = status;
-    if (adminNotes !== undefined) updateData.adminNotes = adminNotes;
+    const { id, ...fields } = parsed.data;
+    const updateData: Record<string, unknown> = { updatedAt: new Date(), ...fields };
 
     const [updated] = await db.update(inquiries).set(updateData).where(eq(inquiries.id, id)).returning();
 

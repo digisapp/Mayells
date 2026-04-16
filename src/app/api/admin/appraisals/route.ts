@@ -16,6 +16,21 @@ async function requireAdmin() {
   return profile;
 }
 
+const VISIT_STATUSES = ['draft', 'uploading', 'processing', 'review', 'sent', 'archived'] as const;
+
+const patchSchema = z.object({
+  id: z.string().uuid('Valid visit ID required'),
+  clientName: z.string().min(1).max(200).optional(),
+  clientEmail: z.string().email().max(320).optional().or(z.literal('')),
+  clientPhone: z.string().max(50).optional(),
+  clientAddress: z.string().max(500).optional(),
+  clientCity: z.string().max(100).optional(),
+  clientState: z.string().max(100).optional(),
+  visitDate: z.string().optional(),
+  notes: z.string().max(5000).optional(),
+  status: z.enum(VISIT_STATUSES).optional(),
+});
+
 const createSchema = z.object({
   clientName: z.string().min(1, 'Client name is required'),
   clientEmail: z.string().email().optional().or(z.literal('')),
@@ -80,11 +95,16 @@ export async function PATCH(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const body = await req.json();
-    const { id, ...updates } = body;
-    if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
+    const parsed = patchSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
 
-    if (updates.visitDate) updates.visitDate = new Date(updates.visitDate);
+    const { id, visitDate, ...rest } = parsed.data;
+    const updates = {
+      ...rest,
+      ...(visitDate ? { visitDate: new Date(visitDate) } : {}),
+    };
 
     const [updated] = await db
       .update(estateVisits)

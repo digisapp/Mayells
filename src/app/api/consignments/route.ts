@@ -6,6 +6,7 @@ import { eq, desc } from 'drizzle-orm';
 import { consignmentSchema } from '@/lib/validation/schemas';
 import { sendConsignmentNotification } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
+import { rateLimit } from '@/lib/rate-limit';
 import { catalogLotFromImages } from '@/lib/ai/cataloging';
 import { appraiseLot } from '@/lib/ai/appraisal';
 
@@ -36,6 +37,11 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
+    const { success } = await rateLimit(`consignments:${user.id}`, { maxRequests: 20, windowSeconds: 3600 });
+    if (!success) {
+      return NextResponse.json({ error: 'Too many submissions. Please try again later.' }, { status: 429 });
     }
 
     const body = await request.json();

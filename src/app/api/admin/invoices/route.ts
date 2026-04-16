@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { invoices, users, lots } from '@/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
+
+const invoicePatchSchema = z.object({
+  id: z.string().uuid('Valid invoice ID required'),
+  status: z.enum(['pending', 'paid', 'overdue', 'cancelled', 'refunded']).optional(),
+});
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -51,25 +57,17 @@ export async function PATCH(req: NextRequest) {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const body = await req.json();
-    const { id, status } = body;
-
-    if (!id) return NextResponse.json({ error: 'Missing invoice id' }, { status: 400 });
-
-    const validStatuses = ['pending', 'paid', 'overdue', 'cancelled', 'refunded'];
-    if (status && !validStatuses.includes(status)) {
-      return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
+    const parsed = invoicePatchSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    const updates: Record<string, unknown> = {
-      updatedAt: sql`now()`,
-    };
+    const { id, status } = parsed.data;
 
+    const updates: Record<string, unknown> = { updatedAt: sql`now()` };
     if (status) {
       updates.status = status;
-      if (status === 'paid') {
-        updates.paidAt = sql`now()`;
-      }
+      if (status === 'paid') updates.paidAt = sql`now()`;
     }
 
     const [updated] = await db

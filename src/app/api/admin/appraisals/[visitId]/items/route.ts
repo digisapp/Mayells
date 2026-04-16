@@ -1,9 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { estateVisits, estateVisitItems, users } from '@/db/schema';
 import { eq, sql, and, asc, sum } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+
+const itemPatchSchema = z.object({
+  itemId: z.string().uuid('Valid item ID required'),
+  status: z.enum(['pending', 'processing', 'completed', 'error']).optional(),
+  title: z.string().max(500).optional(),
+  description: z.string().max(10000).optional(),
+  artist: z.string().max(300).optional(),
+  period: z.string().max(200).optional(),
+  medium: z.string().max(300).optional(),
+  dimensions: z.string().max(300).optional(),
+  condition: z.string().max(200).optional(),
+  conditionNotes: z.string().max(5000).optional(),
+  suggestedCategory: z.string().max(200).optional(),
+  estimateLow: z.number().int().min(0).optional(),
+  estimateHigh: z.number().int().min(0).optional(),
+  confidence: z.number().min(0).max(1).transform(v => String(v)).optional(),
+  reasoning: z.string().max(5000).optional(),
+  marketTrend: z.string().max(1000).optional(),
+  errorMessage: z.string().max(2000).optional(),
+});
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -118,10 +139,12 @@ export async function PATCH(
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { visitId } = await params;
-    const body = await req.json();
-    const { itemId, ...updates } = body;
+    const parsed = itemPatchSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
 
-    if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });
+    const { itemId, ...updates } = parsed.data;
 
     const [updated] = await db
       .update(estateVisitItems)
