@@ -1,5 +1,6 @@
 export const dynamic = 'force-dynamic';
 
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
@@ -9,9 +10,15 @@ import { LotGrid } from '@/components/lots/LotGrid';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
+// Deduplicated per request — generateMetadata and the page component share one DB call
+const getCategory = cache(async (slug: string) => {
+  const [category] = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
+  return category ?? null;
+});
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const [category] = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);
+  const category = await getCategory(slug);
   if (!category) return { title: 'Category Not Found' };
   const description = category.description || `Browse ${category.name} lots at Mayells. Expert cataloging, authentication, and appraisal.`;
   return {
@@ -39,28 +46,23 @@ export default async function CategoryPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-
-  const [category] = await db
-    .select()
-    .from(categories)
-    .where(eq(categories.slug, slug))
-    .limit(1);
+  const category = await getCategory(slug);
 
   if (!category) notFound();
 
   const categoryLots = await db
     .select()
     .from(lots)
-    .where(eq(lots.categoryId, category.id))
+    .where(eq(lots.categoryId, category!.id))
     .orderBy(desc(lots.createdAt))
     .limit(48);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="mb-10">
-        <h1 className="font-display text-display-lg">{category.name}</h1>
-        {category.description && (
-          <p className="text-muted-foreground mt-2">{category.description}</p>
+        <h1 className="font-display text-display-lg">{category!.name}</h1>
+        {category!.description && (
+          <p className="text-muted-foreground mt-2">{category!.description}</p>
         )}
       </div>
       <LotGrid lots={categoryLots} />
