@@ -1,4 +1,4 @@
-import { pgTable, uuid, integer, timestamp, boolean, pgEnum, text, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, integer, timestamp, boolean, pgEnum, text, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { users } from './users';
 import { lots } from './lots';
@@ -60,7 +60,8 @@ export const maxBids = pgTable('max_bids', {
   createdAt: timestamp('created_at').default(sql`now()`),
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [
-  index('max_bids_lot_bidder_idx').on(table.lotId, table.bidderId),
+  // One proxy max bid per bidder per lot — proxy execution assumes this
+  uniqueIndex('max_bids_lot_bidder_unique_idx').on(table.lotId, table.bidderId),
   index('max_bids_active_idx').on(table.lotId, table.isActive),
 ]);
 

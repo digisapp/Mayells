@@ -1,7 +1,26 @@
 'use client';
 
+import { useEffect, useMemo } from 'react';
 import { ArrowLeft, Send, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
 import type { UploadTask } from '@/hooks/useUploadManager';
+
+// Create an object URL once per file and revoke it on cleanup — creating one
+// in the render body leaks a new URL on every render (e.g. notes keystrokes).
+function usePreviewUrl(file: File) {
+  const url = useMemo(() => URL.createObjectURL(file), [file]);
+
+  useEffect(() => {
+    return () => URL.revokeObjectURL(url);
+  }, [url]);
+
+  return url;
+}
+
+function PhotoPreview({ file }: { file: File }) {
+  const url = usePreviewUrl(file);
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" className="w-full h-full object-cover" />;
+}
 
 interface ReviewItem {
   taskIds: string[];
@@ -134,12 +153,7 @@ export function ReviewScreen({
                           </div>
                         )
                       ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={URL.createObjectURL(task.file)}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
+                        <PhotoPreview file={task.file} />
                       )}
                     </div>
                   ))}

@@ -24,20 +24,39 @@ function getTimeRemaining(endTime: Date) {
 }
 
 export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inline' }: AuctionCountdownProps) {
-  const [time, setTime] = useState(getTimeRemaining(endsAt));
+  // Initialized to null and computed after mount: calling Date.now() during
+  // render would produce different output on server vs client (hydration mismatch).
+  const [time, setTime] = useState<ReturnType<typeof getTimeRemaining> | null>(null);
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    const tick = () => {
       const remaining = getTimeRemaining(endsAt);
       setTime(remaining);
       if (remaining.total <= 0) {
         clearInterval(timer);
         onExpired?.();
       }
-    }, 1000);
+    };
 
-    return () => clearInterval(timer);
+    const timer = setInterval(tick, 1000);
+    // First update is deferred to the next frame so hydration completes
+    // against the stable placeholder before any client-clock value renders.
+    const raf = requestAnimationFrame(tick);
+
+    return () => {
+      clearInterval(timer);
+      cancelAnimationFrame(raf);
+    };
   }, [endsAt, onExpired]);
+
+  if (!time) {
+    return (
+      <div className={`flex items-center gap-1.5 tabular-nums font-medium text-foreground ${className ?? ''}`}>
+        <Clock className={variant === 'card' ? 'h-4 w-4' : 'h-3.5 w-3.5'} />
+        <span className="tracking-tight">--:--:--</span>
+      </div>
+    );
+  }
 
   if (time.total <= 0) {
     return <span className={`text-muted-foreground ${className ?? ''}`}>Auction Ended</span>;

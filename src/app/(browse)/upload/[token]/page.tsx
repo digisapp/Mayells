@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { useParams } from 'next/navigation';
 import { Loader2, X, Check, WifiOff, ArrowRight } from 'lucide-react';
 import { useUploadManager } from '@/hooks/useUploadManager';
@@ -22,6 +22,18 @@ interface LinkData {
 
 type PageState = 'loading' | 'invalid' | 'capture' | 'review' | 'submitting' | 'success';
 
+function subscribeToOnlineStatus(callback: () => void) {
+  window.addEventListener('online', callback);
+  window.addEventListener('offline', callback);
+  return () => {
+    window.removeEventListener('online', callback);
+    window.removeEventListener('offline', callback);
+  };
+}
+
+const getOnlineSnapshot = () => navigator.onLine;
+const getServerOnlineSnapshot = () => true;
+
 export default function UploadPage() {
   const { token } = useParams<{ token: string }>();
   const [state, setState] = useState<PageState>('loading');
@@ -29,7 +41,7 @@ export default function UploadPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [items, setItems] = useState<CaptureItem[]>([{ taskIds: [], notes: '' }]);
   const [submittedCount, setSubmittedCount] = useState(0);
-  const [isOnline, setIsOnline] = useState(true);
+  const isOnline = useSyncExternalStore(subscribeToOnlineStatus, getOnlineSnapshot, getServerOnlineSnapshot);
 
   const { tasks, addFiles, retryFailed, removeTask, isUploading, hasErrors } = useUploadManager(token);
 
@@ -59,19 +71,6 @@ export default function UploadPage() {
         // SW registration is non-critical
       });
     }
-  }, []);
-
-  // Online/offline detection
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    setIsOnline(navigator.onLine);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
   }, []);
 
   // Handle files from capture bar (add to current item)

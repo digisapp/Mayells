@@ -18,9 +18,9 @@ export interface AuctionFormData {
   previewStartsAt: string;
   biddingStartsAt: string;
   biddingEndsAt: string;
-  buyerPremiumPercent: number;
+  buyerPremiumPercent: number | '';
   antiSnipeEnabled: boolean;
-  antiSnipeMinutes: number;
+  antiSnipeMinutes: number | '';
   antiSnipeWindowMinutes: number;
 }
 
@@ -52,6 +52,12 @@ function generateSlug(title: string) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
+// datetime-local inputs produce "YYYY-MM-DDTHH:mm" (local time, no zone);
+// the API expects full ISO datetimes, so convert before sending.
+function toIsoOrUndefined(value: string) {
+  return value ? new Date(value).toISOString() : undefined;
+}
+
 export function AuctionForm({ initialData, onSubmit, isLoading, submitLabel, cancelHref }: AuctionFormProps) {
   const [form, setForm] = useState<AuctionFormData>(initialData || defaultFormData);
   const [error, setError] = useState('');
@@ -69,9 +75,11 @@ export function AuctionForm({ initialData, onSubmit, isLoading, submitLabel, can
         ...form,
         slug,
         liveauctioneersUrl: form.liveauctioneersUrl || undefined,
-        previewStartsAt: form.previewStartsAt || undefined,
-        biddingStartsAt: form.biddingStartsAt || undefined,
-        biddingEndsAt: form.biddingEndsAt || undefined,
+        previewStartsAt: toIsoOrUndefined(form.previewStartsAt),
+        biddingStartsAt: toIsoOrUndefined(form.biddingStartsAt),
+        biddingEndsAt: toIsoOrUndefined(form.biddingEndsAt),
+        buyerPremiumPercent: form.buyerPremiumPercent === '' ? undefined : form.buyerPremiumPercent,
+        antiSnipeMinutes: form.antiSnipeMinutes === '' ? undefined : form.antiSnipeMinutes,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -151,11 +159,11 @@ export function AuctionForm({ initialData, onSubmit, isLoading, submitLabel, can
         <CardContent className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label>Buyer&apos;s Premium (%)</Label>
-            <Input type="number" value={form.buyerPremiumPercent} onChange={(e) => update('buyerPremiumPercent', parseInt(e.target.value))} min={0} max={50} />
+            <Input type="number" value={form.buyerPremiumPercent} onChange={(e) => update('buyerPremiumPercent', e.target.value === '' ? '' : parseInt(e.target.value, 10))} min={0} max={50} />
           </div>
           <div className="space-y-2">
             <Label>Anti-Snipe Extension (minutes)</Label>
-            <Input type="number" value={form.antiSnipeMinutes} onChange={(e) => update('antiSnipeMinutes', parseInt(e.target.value))} min={1} max={10} />
+            <Input type="number" value={form.antiSnipeMinutes} onChange={(e) => update('antiSnipeMinutes', e.target.value === '' ? '' : parseInt(e.target.value, 10))} min={1} max={10} />
           </div>
         </CardContent>
       </Card>

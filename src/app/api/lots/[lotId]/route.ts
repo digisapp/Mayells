@@ -5,6 +5,73 @@ import { lots, lotImages, bids, users } from '@/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { lotUpdateSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import type { Lot, Bid } from '@/db/schema';
+
+/**
+ * Public-safe projection of a lot. Excludes auction-integrity and PII fields:
+ * reservePrice, sellerId, consignmentId, currentBidderId, winnerId, and
+ * internal AI valuation fields.
+ */
+function toPublicLot(lot: Lot) {
+  return {
+    id: lot.id,
+    lotNumber: lot.lotNumber,
+    title: lot.title,
+    subtitle: lot.subtitle,
+    description: lot.description,
+    categoryId: lot.categoryId,
+    subcategoryId: lot.subcategoryId,
+    artist: lot.artist,
+    maker: lot.maker,
+    period: lot.period,
+    circa: lot.circa,
+    origin: lot.origin,
+    medium: lot.medium,
+    dimensions: lot.dimensions,
+    weight: lot.weight,
+    condition: lot.condition,
+    conditionNotes: lot.conditionNotes,
+    provenance: lot.provenance,
+    literature: lot.literature,
+    exhibited: lot.exhibited,
+    status: lot.status,
+    saleType: lot.saleType,
+    buyNowPrice: lot.buyNowPrice,
+    estimateLow: lot.estimateLow,
+    estimateHigh: lot.estimateHigh,
+    startingBid: lot.startingBid,
+    currentBidAmount: lot.currentBidAmount,
+    bidCount: lot.bidCount,
+    hammerPrice: lot.hammerPrice,
+    primaryImageUrl: lot.primaryImageUrl,
+    imageCount: lot.imageCount,
+    isFeatured: lot.isFeatured,
+    isHighlight: lot.isHighlight,
+    aiTags: lot.aiTags,
+    slug: lot.slug,
+    createdAt: lot.createdAt,
+    updatedAt: lot.updatedAt,
+  };
+}
+
+/**
+ * Public-safe bid history: amount, time, and a stable anonymized bidder
+ * label only (no bidderId, maxBidAmount, ipAddress, or userAgent).
+ */
+function toPublicBidHistory(bidRows: Bid[]) {
+  const labels = new Map<string, string>();
+  // Assign labels in chronological order so "Bidder 1" is the first bidder
+  for (const bid of [...bidRows].reverse()) {
+    if (!labels.has(bid.bidderId)) {
+      labels.set(bid.bidderId, `Bidder ${labels.size + 1}`);
+    }
+  }
+  return bidRows.map((bid) => ({
+    amount: bid.amount,
+    createdAt: bid.createdAt,
+    bidder: labels.get(bid.bidderId) ?? 'Bidder',
+  }));
+}
 
 export async function GET(
   req: NextRequest,
@@ -13,7 +80,7 @@ export async function GET(
   try {
     const { lotId } = await params;
 
-    const [lot] = await db
+    let [lot] = await db
       .select()
       .from(lots)
       .where(eq(lots.id, lotId))
@@ -21,30 +88,15 @@ export async function GET(
 
     if (!lot) {
       // Try by slug
-      const [lotBySlug] = await db
+      [lot] = await db
         .select()
         .from(lots)
         .where(eq(lots.slug, lotId))
         .limit(1);
+    }
 
-      if (!lotBySlug) {
-        return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
-      }
-
-      const images = await db
-        .select()
-        .from(lotImages)
-        .where(eq(lotImages.lotId, lotBySlug.id))
-        .orderBy(lotImages.sortOrder);
-
-      const bidHistory = await db
-        .select()
-        .from(bids)
-        .where(eq(bids.lotId, lotBySlug.id))
-        .orderBy(desc(bids.createdAt))
-        .limit(20);
-
-      return NextResponse.json({ data: { ...lotBySlug, images, bidHistory } });
+    if (!lot) {
+      return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 
     const images = await db
@@ -53,14 +105,27 @@ export async function GET(
       .where(eq(lotImages.lotId, lot.id))
       .orderBy(lotImages.sortOrder);
 
-    const bidHistory = await db
+    const bidRows = await db
       .select()
       .from(bids)
       .where(eq(bids.lotId, lot.id))
       .orderBy(desc(bids.createdAt))
       .limit(20);
 
-    return NextResponse.json({ data: { ...lot, images, bidHistory } });
+    // Admins (e.g. the admin lot editor) get the full row including
+    // reservePrice and raw bid data; everyone else gets a public-safe shape.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+      if (profile?.role === 'admin') {
+        return NextResponse.json({ data: { ...lot, images, bidHistory: bidRows } });
+      }
+    }
+
+    return NextResponse.json({
+      data: { ...toPublicLot(lot), images, bidHistory: toPublicBidHistory(bidRows) },
+    });
   } catch (error) {
     logger.error('Get lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

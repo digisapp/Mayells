@@ -16,8 +16,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Query parameter "q" required (min 2, max 500 chars)' }, { status: 400 });
     }
 
-    const limit = parseInt(request.nextUrl.searchParams.get('limit') || '24', 10);
-    const { results, intent } = await aiSearch(query.trim(), Math.min(limit, 48));
+    const rawLimit = parseInt(request.nextUrl.searchParams.get('limit') || '24', 10);
+    const limit = Number.isNaN(rawLimit) ? 24 : Math.min(Math.max(rawLimit, 1), 48);
+    const { results, intent } = await aiSearch(query.trim(), limit);
 
     return NextResponse.json({ data: results, intent });
   } catch (error) {

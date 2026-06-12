@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { db } from '@/db';
 import { uploadLinks, uploadItems, sellerProspects } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { sendItemsReceivedNotification } from '@/lib/email/notifications';
 import { validateLink } from '@/lib/upload/validate-link';
+
+const uploadItemsSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        images: z.array(z.string().url().max(2000)).min(1).max(30),
+        sellerTitle: z.string().max(300).optional().nullable(),
+        sellerNotes: z.string().max(5000).optional().nullable(),
+      }),
+    )
+    .min(1, 'Items array is required and must not be empty')
+    .max(100),
+});
 
 export async function GET(
   _request: NextRequest,
@@ -78,11 +92,14 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { items } = body;
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: 'Items array is required and must not be empty' }, { status: 400 });
+    const parsed = uploadItemsSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0].message, details: parsed.error.issues },
+        { status: 400 },
+      );
     }
+    const { items } = parsed.data;
 
     // Check maxItems limit
     if (link.maxItems !== null && link.itemCount + items.length > link.maxItems) {
@@ -95,16 +112,14 @@ export async function POST(
     }
 
     // Insert all items
-    const itemsToInsert = items.map(
-      (item: { images: string[]; sellerTitle?: string; sellerNotes?: string }, index: number) => ({
-        uploadLinkId: link.id,
-        prospectId: link.prospectId,
-        images: item.images,
-        sellerTitle: item.sellerTitle ?? null,
-        sellerNotes: item.sellerNotes ?? null,
-        sortOrder: index,
-      })
-    );
+    const itemsToInsert = items.map((item, index) => ({
+      uploadLinkId: link.id,
+      prospectId: link.prospectId,
+      images: item.images,
+      sellerTitle: item.sellerTitle ?? null,
+      sellerNotes: item.sellerNotes ?? null,
+      sortOrder: index,
+    }));
 
     await db.insert(uploadItems).values(itemsToInsert);
 
@@ -142,12 +157,18 @@ export async function POST(
       .limit(1);
 
     if (prospect) {
-      sendItemsReceivedNotification({
-        prospectName: prospect.fullName,
-        prospectEmail: prospect.email ?? undefined,
-        itemCount: items.length,
-        prospectId: prospect.id,
-      }).catch((err) => logger.error('Failed to send items received notification', err));
+      // Await before responding — fire-and-forget work can be killed once the
+      // serverless function returns its response.
+      try {
+        await sendItemsReceivedNotification({
+          prospectName: prospect.fullName,
+          prospectEmail: prospect.email ?? undefined,
+          itemCount: items.length,
+          prospectId: prospect.id,
+        });
+      } catch (err) {
+        logger.error('Failed to send items received notification', err);
+      }
     }
 
     return NextResponse.json({

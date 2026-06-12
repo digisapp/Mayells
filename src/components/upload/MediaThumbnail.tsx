@@ -1,7 +1,22 @@
 'use client';
 
+import { useEffect, useMemo } from 'react';
 import { X, Video, AlertCircle, RotateCcw } from 'lucide-react';
 import type { UploadTask } from '@/hooks/useUploadManager';
+
+// Create an object URL once per file and revoke it on cleanup — creating one
+// in the render body leaks a new URL on every progress tick.
+function usePreviewUrl(file: File | null) {
+  const url = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+
+  useEffect(() => {
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [url]);
+
+  return url;
+}
 
 interface MediaThumbnailProps {
   task: UploadTask;
@@ -9,14 +24,15 @@ interface MediaThumbnailProps {
 }
 
 export function MediaThumbnail({ task, onRemove }: MediaThumbnailProps) {
+  const fileUrl = usePreviewUrl(task.isVideo ? null : task.file);
+
   const isUploading = task.status === 'uploading' || task.status === 'compressing';
   const isError = task.status === 'error';
   const isComplete = task.status === 'complete';
 
-  // Create object URL for preview
   const previewUrl = task.isVideo
     ? task.thumbnailUrl || undefined
-    : URL.createObjectURL(task.file);
+    : fileUrl || undefined;
 
   return (
     <div className="relative flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-[#272D35]/5">

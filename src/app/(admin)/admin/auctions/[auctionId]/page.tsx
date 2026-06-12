@@ -36,10 +36,13 @@ const statusTransitions: Record<string, string[]> = {
   cancelled: [],
 };
 
+// Format for <input type="datetime-local">, which expects local wall time
+// ("YYYY-MM-DDTHH:mm") — not the UTC time that toISOString() would produce.
 function formatDate(d: string | null) {
   if (!d) return '';
   const date = new Date(d);
-  return date.toISOString().slice(0, 16);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function formatPrice(cents: number | null) {

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, boolean, pgEnum, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, boolean, pgEnum, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { users } from './users';
 
@@ -102,6 +102,8 @@ export const auctionLots = pgTable('auction_lots', {
 }, (table) => [
   index('auction_lots_auction_idx').on(table.auctionId, table.lotNumber),
   index('auction_lots_lot_idx').on(table.lotId),
+  // A lot can appear in an auction at most once — settlement and removal assume this
+  uniqueIndex('auction_lots_auction_lot_unique_idx').on(table.auctionId, table.lotId),
 ]);
 
 export const auctionLotsRelations = relations(auctionLots, ({ one }) => ({

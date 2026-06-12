@@ -7,6 +7,48 @@ import { aiChatSettings } from '@/db/schema';
 import { rateLimit } from '@/lib/rate-limit';
 import { NextRequest } from 'next/server';
 
+// Streaming + multi-step tool calls can exceed the default function timeout
+export const maxDuration = 60;
+
+const MAX_MESSAGE_CONTENT_LENGTH = 4000;
+
+/**
+ * Keep only user/assistant messages and truncate oversized text content so
+ * arbitrary client payloads can't inject system roles or blow up token usage.
+ */
+function sanitizeMessages(rawMessages: unknown[]): unknown[] {
+  return rawMessages
+    .filter((m): m is Record<string, unknown> => {
+      const role = (m as Record<string, unknown> | null)?.role;
+      return role === 'user' || role === 'assistant';
+    })
+    .map((m) => {
+      if (Array.isArray(m.parts)) {
+        return {
+          ...m,
+          parts: m.parts.map((part: unknown) => {
+            if (
+              part &&
+              typeof part === 'object' &&
+              (part as { type?: unknown }).type === 'text' &&
+              typeof (part as { text?: unknown }).text === 'string'
+            ) {
+              const text = (part as { text: string }).text;
+              return text.length > MAX_MESSAGE_CONTENT_LENGTH
+                ? { ...part, text: text.slice(0, MAX_MESSAGE_CONTENT_LENGTH) }
+                : part;
+            }
+            return part;
+          }),
+        };
+      }
+      if (typeof m.content === 'string' && m.content.length > MAX_MESSAGE_CONTENT_LENGTH) {
+        return { ...m, content: m.content.slice(0, MAX_MESSAGE_CONTENT_LENGTH) };
+      }
+      return m;
+    });
+}
+
 const BASE_PROMPT = `You are a helpful concierge for Mayell, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
 
 Key information about Mayell:
@@ -84,7 +126,9 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const messages = Array.isArray(body?.messages) ? body.messages.slice(-20) : [];
+  const messages = Array.isArray(body?.messages)
+    ? sanitizeMessages(body.messages.slice(-20))
+    : [];
 
   if (messages.length === 0) {
     return new Response(JSON.stringify({ error: 'Messages are required' }), {
@@ -96,7 +140,7 @@ export async function POST(req: NextRequest) {
   const result = streamText({
     model: getModel('chat'),
     system: prompt,
-    messages: await convertToModelMessages(messages),
+    messages: await convertToModelMessages(messages as Parameters<typeof convertToModelMessages>[0]),
     tools: {
       webSearch: webSearch(),
       xSearch: xSearch(),

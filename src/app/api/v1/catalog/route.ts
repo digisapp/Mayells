@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { eq, and, gte, lte, ilike, inArray, desc, asc, sql, or } from 'drizzle-orm';
 import { rateLimit } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
 
 /**
  * Public Catalog API — discoverable by AI agents, search engines, and third-party tools.
@@ -51,8 +52,11 @@ export async function GET(request: NextRequest) {
   const status = (VALID_STATUSES as readonly string[]).includes(rawStatus) ? rawStatus : 'available';
   const saleType = (VALID_SALE_TYPES as readonly string[]).includes(rawSaleType) ? rawSaleType : 'all';
   const sort = (VALID_SORTS as readonly string[]).includes(rawSort) ? rawSort : 'newest';
-  const limit = Math.min(parseInt(params.get('limit') || '50'), 100);
-  const offset = parseInt(params.get('offset') || '0');
+  // Clamp pagination — NaN/negative input falls back to sane defaults
+  const rawLimit = parseInt(params.get('limit') || '50');
+  const rawOffset = parseInt(params.get('offset') || '0');
+  const limit = Number.isNaN(rawLimit) ? 50 : Math.min(Math.max(rawLimit, 1), 100);
+  const offset = Number.isNaN(rawOffset) ? 0 : Math.max(rawOffset, 0);
 
   try {
     const conditions = [];
@@ -176,6 +180,7 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (error) {
+    logger.error('v1 catalog error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

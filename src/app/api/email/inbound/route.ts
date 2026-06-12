@@ -109,6 +109,13 @@ async function findThread(params: {
 // ─── Webhook Handler ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  // Fail closed: without a webhook secret we cannot verify events, so never process
+  const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    logger.error('RESEND_WEBHOOK_SECRET is not configured — rejecting inbound email webhook');
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+  }
+
   const startMs = Date.now();
   let eventType = 'unknown';
   let status: 'success' | 'failed' | 'ignored' = 'ignored';
@@ -116,31 +123,49 @@ export async function POST(req: NextRequest) {
   let relatedType: string | undefined;
   let relatedId: string | undefined;
   let payload: Record<string, unknown> = {};
+  let isDuplicate = false;
   const eventId = req.headers.get('svix-id') ?? undefined;
 
   try {
     const rawBody = await req.text();
-    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
 
-    if (webhookSecret) {
-      const svixId = req.headers.get('svix-id');
-      const svixTimestamp = req.headers.get('svix-timestamp');
-      const svixSignature = req.headers.get('svix-signature');
+    const svixId = req.headers.get('svix-id');
+    const svixTimestamp = req.headers.get('svix-timestamp');
+    const svixSignature = req.headers.get('svix-signature');
 
-      if (!svixId || !svixTimestamp || !svixSignature) {
-        return NextResponse.json({ error: 'Missing webhook signature headers' }, { status: 401 });
-      }
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      return NextResponse.json({ error: 'Missing webhook signature headers' }, { status: 401 });
+    }
 
-      const wh = new Webhook(webhookSecret);
-      try {
-        wh.verify(rawBody, {
-          'svix-id': svixId,
-          'svix-timestamp': svixTimestamp,
-          'svix-signature': svixSignature,
-        });
-      } catch {
-        logger.error('Webhook signature verification failed');
-        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    const wh = new Webhook(webhookSecret);
+    try {
+      wh.verify(rawBody, {
+        'svix-id': svixId,
+        'svix-timestamp': svixTimestamp,
+        'svix-signature': svixSignature,
+      });
+    } catch {
+      logger.error('Webhook signature verification failed');
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
+
+    // Dedup: skip events that have already been processed successfully
+    if (eventId) {
+      const [alreadyProcessed] = await db
+        .select({ id: webhookLogs.id })
+        .from(webhookLogs)
+        .where(
+          and(
+            eq(webhookLogs.provider, 'resend'),
+            eq(webhookLogs.eventId, eventId),
+            eq(webhookLogs.status, 'success'),
+          ),
+        )
+        .limit(1);
+
+      if (alreadyProcessed) {
+        isDuplicate = true;
+        return NextResponse.json({ received: true, duplicate: true });
       }
     }
 
@@ -244,16 +269,23 @@ export async function POST(req: NextRequest) {
     errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   } finally {
-    db.insert(webhookLogs).values({
-      provider: 'resend',
-      eventType,
-      eventId: eventId ?? null,
-      status,
-      errorMessage: errorMessage ?? null,
-      processingMs: Date.now() - startMs,
-      payload,
-      relatedType: relatedType ?? null,
-      relatedId: relatedId ?? null,
-    }).catch((err) => logger.warn('Failed to persist webhook log', { err: String(err) }));
+    // Persist log — this is the dedup record, so it must be awaited
+    if (!isDuplicate) {
+      try {
+        await db.insert(webhookLogs).values({
+          provider: 'resend',
+          eventType,
+          eventId: eventId ?? null,
+          status,
+          errorMessage: errorMessage ?? null,
+          processingMs: Date.now() - startMs,
+          payload,
+          relatedType: relatedType ?? null,
+          relatedId: relatedId ?? null,
+        });
+      } catch (err) {
+        logger.warn('Failed to persist webhook log', { err: String(err) });
+      }
+    }
   }
 }

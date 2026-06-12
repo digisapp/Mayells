@@ -1,6 +1,6 @@
 import { db } from '@/db';
-import { invoices, lots, auctions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { invoices, auctions } from '@/db/schema';
+import { eq, and, ne } from 'drizzle-orm';
 
 function generateInvoiceNumber(): string {
   const now = new Date();
@@ -10,6 +10,15 @@ function generateInvoiceNumber(): string {
   return `INV-${year}${month}-${random}`;
 }
 
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === '23505'
+  );
+}
+
 export async function generateInvoiceForWonLot(params: {
   auctionId: string;
   lotId: string;
@@ -17,6 +26,15 @@ export async function generateInvoiceForWonLot(params: {
   hammerPrice: number;
 }) {
   const { auctionId, lotId, buyerId, hammerPrice } = params;
+
+  // Idempotency: if a live invoice already exists for this lot, return it
+  const [existing] = await db
+    .select()
+    .from(invoices)
+    .where(and(eq(invoices.lotId, lotId), ne(invoices.status, 'cancelled')))
+    .limit(1);
+
+  if (existing) return existing;
 
   // Get auction for buyer premium percentage
   const [auction] = await db
@@ -35,19 +53,30 @@ export async function generateInvoiceForWonLot(params: {
   const dueDate = new Date();
   dueDate.setDate(dueDate.getDate() + 7);
 
-  const [invoice] = await db
-    .insert(invoices)
-    .values({
-      invoiceNumber: generateInvoiceNumber(),
-      buyerId,
-      auctionId,
-      lotId,
-      hammerPrice,
-      buyerPremium,
-      totalAmount,
-      dueDate,
-    })
-    .returning();
+  // Retry on invoice number collision (unique constraint)
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const [invoice] = await db
+        .insert(invoices)
+        .values({
+          invoiceNumber: generateInvoiceNumber(),
+          buyerId,
+          auctionId,
+          lotId,
+          hammerPrice,
+          buyerPremium,
+          totalAmount,
+          dueDate,
+        })
+        .returning();
 
-  return invoice;
+      return invoice;
+    } catch (err) {
+      lastError = err;
+      if (!isUniqueViolation(err)) throw err;
+    }
+  }
+
+  throw lastError;
 }

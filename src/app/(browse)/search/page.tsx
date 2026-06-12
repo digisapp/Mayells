@@ -57,12 +57,15 @@ function SearchContent() {
   const [sort, setSort] = useState('newest');
 
   useEffect(() => {
-    fetch('/api/categories')
+    const controller = new AbortController();
+    fetch('/api/categories', { signal: controller.signal })
       .then((r) => r.json())
-      .then((d) => setCategories(d.data || []));
+      .then((d) => setCategories(d.data || []))
+      .catch(() => {});
+    return () => controller.abort();
   }, []);
 
-  const doSearch = useCallback(async () => {
+  const doSearch = useCallback(async (signal: AbortSignal) => {
     const activeCat = categoryFilter && categoryFilter !== 'all' ? categoryFilter : '';
     const activeSale = saleType && saleType !== 'all' ? saleType : '';
 
@@ -78,8 +81,9 @@ function SearchContent() {
       const range = PRICE_RANGES[priceRange];
 
       if (useAI && query.trim() && !activeCat && !activeSale && priceRange === 0) {
-        const res = await fetch(`/api/ai/search?q=${encodeURIComponent(query)}&limit=48`);
+        const res = await fetch(`/api/ai/search?q=${encodeURIComponent(query)}&limit=48`, { signal });
         const data = await res.json();
+        if (signal.aborted) return;
         if (res.ok) {
           setResults(data.data || []);
           setTotal((data.data || []).length);
@@ -99,23 +103,30 @@ function SearchContent() {
       params.set('sort', sort);
       params.set('limit', '48');
 
-      const res = await fetch(`/api/lots?${params}`);
+      const res = await fetch(`/api/lots?${params}`, { signal });
       const data = await res.json();
+      if (signal.aborted) return;
       setResults(data.data || []);
       setTotal(data.total || 0);
       setIntent(null);
     } catch {
+      // A newer search superseded this one — leave its results alone
+      if (signal.aborted) return;
       setResults([]);
       setTotal(0);
       setIntent(null);
     } finally {
-      setIsLoading(false);
+      if (!signal.aborted) setIsLoading(false);
     }
   }, [query, categoryFilter, saleType, priceRange, sort, useAI]);
 
   useEffect(() => {
-    const timeout = setTimeout(doSearch, 400);
-    return () => clearTimeout(timeout);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => doSearch(controller.signal), 400);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [doSearch]);
 
   const hasActiveFilters = (categoryFilter && categoryFilter !== 'all') || (saleType && saleType !== 'all') || priceRange > 0;

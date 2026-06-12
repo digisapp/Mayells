@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, pgEnum, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { users } from './users';
 import { lots } from './lots';
@@ -47,7 +47,8 @@ export const invoices = pgTable('invoices', {
   index('invoices_buyer_idx').on(table.buyerId),
   index('invoices_status_idx').on(table.status),
   index('invoices_auction_idx').on(table.auctionId),
-  index('invoices_lot_idx').on(table.lotId),
+  // At most one live invoice per lot — settlement reruns must not double-invoice
+  uniqueIndex('invoices_lot_unique_idx').on(table.lotId).where(sql`status <> 'cancelled'`),
   index('invoices_due_date_idx').on(table.dueDate),
 ]);
 

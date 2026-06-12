@@ -16,6 +16,8 @@ function formatDate(date: Date | null) {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
+    // Explicit zone so server (UTC) and client render identically — avoids hydration mismatch
+    timeZone: 'America/New_York',
   }).format(new Date(date));
 }
 

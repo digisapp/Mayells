@@ -19,6 +19,7 @@ export function ChatWidget() {
   const [chatEnabled, setChatEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const openChatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { messages, sendMessage, status } = useChat({ transport });
 
@@ -39,10 +40,6 @@ export function ChatWidget() {
     return () => clearTimeout(timer);
   }, []);
 
-  if (!chatEnabled) return null;
-
-  const isLoading = status === 'submitted' || status === 'streaming';
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -53,12 +50,23 @@ export function ChatWidget() {
       const detail = (e as CustomEvent).detail;
       setOpen(true);
       if (detail?.message && messages.length === 0) {
-        setTimeout(() => sendMessage({ text: detail.message }), 300);
+        openChatTimerRef.current = setTimeout(() => sendMessage({ text: detail.message }), 300);
       }
     };
     window.addEventListener('open-chat', handler);
     return () => window.removeEventListener('open-chat', handler);
   }, [messages.length, sendMessage]);
+
+  // Clear any pending auto-send timer on unmount
+  useEffect(() => {
+    return () => {
+      if (openChatTimerRef.current) clearTimeout(openChatTimerRef.current);
+    };
+  }, []);
+
+  if (!chatEnabled) return null;
+
+  const isLoading = status === 'submitted' || status === 'streaming';
 
   const handleSend = (text: string) => {
     if ((!text.trim() && !imageFile) || isLoading) return;

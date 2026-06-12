@@ -33,6 +33,14 @@ export async function POST(
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    // Only a live auction can be ended
+    if (auction.status !== 'live') {
+      return NextResponse.json(
+        { error: `Cannot end an auction with status "${auction.status}" — only live auctions can be ended` },
+        { status: 409 },
+      );
+    }
+
     // Delete LiveKit room
     if (auction.livekitRoomName) {
       try {

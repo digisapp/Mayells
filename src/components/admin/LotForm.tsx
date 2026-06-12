@@ -106,6 +106,10 @@ export function LotForm({ initialData, initialImages, lotId, onSubmit, isLoading
     if (!files?.length) return;
     setUploading(true);
 
+    // Track the running count locally: `images` is stale inside this loop,
+    // so relying on images.length would mark every uploaded image as primary.
+    let imageCount = images.length;
+
     for (const file of Array.from(files)) {
       const formData = new FormData();
       formData.append('file', file);
@@ -114,20 +118,21 @@ export function LotForm({ initialData, initialImages, lotId, onSubmit, isLoading
         const data = await res.json();
         if (!res.ok) continue;
 
-        const isPrimary = images.length === 0;
+        const isPrimary = imageCount === 0;
         const newImage: ImageItem = { url: data.url, isPrimary };
 
         if (lotId) {
           const imgRes = await fetch(`/api/lots/${lotId}/images`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: data.url, isPrimary, sortOrder: images.length }),
+            body: JSON.stringify({ url: data.url, isPrimary, sortOrder: imageCount }),
           });
           if (!imgRes.ok) continue;
           const imgData = await imgRes.json();
           newImage.id = imgData.data.id;
         }
         setImages((prev) => [...prev, newImage]);
+        imageCount++;
       } catch {
         // skip failed uploads
       }

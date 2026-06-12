@@ -1,16 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { db } from '@/db';
 import { sellerProspects, uploadLinks } from '@/db/schema';
-import { eq, and, lte } from 'drizzle-orm';
+import { eq, and, lte, or, isNull, notLike } from 'drizzle-orm';
 import { sendProspectFollowUpEmail } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
-export async function POST(request: NextRequest) {
+// Marker appended to notes when an upload follow-up is sent — used to exclude
+// already-followed-up prospects from later runs (status stays 'upload_sent').
+const UPLOAD_FOLLOWUP_MARKER = 'Automated follow-up email sent (status: upload_sent';
+
+function isAuthorized(request: NextRequest): boolean {
   // Verify cron secret — always required
-  const authHeader = request.headers.get('authorization');
-  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET) return false;
+  const authHeader = request.headers.get('authorization') ?? '';
+  const expected = Buffer.from(`Bearer ${CRON_SECRET}`);
+  const provided = Buffer.from(authHeader);
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
+async function handler(request: NextRequest) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -43,11 +55,13 @@ export async function POST(request: NextRequest) {
           prospectName: prospect.fullName,
         });
 
-        // Append follow-up note
+        // Advance status so this prospect isn't re-emailed every run,
+        // and append a follow-up note
         const followUpNote = `[${now.toISOString()}] Automated follow-up email sent (status: new, no contact after 48h)`;
         await db
           .update(sellerProspects)
           .set({
+            status: 'contacted',
             notes: prospect.notes
               ? `${prospect.notes}\n${followUpNote}`
               : followUpNote,
@@ -62,7 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Prospects with status 'upload_sent' where the upload link was sent more than 72 hours ago
-    //    and no items have been uploaded
+    //    and no items have been uploaded (and we haven't already sent this follow-up)
     const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
 
     const uploadSentProspects = await db
@@ -79,6 +93,10 @@ export async function POST(request: NextRequest) {
           eq(sellerProspects.status, 'upload_sent'),
           lte(uploadLinks.createdAt, seventyTwoHoursAgo),
           eq(uploadLinks.itemCount, 0),
+          or(
+            isNull(sellerProspects.notes),
+            notLike(sellerProspects.notes, `%${UPLOAD_FOLLOWUP_MARKER}%`),
+          ),
         ),
       );
 
@@ -99,8 +117,8 @@ export async function POST(request: NextRequest) {
           uploadUrl,
         });
 
-        // Append follow-up note
-        const followUpNote = `[${now.toISOString()}] Automated follow-up email sent (status: upload_sent, no uploads after 72h)`;
+        // Append follow-up note — the marker excludes this prospect from future runs
+        const followUpNote = `[${now.toISOString()}] ${UPLOAD_FOLLOWUP_MARKER}, no uploads after 72h)`;
         await db
           .update(sellerProspects)
           .set({
@@ -127,3 +145,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+// Vercel cron invokes with GET; keep POST for manual/legacy triggers
+export { handler as GET, handler as POST };

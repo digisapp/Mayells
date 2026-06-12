@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 export interface ChatMessage {
+  /** Stable client-side id assigned when the message is received (used as React key) */
+  id: string;
   userId: string;
   displayName: string;
   role: string;
@@ -23,7 +25,12 @@ export function useLiveChat(auctionId: string) {
 
     channel
       .on('broadcast', { event: 'chat' }, ({ payload }) => {
-        setMessages((prev) => [...prev.slice(-200), payload as ChatMessage]);
+        // Assign the id outside the updater so it stays pure (StrictMode double-invokes it)
+        const message: ChatMessage = {
+          ...(payload as Omit<ChatMessage, 'id'>),
+          id: crypto.randomUUID(),
+        };
+        setMessages((prev) => [...prev.slice(-200), message]);
       })
       .subscribe((status) => {
         setConnected(status === 'SUBSCRIBED');

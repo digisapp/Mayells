@@ -10,6 +10,15 @@ const invoicePatchSchema = z.object({
   status: z.enum(['pending', 'paid', 'overdue', 'cancelled', 'refunded']).optional(),
 });
 
+// Valid status transitions — refunded and cancelled are terminal
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  pending: ['paid', 'cancelled', 'overdue'],
+  overdue: ['paid', 'cancelled'],
+  paid: ['refunded'],
+  refunded: [],
+  cancelled: [],
+};
+
 async function requireAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -66,6 +75,20 @@ export async function PATCH(req: NextRequest) {
 
     const updates: Record<string, unknown> = { updatedAt: sql`now()` };
     if (status) {
+      const [existing] = await db
+        .select({ status: invoices.status })
+        .from(invoices)
+        .where(eq(invoices.id, id))
+        .limit(1);
+      if (!existing) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+
+      if (status !== existing.status && !(STATUS_TRANSITIONS[existing.status] ?? []).includes(status)) {
+        return NextResponse.json(
+          { error: `Cannot change invoice status from "${existing.status}" to "${status}"` },
+          { status: 409 },
+        );
+      }
+
       updates.status = status;
       if (status === 'paid') updates.paidAt = sql`now()`;
     }

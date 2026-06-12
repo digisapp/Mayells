@@ -5,33 +5,44 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, ArrowRight, Camera, X, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
+interface PhotoItem {
+  file: File;
+  preview: string;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => resolve(ev.target?.result as string);
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
 export function HeroAppraisalForm() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const imageFiles = files.filter((f) => f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.heic'));
     if (photos.length + imageFiles.length > 50) {
       toast.error('Maximum 50 photos allowed');
       return;
     }
-    setPhotos((prev) => [...prev, ...imageFiles]);
-    imageFiles.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPhotoPreviews((prev) => [...prev, ev.target?.result as string]);
-      reader.readAsDataURL(file);
-    });
+    // Build each preview alongside its file so the two can never get out of order
+    const newPhotos = await Promise.all(
+      imageFiles.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
+    );
+    setPhotos((prev) => [...prev, ...newPhotos]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removePhoto = (index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
-    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -43,7 +54,7 @@ export function HeroAppraisalForm() {
       formData.append('email', form.email);
       formData.append('phone', form.phone);
       formData.append('items', form.items);
-      photos.forEach((photo) => formData.append('photos', photo));
+      photos.forEach((photo) => formData.append('photos', photo.file));
 
       const res = await fetch('/api/appraisal-requests', {
         method: 'POST',
@@ -117,11 +128,11 @@ export function HeroAppraisalForm() {
                 onChange={handlePhotoSelect}
                 className="hidden"
               />
-              {photoPreviews.length > 0 && (
+              {photos.length > 0 && (
                 <div className="flex gap-2 mb-2 flex-wrap">
-                  {photoPreviews.map((src, i) => (
+                  {photos.map((photo, i) => (
                     <div key={i} className="relative group">
-                      <img src={src} alt={`Photo ${i + 1}`} className="h-12 w-12 object-cover rounded-lg border border-white/10" />
+                      <img src={photo.preview} alt={`Photo ${i + 1}`} className="h-12 w-12 object-cover rounded-lg border border-white/10" />
                       <button
                         type="button"
                         onClick={() => removePhoto(i)}

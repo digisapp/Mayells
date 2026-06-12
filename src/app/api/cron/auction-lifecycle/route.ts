@@ -1,16 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { timingSafeEqual } from 'node:crypto';
 import { db } from '@/db';
-import { auctions, auctionLots, lots, bids, consignments, automationSettings } from '@/db/schema';
-import { eq, lte, and, inArray, desc } from 'drizzle-orm';
+import { auctions, auctionLots, lots, bids, consignments } from '@/db/schema';
+import { eq, lte, and, or, inArray, desc, asc } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
+import { initializeLotBidState } from '@/lib/bidding/bid-engine';
+import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
 const CRON_SECRET = process.env.CRON_SECRET;
 
-export async function POST(request: NextRequest) {
+function isAuthorized(request: NextRequest): boolean {
   // Verify cron secret — always required
-  const authHeader = request.headers.get('authorization');
-  if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
+  if (!CRON_SECRET) return false;
+  const authHeader = request.headers.get('authorization') ?? '';
+  const expected = Buffer.from(`Bearer ${CRON_SECRET}`);
+  const provided = Buffer.from(authHeader);
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
+async function handler(request: NextRequest) {
+  if (!isAuthorized(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -18,6 +28,7 @@ export async function POST(request: NextRequest) {
   const results = {
     opened: 0,
     closed: 0,
+    lotsSettled: 0,
     invoicesGenerated: 0,
     relistedToGallery: 0,
     returnedToSeller: 0,
@@ -38,23 +49,41 @@ export async function POST(request: NextRequest) {
 
     for (const auction of toOpen) {
       try {
-        await db
-          .update(auctions)
-          .set({ status: 'open', updatedAt: now })
-          .where(eq(auctions.id, auction.id));
-
-        // Set lot statuses to in_auction
         const aLots = await db
-          .select()
+          .select({ auctionLot: auctionLots, lot: lots })
           .from(auctionLots)
-          .where(eq(auctionLots.auctionId, auction.id));
+          .innerJoin(lots, eq(lots.id, auctionLots.lotId))
+          .where(eq(auctionLots.auctionId, auction.id))
+          .orderBy(asc(auctionLots.lotNumber));
 
-        for (const al of aLots) {
+        const intervalSeconds = auction.lotClosingIntervalSeconds ?? 0;
+
+        for (const [index, { auctionLot: al, lot }] of aLots.entries()) {
           await db
             .update(lots)
             .set({ status: 'in_auction', updatedAt: now })
             .where(eq(lots.id, al.lotId));
+
+          // Staggered closing: each lot closes intervalSeconds after the previous one.
+          // The bid engine's anti-snipe may push closingAt later as bids come in.
+          if (auction.biddingEndsAt) {
+            const closingAt = new Date(
+              auction.biddingEndsAt.getTime() + index * intervalSeconds * 1000,
+            );
+            await db
+              .update(auctionLots)
+              .set({ closingAt })
+              .where(eq(auctionLots.id, al.id));
+
+            await initializeLotBidState(al.lotId, closingAt, lot.startingBid ?? 0);
+          }
         }
+
+        // Flip status last so a crash mid-initialization re-runs the (idempotent) loop
+        await db
+          .update(auctions)
+          .set({ status: 'open', updatedAt: now })
+          .where(eq(auctions.id, auction.id));
 
         results.opened++;
       } catch (err) {
@@ -62,100 +91,138 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Close open auctions whose bidding end time has passed
-    const toClose = await db
+    // 2. Settle auctions past their end time, plus any auction stuck mid-settlement:
+    //    - 'closing' is set by the live auction end route (auctioneer ended early)
+    //    - 'closed' means a previous run started settling but didn't finish
+    const toSettle = await db
       .select()
       .from(auctions)
       .where(
-        and(
-          inArray(auctions.status, ['open', 'live']),
-          lte(auctions.biddingEndsAt, now),
+        or(
+          and(
+            inArray(auctions.status, ['open', 'live']),
+            lte(auctions.biddingEndsAt, now),
+          ),
+          inArray(auctions.status, ['closing', 'closed']),
         ),
       );
 
-    for (const auction of toClose) {
+    for (const auction of toSettle) {
       try {
-        await db
-          .update(auctions)
-          .set({ status: 'closed', actualEndedAt: now, updatedAt: now })
-          .where(eq(auctions.id, auction.id));
+        if (auction.status !== 'closed') {
+          await db
+            .update(auctions)
+            .set({
+              status: 'closed',
+              actualEndedAt: auction.actualEndedAt ?? now,
+              updatedAt: now,
+            })
+            .where(eq(auctions.id, auction.id));
+        }
 
-        // Process each lot in the auction
         const aLots = await db
-          .select()
+          .select({ auctionLot: auctionLots, lot: lots })
           .from(auctionLots)
-          .where(eq(auctionLots.auctionId, auction.id));
+          .innerJoin(lots, eq(lots.id, auctionLots.lotId))
+          .where(eq(auctionLots.auctionId, auction.id))
+          .orderBy(asc(auctionLots.lotNumber));
 
-        for (const al of aLots) {
-          // Get the lot
-          const [lot] = await db
-            .select()
-            .from(lots)
-            .where(eq(lots.id, al.lotId))
-            .limit(1);
+        let unsettledRemaining = 0;
 
-          if (!lot) {
-            // Lot not found in DB — skip
-            results.errors.push(`Lot ${al.lotId} not found`);
+        for (const { auctionLot: al, lot } of aLots) {
+          // Already settled (sold / relisted / returned) — idempotent skip
+          if (lot.status !== 'in_auction') continue;
+
+          // Respect per-lot close times (staggered closing + anti-snipe extensions)
+          const effectiveCloseAt =
+            al.closingAt ?? auction.biddingEndsAt ?? auction.actualEndedAt;
+          if (effectiveCloseAt && effectiveCloseAt > now) {
+            unsettledRemaining++;
             continue;
           }
 
-          if (lot.bidCount === 0 || (lot.reservePrice && lot.currentBidAmount < lot.reservePrice)) {
-            // Unsold — relist in gallery at low estimate / reserve, or return to seller
-            const relistResult = await relistUnsoldLot(lot, now);
-            if (relistResult === 'relisted') results.relistedToGallery++;
-            if (relistResult === 'returned') results.returnedToSeller++;
-            continue;
-          }
+          try {
+            // Highest active bid wins; earliest bid wins amount ties
+            const [winningBid] = await db
+              .select()
+              .from(bids)
+              .where(and(eq(bids.lotId, al.lotId), eq(bids.status, 'active')))
+              .orderBy(desc(bids.amount), asc(bids.createdAt))
+              .limit(1);
 
-          // Lot is sold — mark winning bid
-          const [winningBid] = await db
-            .select()
-            .from(bids)
-            .where(and(eq(bids.lotId, al.lotId), eq(bids.status, 'winning')))
-            .orderBy(desc(bids.amount))
-            .limit(1);
+            const reserveMet =
+              !lot.reservePrice || (winningBid && winningBid.amount >= lot.reservePrice);
 
-          if (winningBid) {
-            // Update bid status to won
+            if (winningBid && reserveMet) {
+              // Lot is sold — mark winning bid
+              await db
+                .update(bids)
+                .set({ status: 'winning' })
+                .where(eq(bids.id, winningBid.id));
+
+              // Update lot with winner
+              await db
+                .update(lots)
+                .set({
+                  winnerId: winningBid.bidderId,
+                  hammerPrice: winningBid.amount,
+                  status: 'sold',
+                  updatedAt: now,
+                })
+                .where(eq(lots.id, al.lotId));
+
+              // Generate invoice
+              try {
+                await generateInvoiceForWonLot({
+                  auctionId: auction.id,
+                  lotId: al.lotId,
+                  buyerId: winningBid.bidderId,
+                  hammerPrice: winningBid.amount,
+                });
+                results.invoicesGenerated++;
+              } catch (err) {
+                results.errors.push(`Failed to generate invoice for lot ${al.lotId}: ${err}`);
+              }
+            } else {
+              // Unsold (no bids or reserve not met) — relist in gallery or return to seller
+              const relistResult = await relistUnsoldLot(lot, now);
+              if (relistResult === 'relisted') results.relistedToGallery++;
+              if (relistResult === 'returned') results.returnedToSeller++;
+            }
+
+            // Demote remaining active bids to outbid (the winner is already 'winning')
             await db
               .update(bids)
-              .set({ status: 'won' })
-              .where(eq(bids.id, winningBid.id));
+              .set({ status: 'outbid' })
+              .where(and(eq(bids.lotId, al.lotId), eq(bids.status, 'active')));
 
-            // Update lot with winner
-            await db
-              .update(lots)
-              .set({
-                winnerId: winningBid.bidderId,
-                hammerPrice: winningBid.amount,
-                status: 'sold',
-                updatedAt: now,
-              })
-              .where(eq(lots.id, al.lotId));
-
-            // Generate invoice
+            // Clean up Redis bid state so a relist starts fresh
             try {
-              await generateInvoiceForWonLot({
-                auctionId: auction.id,
-                lotId: al.lotId,
-                buyerId: winningBid.bidderId,
-                hammerPrice: winningBid.amount,
-              });
-              results.invoicesGenerated++;
+              await redis.del(
+                `bid:lot:${al.lotId}:current`,
+                `bid:lot:${al.lotId}:current:bid_count`,
+                `bid:lot:${al.lotId}:close_time`,
+              );
             } catch (err) {
-              results.errors.push(`Failed to generate invoice for lot ${al.lotId}: ${err}`);
+              results.errors.push(`Failed to clear Redis bid state for lot ${al.lotId}: ${err}`);
             }
+
+            results.lotsSettled++;
+          } catch (err) {
+            unsettledRemaining++;
+            results.errors.push(`Failed to settle lot ${al.lotId}: ${err}`);
           }
         }
 
-        // Mark auction as completed
-        await db
-          .update(auctions)
-          .set({ status: 'completed', updatedAt: now })
-          .where(eq(auctions.id, auction.id));
+        // Mark auction completed only once every lot has been settled
+        if (unsettledRemaining === 0) {
+          await db
+            .update(auctions)
+            .set({ status: 'completed', updatedAt: now })
+            .where(eq(auctions.id, auction.id));
 
-        results.closed++;
+          results.closed++;
+        }
       } catch (err) {
         results.errors.push(`Failed to close auction ${auction.id}: ${err}`);
       }
@@ -171,6 +238,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+// Vercel cron invokes with GET; keep POST for manual/legacy triggers
+export { handler as GET, handler as POST };
 
 /**
  * Handle unsold lots after auction closes:

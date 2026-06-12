@@ -68,7 +68,7 @@ async function seed(datasetNames: string[]) {
           email: lead.email || null,
           phone: lead.phone || null,
           website: lead.website || null,
-          category: lead.category as any,
+          category: lead.category as typeof outreachContacts.$inferInsert.category,
           source: lead.source,
           address: lead.address || null,
           city: lead.city || null,

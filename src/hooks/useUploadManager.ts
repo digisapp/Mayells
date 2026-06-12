@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { compressImage } from '@/lib/upload/compress-image';
 import { generateVideoThumbnail } from '@/lib/upload/video-thumbnail';
 
@@ -23,28 +23,31 @@ const VIDEO_TYPES = ['video/mp4', 'video/quicktime', 'video/webm'];
 
 export function useUploadManager(token: string) {
   const [tasks, setTasks] = useState<UploadTask[]>([]);
+  // Mirror of `tasks` so queue/dispatch logic can read current state without
+  // performing side effects inside setTasks updaters (which must stay pure —
+  // StrictMode double-invokes them, causing duplicate uploads).
+  const tasksRef = useRef<UploadTask[]>([]);
   const activeCountRef = useRef(0);
   const queueRef = useRef<string[]>([]);
 
   const updateTask = useCallback((id: string, updates: Partial<UploadTask>) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+    tasksRef.current = tasksRef.current.map((t) => (t.id === id ? { ...t, ...updates } : t));
+    setTasks(tasksRef.current);
   }, []);
 
   const processNext = useCallback(() => {
     if (activeCountRef.current >= MAX_CONCURRENT || queueRef.current.length === 0) return;
 
     const taskId = queueRef.current.shift()!;
-    activeCountRef.current++;
+    const task = tasksRef.current.find((t) => t.id === taskId);
+    if (!task || task.status === 'complete') {
+      // Skip stale queue entries and try the next one
+      processNext();
+      return;
+    }
 
-    setTasks((prev) => {
-      const task = prev.find((t) => t.id === taskId);
-      if (!task || task.status === 'complete') {
-        activeCountRef.current--;
-        return prev;
-      }
-      processTask(task);
-      return prev;
-    });
+    activeCountRef.current++;
+    processTask(task);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -176,7 +179,8 @@ export function useUploadManager(token: string) {
         isVideo: VIDEO_TYPES.includes(file.type),
       }));
 
-      setTasks((prev) => [...prev, ...newTasks]);
+      tasksRef.current = [...tasksRef.current, ...newTasks];
+      setTasks(tasksRef.current);
       queueRef.current.push(...newTasks.map((t) => t.id));
       startQueue();
 
@@ -186,23 +190,36 @@ export function useUploadManager(token: string) {
   );
 
   const retryFailed = useCallback(() => {
-    setTasks((prev) => {
-      const failed = prev.filter((t) => t.status === 'error');
-      failed.forEach((t) => {
-        t.status = 'pending';
-        t.retryCount = 0;
-        t.progress = 0;
-        t.error = undefined;
-        queueRef.current.push(t.id);
-      });
-      return [...prev];
-    });
+    const failedIds = tasksRef.current
+      .filter((t) => t.status === 'error')
+      .map((t) => t.id);
+    if (failedIds.length === 0) return;
+
+    tasksRef.current = tasksRef.current.map((t) =>
+      t.status === 'error'
+        ? { ...t, status: 'pending' as const, retryCount: 0, progress: 0, error: undefined }
+        : t
+    );
+    setTasks(tasksRef.current);
+    queueRef.current.push(...failedIds);
     startQueue();
   }, [startQueue]);
 
   const removeTask = useCallback((id: string) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id));
+    const task = tasksRef.current.find((t) => t.id === id);
+    if (task?.thumbnailUrl) URL.revokeObjectURL(task.thumbnailUrl);
+    tasksRef.current = tasksRef.current.filter((t) => t.id !== id);
+    setTasks(tasksRef.current);
     queueRef.current = queueRef.current.filter((qid) => qid !== id);
+  }, []);
+
+  // Revoke any remaining thumbnail object URLs on unmount
+  useEffect(() => {
+    return () => {
+      tasksRef.current.forEach((t) => {
+        if (t.thumbnailUrl) URL.revokeObjectURL(t.thumbnailUrl);
+      });
+    };
   }, []);
 
   const isUploading = tasks.some(

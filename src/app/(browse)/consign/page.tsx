@@ -40,10 +40,23 @@ const steps = [
 ];
 
 
+interface PhotoItem {
+  file: File;
+  preview: string;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => resolve(ev.target?.result as string);
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function ConsignPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
-  const [photos, setPhotos] = useState<File[]>([]);
-  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,18 +102,16 @@ export default function ConsignPage() {
       return;
     }
     const compressed = await Promise.all(imageFiles.map((f) => compressImage(f)));
-    setPhotos((prev) => [...prev, ...compressed]);
-    compressed.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPhotoPreviews((prev) => [...prev, ev.target?.result as string]);
-      reader.readAsDataURL(file);
-    });
+    // Build each preview alongside its file so the two can never get out of order
+    const newPhotos = await Promise.all(
+      compressed.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
+    );
+    setPhotos((prev) => [...prev, ...newPhotos]);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removePhoto = (index: number) => {
     setPhotos((prev) => prev.filter((_, i) => i !== index));
-    setPhotoPreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -113,7 +124,7 @@ export default function ConsignPage() {
       formData.append('email', form.email);
       formData.append('items', form.items);
       formData.append('service', 'Consignment');
-      photos.forEach((photo) => formData.append('photos', photo));
+      photos.forEach((photo) => formData.append('photos', photo.file));
 
       const res = await fetch('/api/appraisal-requests', {
         method: 'POST',
@@ -272,7 +283,7 @@ export default function ConsignPage() {
               </p>
 
               <div className="flex gap-3 justify-center">
-                <Button variant="outline" className="border-gray-200 text-charcoal hover:bg-gray-50" onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', items: '' }); setPhotos([]); setPhotoPreviews([]); }}>
+                <Button variant="outline" className="border-gray-200 text-charcoal hover:bg-gray-50" onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', items: '' }); setPhotos([]); }}>
                   Submit Another
                 </Button>
                 <Link href="/">
@@ -334,11 +345,11 @@ export default function ConsignPage() {
                     onChange={handlePhotoSelect}
                     className="hidden"
                   />
-                  {photoPreviews.length > 0 && (
+                  {photos.length > 0 && (
                     <div className="flex gap-2 mb-3 flex-wrap">
-                      {photoPreviews.map((src, i) => (
+                      {photos.map((photo, i) => (
                         <div key={i} className="relative group">
-                          <img src={src} alt={`Photo ${i + 1}`} className="h-16 w-16 object-cover rounded-lg border border-gray-200" />
+                          <img src={photo.preview} alt={`Photo ${i + 1}`} className="h-16 w-16 object-cover rounded-lg border border-gray-200" />
                           <button
                             type="button"
                             onClick={() => removePhoto(i)}

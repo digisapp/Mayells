@@ -3,6 +3,7 @@ import { formatCurrency } from '@/types';
 import { BUSINESS } from '@/lib/config';
 import { db } from '@/db';
 import { emails } from '@/db/schema';
+import { logger } from '@/lib/logger';
 
 const FROM = 'Mayell <notifications@mayells.com>';
 const FROM_EMAIL = 'notifications@mayells.com';
@@ -10,12 +11,34 @@ const ADMIN_EMAIL = BUSINESS.email;
 
 async function sendAndLog(params: { to: string; subject: string; html: string }) {
   const resend = getResend();
-  const { data: sent } = await resend.emails.send({
+  // The Resend SDK returns { data, error } and never throws
+  const { data: sent, error } = await resend.emails.send({
     from: FROM,
     to: params.to,
     subject: params.subject,
     html: params.html,
   });
+
+  if (error) {
+    logger.error('Failed to send email via Resend', undefined, {
+      to: params.to,
+      subject: params.subject,
+      error: error.message,
+    });
+    // 'bounced' is the schema's outbound-failure status
+    await db.insert(emails).values({
+      resendId: null,
+      direction: 'outbound',
+      fromEmail: FROM_EMAIL,
+      fromName: 'Mayell',
+      toEmail: params.to,
+      subject: params.subject,
+      bodyHtml: params.html,
+      status: 'bounced',
+    });
+    throw new Error(`Failed to send email to ${params.to}: ${error.message}`);
+  }
+
   await db.insert(emails).values({
     resendId: sent?.id || null,
     direction: 'outbound',

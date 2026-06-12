@@ -16,17 +16,34 @@ export async function GET(req: NextRequest) {
     const offset = Math.max(0, parseInt(searchParams.get('offset') ?? '0') || 0);
     const search = searchParams.get('q');
 
+    // Validate enum params so invalid values return 400 instead of a Postgres enum error
+    const VALID_STATUSES = lots.status.enumValues;
+    const VALID_SALE_TYPES = lots.saleType.enumValues;
+
+    if (status && !(VALID_STATUSES as readonly string[]).includes(status)) {
+      return NextResponse.json(
+        { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    const saleType = searchParams.get('saleType');
+    if (saleType && !(VALID_SALE_TYPES as readonly string[]).includes(saleType)) {
+      return NextResponse.json(
+        { error: `Invalid saleType. Must be one of: ${VALID_SALE_TYPES.join(', ')}` },
+        { status: 400 },
+      );
+    }
+
     const conditions = [];
 
     if (category) {
       conditions.push(eq(lots.categoryId, category));
     }
     if (status) {
-      conditions.push(eq(lots.status, status as 'draft' | 'in_auction' | 'sold' | 'for_sale'));
+      conditions.push(eq(lots.status, status as (typeof VALID_STATUSES)[number]));
     }
-    const saleType = searchParams.get('saleType');
     if (saleType) {
-      conditions.push(eq(lots.saleType, saleType as 'auction' | 'gallery' | 'private'));
+      conditions.push(eq(lots.saleType, saleType as (typeof VALID_SALE_TYPES)[number]));
     }
     if (search) {
       const trimmed = search.slice(0, 200); // Cap search length
@@ -52,7 +69,8 @@ export async function GET(req: NextRequest) {
       : sort === 'price_desc'
         ? desc(lots.currentBidAmount)
         : sort === 'ending_soon'
-          ? asc(lots.createdAt)
+          // Correlated subquery: earliest upcoming closing time across any auction this lot is in
+          ? sql`(SELECT MIN(closing_at) FROM auction_lots WHERE lot_id = lots.id AND closing_at > now()) NULLS LAST`
           : desc(lots.createdAt);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;

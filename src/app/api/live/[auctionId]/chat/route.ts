@@ -41,6 +41,13 @@ export async function POST(
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
 
+    // Only staff may broadcast system message types — anyone could otherwise
+    // spoof bid_notification events to the live room. Plain chat and emoji
+    // reactions remain open to all authenticated users.
+    if (type !== 'chat' && type !== 'reaction' && profile?.role !== 'admin' && profile?.role !== 'auctioneer') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Broadcast via Supabase Realtime
     const channel = supabase.channel(`live:${auctionId}`);
     await channel.send({

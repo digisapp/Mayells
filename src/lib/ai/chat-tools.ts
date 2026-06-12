@@ -13,13 +13,10 @@ export const chatTools = {
   getUpcomingAuctions: tool({
     description:
       'Get upcoming and currently open auctions. Use when someone asks about upcoming sales, auction schedule, or what auctions are happening.',
-    inputSchema: z.object({
-      category: z
-        .string()
-        .optional()
-        .describe('Optional category filter like "jewelry", "art", "antiques"'),
-    }),
-    execute: async ({ category }) => {
+    // Auctions are not categorized — no category parameter (use searchLots to
+    // find items in a specific department).
+    inputSchema: z.object({}),
+    execute: async () => {
       try {
         const results = await db
           .select({
@@ -98,6 +95,14 @@ export const chatTools = {
         if (saleType) {
           conditions.push(eq(lots.saleType, saleType));
         }
+        if (category) {
+          conditions.push(
+            or(
+              ilike(categories.name, `%${category}%`),
+              ilike(categories.slug, `%${category}%`),
+            )!,
+          );
+        }
         if (query) {
           conditions.push(
             or(
@@ -169,14 +174,25 @@ export const chatTools = {
         .string()
         .optional()
         .describe('Optional category filter'),
-      limit: z.number().optional().default(6).describe('Number of items to return'),
+      limit: z.number().optional().default(6).describe('Number of items to return (max 20)'),
     }),
     execute: async ({ category, limit }) => {
       try {
+        // Clamp model-controlled limit
+        const safeLimit = Math.min(Math.max(Math.floor(limit ?? 6) || 6, 1), 20);
+
         const conditions = [
           eq(lots.saleType, 'gallery'),
           eq(lots.status, 'for_sale'),
         ];
+        if (category) {
+          conditions.push(
+            or(
+              ilike(categories.name, `%${category}%`),
+              ilike(categories.slug, `%${category}%`),
+            )!,
+          );
+        }
 
         const results = await db
           .select({
@@ -191,7 +207,7 @@ export const chatTools = {
           .leftJoin(categories, eq(lots.categoryId, categories.id))
           .where(and(...conditions))
           .orderBy(desc(lots.isFeatured), desc(lots.createdAt))
-          .limit(limit);
+          .limit(safeLimit);
 
         if (results.length === 0) {
           return { message: 'No gallery items available right now. Check our auctions for current lots.' };
@@ -203,7 +219,7 @@ export const chatTools = {
             artist: l.artist || l.maker || undefined,
             category: l.categoryName,
             price: formatPrice(l.buyNowPrice),
-            url: `/lots/${l.slug}`,
+            url: `/gallery/${l.slug}`,
           })),
         };
       } catch {
@@ -253,6 +269,16 @@ export const chatTools = {
     }),
     execute: async ({ category }) => {
       try {
+        const conditions = [eq(lots.status, 'sold')];
+        if (category) {
+          conditions.push(
+            or(
+              ilike(categories.name, `%${category}%`),
+              ilike(categories.slug, `%${category}%`),
+            )!,
+          );
+        }
+
         const results = await db
           .select({
             title: lots.title,
@@ -265,7 +291,7 @@ export const chatTools = {
           })
           .from(lots)
           .leftJoin(categories, eq(lots.categoryId, categories.id))
-          .where(eq(lots.status, 'sold'))
+          .where(and(...conditions))
           .orderBy(desc(lots.updatedAt))
           .limit(8);
 

@@ -24,14 +24,20 @@ export function PWAInstallPrompt() {
     };
     window.addEventListener('beforeinstallprompt', handler);
 
-    // iOS Safari detection
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    const isSafari = /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent);
-    if (isIOS && isSafari) {
-      setShowIOSPrompt(true);
-    }
+    // iOS Safari detection — deferred a frame to avoid a synchronous
+    // setState cascade during the mount effect
+    const raf = requestAnimationFrame(() => {
+      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+      const isSafari = /safari/i.test(navigator.userAgent) && !/chrome/i.test(navigator.userAgent);
+      if (isIOS && isSafari) {
+        setShowIOSPrompt(true);
+      }
+    });
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      cancelAnimationFrame(raf);
+    };
   }, []);
 
   if (dismissed) return null;

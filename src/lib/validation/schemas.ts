@@ -54,8 +54,11 @@ export const auctionSchema = z.object({
 export const bidSchema = z.object({
   amount: z.number().int().positive('Bid amount must be positive'),
   maxBidAmount: z.number().int().positive().optional(),
-  idempotencyKey: z.string().optional(),
-});
+  idempotencyKey: z.string().max(255).optional(),
+}).refine(
+  (data) => data.maxBidAmount === undefined || data.maxBidAmount >= data.amount,
+  { message: 'Max bid must be at least the bid amount', path: ['maxBidAmount'] },
+);
 
 export const consignmentSchema = z.object({
   title: z.string().min(1, 'Title is required'),

@@ -33,6 +33,16 @@ export async function POST(
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    // Only auctions awaiting their live session can be started — never
+    // restart completed/cancelled/closing auctions or unpublished drafts.
+    const STARTABLE_STATUSES = ['scheduled', 'preview', 'open'] as const;
+    if (!(STARTABLE_STATUSES as readonly string[]).includes(auction.status)) {
+      return NextResponse.json(
+        { error: `Cannot start a live session for an auction with status "${auction.status}"` },
+        { status: 409 },
+      );
+    }
+
     const roomName = `auction-${auctionId}`;
 
     // Create LiveKit room

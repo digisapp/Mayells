@@ -13,6 +13,20 @@ const INCREMENT_TABLE = [
   { from: 10_000_000, to: Infinity, increment: 1_000_000 }, // $100K+: $10,000
 ];
 
+// Serializable form of the increment table for passing into the Redis Lua
+// script (cjson cannot represent Infinity, so we only ship the lower bound).
+// Thresholds are ascending; the applicable increment is the one belonging to
+// the last tier whose threshold is <= the CURRENT bid amount.
+export interface IncrementTier {
+  threshold: number; // lower bound of the tier, in cents
+  increment: number; // minimum increment within the tier, in cents
+}
+
+export const INCREMENT_TIERS: IncrementTier[] = INCREMENT_TABLE.map((tier) => ({
+  threshold: tier.from,
+  increment: tier.increment,
+}));
+
 export function getMinIncrement(currentBidCents: number): number {
   for (const tier of INCREMENT_TABLE) {
     if (currentBidCents >= tier.from && currentBidCents <= tier.to) {

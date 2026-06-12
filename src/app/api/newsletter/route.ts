@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { newsletterSubscribers } from '@/db/schema';
 import { rateLimit } from '@/lib/rate-limit';
@@ -25,10 +26,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
+    // Re-subscribe previously unsubscribed emails instead of silently no-oping
     await db
       .insert(newsletterSubscribers)
       .values({ email: parsed.data.email.toLowerCase().trim() })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: newsletterSubscribers.email,
+        set: { unsubscribed: false, subscribedAt: sql`now()` },
+      });
 
     return NextResponse.json({ data: { message: 'Subscribed' } }, { status: 201 });
   } catch (error) {
