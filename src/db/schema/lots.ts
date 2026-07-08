@@ -108,6 +108,7 @@ export const lots = pgTable('lots', {
   index('lots_sale_type_idx').on(table.saleType, table.status),
   index('lots_current_bidder_idx').on(table.currentBidderId),
   index('lots_winner_idx').on(table.winnerId),
+  index('lots_consignment_idx').on(table.consignmentId),
 ]);
 
 export const lotsRelations = relations(lots, ({ one, many }) => ({

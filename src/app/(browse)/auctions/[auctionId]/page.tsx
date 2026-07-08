@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { Calendar, Clock, Gavel, ExternalLink } from 'lucide-react';
-import { generateAuctionJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
+import { generateAuctionJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
@@ -98,8 +98,8 @@ export default async function AuctionDetailPage({
 
   return (
     <>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {/* Header */}
       <div className="mb-10">

@@ -47,7 +47,7 @@ export function BuyNowPanel({ lotId, title, buyNowPrice, estimateLow, estimateHi
             <p className="font-medium mb-2">Contact us to purchase</p>
             <div className="space-y-2">
               <a
-                href={`mailto:${BUSINESS.email}?subject=Purchase Inquiry: ${encodeURIComponent(title)}`}
+                href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(`Purchase Inquiry: ${title}`)}`}
                 className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <Mail className="h-4 w-4" />

@@ -2,6 +2,7 @@ import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
 import { PublicNav } from '@/components/layout/PublicNav';
 import { PublicFooter } from '@/components/layout/PublicFooter';
 import { ChatWidget } from '@/components/chat/ChatWidget';
+import { serializeJsonLd } from '@/lib/seo/structured-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -46,8 +47,8 @@ export default function BrowseLayout({ children }: { children: React.ReactNode }
       >
         Skip to main content
       </a>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(businessJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(websiteJsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(businessJsonLd) }} />
       <AnnouncementBar />
       <PublicNav />
       <main id="main-content" className="flex-1">{children}</main>

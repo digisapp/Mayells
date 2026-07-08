@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { auctions } from '@/db/schema';
 import { inArray, desc, asc, sql, and } from 'drizzle-orm';
 import { rateLimit } from '@/lib/rate-limit';
+import { parsePagination } from '@/lib/pagination';
 
 /**
  * Public Auctions API — discoverable by AI agents.
@@ -32,8 +33,7 @@ export async function GET(request: NextRequest) {
 
   const status = params.get('status') || 'upcoming';
   const sort = params.get('sort') || 'soonest';
-  const limit = Math.min(parseInt(params.get('limit') || '20'), 50);
-  const offset = parseInt(params.get('offset') || '0');
+  const { limit, offset } = parsePagination(params, { defaultLimit: 20, maxLimit: 50 });
 
   try {
     const conditions = [];

@@ -8,6 +8,20 @@
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 /**
+ * Serialize a JSON-LD object for injection into a <script type="application/ld+json">
+ * via dangerouslySetInnerHTML. Escapes the characters that could otherwise break
+ * out of the script element (`<`, `>`, `&`) — e.g. an admin-authored lot
+ * description containing `</script><script>…`. Use this instead of raw
+ * JSON.stringify at every JSON-LD injection site.
+ */
+export function serializeJsonLd(data: unknown): string {
+  return JSON.stringify(data)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+}
+
+/**
  * Generate Product + Offer schema for an auction lot.
  * This is what makes a lot discoverable by AI shopping agents.
  */

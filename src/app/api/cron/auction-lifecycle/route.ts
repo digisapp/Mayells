@@ -1,14 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { db } from '@/db';
-import { auctions, auctionLots, lots, bids, consignments } from '@/db/schema';
+import { auctions, auctionLots, lots, bids, maxBids, consignments, users, invoices } from '@/db/schema';
 import { eq, lte, and, or, inArray, desc, asc } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
 import { initializeLotBidState } from '@/lib/bidding/bid-engine';
+import { sendInvoiceNotification } from '@/lib/email/notifications';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
+// Large auctions can take a while to settle; allow the full Vercel budget.
+export const maxDuration = 300;
+
 const CRON_SECRET = process.env.CRON_SECRET;
+
+// Distributed lock so overlapping cron invocations (a slow run bleeding into
+// the next 5-minute tick, or a manual POST alongside the scheduled GET) can't
+// both settle the same lots and race on bid/lot status updates.
+const LOCK_KEY = 'cron:auction-lifecycle:lock';
+const LOCK_TTL_SECONDS = 290;
+
+// Release the lock only if we still own it (avoid deleting a lock a later run
+// acquired after ours expired).
+const RELEASE_LOCK_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
 
 function isAuthorized(request: NextRequest): boolean {
   // Verify cron secret — always required
@@ -24,6 +43,22 @@ async function handler(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const lockToken = randomUUID();
+  const acquired = await redis.set(LOCK_KEY, lockToken, { nx: true, ex: LOCK_TTL_SECONDS });
+  if (!acquired) {
+    return NextResponse.json({ success: true, skipped: 'another lifecycle run is in progress' });
+  }
+
+  try {
+    return await runLifecycle();
+  } finally {
+    await redis
+      .eval(RELEASE_LOCK_LUA, [LOCK_KEY], [lockToken])
+      .catch((err) => logger.error('Failed to release auction-lifecycle lock', err));
+  }
+}
+
+async function runLifecycle() {
   const now = new Date();
   const results = {
     opened: 0,
@@ -32,6 +67,7 @@ async function handler(request: NextRequest) {
     invoicesGenerated: 0,
     relistedToGallery: 0,
     returnedToSeller: 0,
+    markedOverdue: 0,
     errors: [] as string[],
   };
 
@@ -142,59 +178,107 @@ async function handler(request: NextRequest) {
           }
 
           try {
-            // Highest active bid wins; earliest bid wins amount ties
-            const [winningBid] = await db
-              .select()
-              .from(bids)
-              .where(and(eq(bids.lotId, al.lotId), eq(bids.status, 'active')))
-              .orderBy(desc(bids.amount), asc(bids.createdAt))
-              .limit(1);
+            // Settle each lot atomically: choosing the winner, marking the
+            // winning/outbid bids, updating the lot, generating the invoice,
+            // and deactivating max bids all commit together or not at all. A
+            // crash mid-settlement can no longer leave a lot 'sold' with no
+            // invoice (which the idempotent skip above would never retry).
+            const settlement = await db.transaction(async (tx) => {
+              // Highest active bid wins; earliest bid wins amount ties
+              const [winningBid] = await tx
+                .select()
+                .from(bids)
+                .where(and(eq(bids.lotId, al.lotId), eq(bids.status, 'active')))
+                .orderBy(desc(bids.amount), asc(bids.createdAt))
+                .limit(1);
 
-            const reserveMet =
-              !lot.reservePrice || (winningBid && winningBid.amount >= lot.reservePrice);
+              const reserveMet =
+                !lot.reservePrice || (winningBid && winningBid.amount >= lot.reservePrice);
 
-            if (winningBid && reserveMet) {
-              // Lot is sold — mark winning bid
-              await db
-                .update(bids)
-                .set({ status: 'winning' })
-                .where(eq(bids.id, winningBid.id));
+              let outcome: 'sold' | 'relisted' | 'returned';
+              let invoice: Awaited<ReturnType<typeof generateInvoiceForWonLot>> | null = null;
 
-              // Update lot with winner
-              await db
-                .update(lots)
-                .set({
-                  winnerId: winningBid.bidderId,
-                  hammerPrice: winningBid.amount,
-                  status: 'sold',
-                  updatedAt: now,
-                })
-                .where(eq(lots.id, al.lotId));
+              if (winningBid && reserveMet) {
+                await tx
+                  .update(bids)
+                  .set({ status: 'winning' })
+                  .where(eq(bids.id, winningBid.id));
 
-              // Generate invoice
-              try {
-                await generateInvoiceForWonLot({
-                  auctionId: auction.id,
-                  lotId: al.lotId,
-                  buyerId: winningBid.bidderId,
-                  hammerPrice: winningBid.amount,
-                });
-                results.invoicesGenerated++;
-              } catch (err) {
-                results.errors.push(`Failed to generate invoice for lot ${al.lotId}: ${err}`);
+                await tx
+                  .update(lots)
+                  .set({
+                    winnerId: winningBid.bidderId,
+                    hammerPrice: winningBid.amount,
+                    status: 'sold',
+                    updatedAt: now,
+                  })
+                  .where(eq(lots.id, al.lotId));
+
+                invoice = await generateInvoiceForWonLot(
+                  {
+                    auctionId: auction.id,
+                    lotId: al.lotId,
+                    buyerId: winningBid.bidderId,
+                    hammerPrice: winningBid.amount,
+                  },
+                  tx,
+                );
+                outcome = 'sold';
+              } else {
+                // Unsold (no bids or reserve not met) — relist or return
+                outcome = await relistUnsoldLot(lot, now, tx);
               }
-            } else {
-              // Unsold (no bids or reserve not met) — relist in gallery or return to seller
-              const relistResult = await relistUnsoldLot(lot, now);
-              if (relistResult === 'relisted') results.relistedToGallery++;
-              if (relistResult === 'returned') results.returnedToSeller++;
-            }
 
-            // Demote remaining active bids to outbid (the winner is already 'winning')
-            await db
-              .update(bids)
-              .set({ status: 'outbid' })
-              .where(and(eq(bids.lotId, al.lotId), eq(bids.status, 'active')));
+              // Demote remaining active bids to outbid (winner is 'winning')
+              await tx
+                .update(bids)
+                .set({ status: 'outbid' })
+                .where(and(eq(bids.lotId, al.lotId), eq(bids.status, 'active')));
+
+              // Retire any max bids for this lot so they can never fire in a
+              // future re-auction on behalf of this sale's bidders.
+              await tx
+                .update(maxBids)
+                .set({ isActive: false, updatedAt: now })
+                .where(and(eq(maxBids.lotId, al.lotId), eq(maxBids.isActive, true)));
+
+              return { outcome, invoice, winnerId: winningBid?.bidderId };
+            });
+
+            if (settlement.outcome === 'sold') results.invoicesGenerated++;
+            if (settlement.outcome === 'relisted') results.relistedToGallery++;
+            if (settlement.outcome === 'returned') results.returnedToSeller++;
+
+            // Email the buyer their invoice (with the pay link) AFTER the
+            // settlement commits — a send failure must not roll back the sale.
+            // Only send when this run created the invoice (invoice.paidAt is
+            // null on a fresh one), so idempotent re-runs don't re-email.
+            if (
+              settlement.outcome === 'sold' &&
+              settlement.invoice &&
+              !settlement.invoice.paidAt &&
+              settlement.winnerId
+            ) {
+              try {
+                const [buyer] = await db
+                  .select({ email: users.email })
+                  .from(users)
+                  .where(eq(users.id, settlement.winnerId))
+                  .limit(1);
+                if (buyer?.email) {
+                  await sendInvoiceNotification({
+                    email: buyer.email,
+                    lotTitle: lot.title,
+                    invoiceNumber: settlement.invoice.invoiceNumber,
+                    totalAmount: settlement.invoice.totalAmount,
+                    dueDate: settlement.invoice.dueDate,
+                    accessToken: settlement.invoice.accessToken,
+                  });
+                }
+              } catch (err) {
+                results.errors.push(`Failed to email invoice for lot ${al.lotId}: ${err}`);
+              }
+            }
 
             // Clean up Redis bid state so a relist starts fresh
             try {
@@ -228,6 +312,18 @@ async function handler(request: NextRequest) {
       }
     }
 
+    // 3. Flip unpaid invoices past their due date to 'overdue'.
+    try {
+      const overdue = await db
+        .update(invoices)
+        .set({ status: 'overdue', updatedAt: now })
+        .where(and(eq(invoices.status, 'pending'), lte(invoices.dueDate, now)))
+        .returning({ id: invoices.id });
+      results.markedOverdue = overdue.length;
+    } catch (err) {
+      results.errors.push(`Failed to mark overdue invoices: ${err}`);
+    }
+
     return NextResponse.json({
       success: true,
       timestamp: now.toISOString(),
@@ -248,15 +344,18 @@ export { handler as GET, handler as POST };
  * - Or return to seller if no estimate available
  * - Update consignment status accordingly
  */
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 async function relistUnsoldLot(
   lot: { id: string; estimateLow?: number | null; reservePrice?: number | null; consignmentId?: string | null },
-  now: Date
+  now: Date,
+  executor: Executor = db,
 ): Promise<'relisted' | 'returned'> {
   const buyNowPrice = lot.reservePrice || lot.estimateLow;
 
   if (buyNowPrice && buyNowPrice > 0) {
     // Relist as gallery item (buy-now) at reserve or low estimate
-    await db.update(lots).set({
+    await executor.update(lots).set({
       status: 'for_sale',
       saleType: 'gallery',
       buyNowPrice: buyNowPrice,
@@ -275,7 +374,7 @@ async function relistUnsoldLot(
 
     // Update consignment if linked
     if (lot.consignmentId) {
-      await db.update(consignments).set({
+      await executor.update(consignments).set({
         status: 'listed',
         reviewNotes: `Unsold at auction — relisted in gallery at $${(buyNowPrice / 100).toLocaleString()}`,
         updatedAt: now,
@@ -285,13 +384,13 @@ async function relistUnsoldLot(
     return 'relisted';
   } else {
     // No price to relist at — mark as unsold, return to seller
-    await db.update(lots).set({
+    await executor.update(lots).set({
       status: 'unsold',
       updatedAt: now,
     }).where(eq(lots.id, lot.id));
 
     if (lot.consignmentId) {
-      await db.update(consignments).set({
+      await executor.update(consignments).set({
         status: 'returned',
         reviewNotes: 'Unsold at auction — returned to seller',
         updatedAt: now,

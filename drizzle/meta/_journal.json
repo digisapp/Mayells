@@ -43,6 +43,27 @@
       "when": 1781240892934,
       "tag": "0005_romantic_the_liberteens",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783467475879,
+      "tag": "0006_live_chat_private_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783467475881,
+      "tag": "0007_schema_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783468712390,
+      "tag": "0008_invoice_access_token",
+      "breakpoints": true
     }
   ]
 }

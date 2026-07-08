@@ -15,6 +15,16 @@ const envSchema = z.object({
   RESEND_WEBHOOK_SECRET: z.string().min(1),
   CRON_SECRET: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url(),
+  // Feature-specific — optional so a deployment that doesn't use LiveKit,
+  // xAI/OpenAI, or Shippo still validates, but they're documented here.
+  AI_PROVIDER: z.enum(['anthropic', 'openai', 'xai']).optional(),
+  XAI_API_KEY: z.string().min(1).optional(),
+  OPENAI_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  LIVEKIT_API_KEY: z.string().min(1).optional(),
+  LIVEKIT_API_SECRET: z.string().min(1).optional(),
+  NEXT_PUBLIC_LIVEKIT_URL: z.string().url().optional(),
+  SHIPPO_API_KEY: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -26,6 +36,27 @@ export function validateEnv() {
       issues: result.error.format(),
     });
     throw new Error('Invalid environment variables — check server logs for details');
+  }
+  return result.data;
+}
+
+// The subset the edge runtime (middleware) actually dereferences. Validated
+// separately so the edge fails fast with a clear message instead of an opaque
+// crash on a missing Supabase key, without requiring node-only secrets to be
+// present in the edge environment.
+const edgeEnvSchema = z.object({
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+});
+
+export function validateEdgeEnv() {
+  const result = edgeEnvSchema.safeParse(process.env);
+  if (!result.success) {
+    logger.error('Missing or invalid edge environment variables', undefined, {
+      issues: result.error.format(),
+    });
+    throw new Error('Invalid edge environment variables — check server logs for details');
   }
   return result.data;
 }

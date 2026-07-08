@@ -10,7 +10,7 @@ import { BuyNowPanel } from '@/components/gallery/BuyNowPanel';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
-import { generateLotJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
+import { generateLotJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
@@ -62,7 +62,9 @@ export default async function GalleryDetailPage({
   const { lotId } = await params;
 
   const lot = await getLot(lotId);
-  if (!lot || lot.saleType !== 'gallery') notFound();
+  // Gallery detail serves both gallery buy-now lots and private-sale lots
+  // (which render an "Inquire for Price" panel) — LotCard links both here.
+  if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private')) notFound();
 
   void track('gallery_item_viewed', { lotId: lot.id, status: lot.status });
 
@@ -86,8 +88,8 @@ export default async function GalleryDetailPage({
 
   return (
     <>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left: Images + Details */}

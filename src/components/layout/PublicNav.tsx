@@ -58,6 +58,10 @@ export function PublicNav() {
               </Button>
             </Link>
 
+            <Link href="/login" className="hidden sm:block" aria-label="Sign in">
+              <Button variant="ghost" size="sm" className="text-[13px] text-muted-foreground hover:text-foreground">Sign In</Button>
+            </Link>
+
             <Link href="/how-to-buy" className="hidden sm:block">
               <Button variant="champagne" size="sm" className="text-[13px]">How to Buy</Button>
             </Link>

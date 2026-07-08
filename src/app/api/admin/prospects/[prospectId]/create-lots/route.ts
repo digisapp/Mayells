@@ -45,6 +45,14 @@ export async function POST(
     const body = await request.json();
     const { auctionId, itemIds } = body as { auctionId?: string; itemIds?: string[] };
 
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (auctionId !== undefined && (typeof auctionId !== 'string' || !UUID_RE.test(auctionId))) {
+      return NextResponse.json({ error: 'Invalid auctionId' }, { status: 400 });
+    }
+    if (itemIds !== undefined && (!Array.isArray(itemIds) || !itemIds.every((i) => typeof i === 'string' && UUID_RE.test(i)))) {
+      return NextResponse.json({ error: 'Invalid itemIds' }, { status: 400 });
+    }
+
     // Get the prospect
     const [prospect] = await db
       .select()
@@ -54,6 +62,19 @@ export async function POST(
 
     if (!prospect) {
       return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
+
+    // Verify the target auction exists before creating anything, so a bad id
+    // returns 400 instead of surfacing as a generic 500 mid-loop.
+    if (auctionId) {
+      const [auction] = await db
+        .select({ id: auctions.id })
+        .from(auctions)
+        .where(eq(auctions.id, auctionId))
+        .limit(1);
+      if (!auction) {
+        return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+      }
     }
 
     // Get accepted items, optionally filtered by itemIds
@@ -77,7 +98,11 @@ export async function POST(
     // Pre-fetch all categories for slug lookup
     const allCategories = await db.select().from(categories);
 
-    const createdLots: { lotId: string; itemId: string }[] = [];
+    // All writes (lots + images + item updates + auction assignment + lot count)
+    // must commit together — a mid-loop failure otherwise orphans lots and
+    // drifts the auction's lotCount with no rollback.
+    const createdLots = await db.transaction(async (tx) => {
+    const created: { lotId: string; itemId: string }[] = [];
 
     for (const item of acceptedItems) {
       // Resolve category
@@ -98,7 +123,7 @@ export async function POST(
       if (!categoryId && allCategories.length > 0) {
         // Try a broader ilike search against the database
         if (mappedSlug) {
-          const [dbMatch] = await db
+          const [dbMatch] = await tx
             .select()
             .from(categories)
             .where(ilike(categories.slug, mappedSlug))
@@ -117,7 +142,7 @@ export async function POST(
       const slug = generateSlug(title);
 
       // Insert lot
-      const [lot] = await db
+      const [lot] = await tx
         .insert(lots)
         .values({
           title,
@@ -156,11 +181,11 @@ export async function POST(
           isPrimary: index === 0,
           sortOrder: index,
         }));
-        await db.insert(lotImages).values(imageValues);
+        await tx.insert(lotImages).values(imageValues);
       }
 
       // Update uploadItem
-      await db
+      await tx
         .update(uploadItems)
         .set({
           status: 'lot_created',
@@ -170,27 +195,30 @@ export async function POST(
         })
         .where(eq(uploadItems.id, item.id));
 
-      createdLots.push({ lotId: lot.id, itemId: item.id });
+      created.push({ lotId: lot.id, itemId: item.id });
     }
 
     // If auctionId provided, assign lots to auction
     if (auctionId) {
-      const auctionLotValues = createdLots.map((entry, index) => ({
+      const auctionLotValues = created.map((entry, index) => ({
         auctionId,
         lotId: entry.lotId,
         lotNumber: index + 1,
       }));
-      await db.insert(auctionLots).values(auctionLotValues);
+      await tx.insert(auctionLots).values(auctionLotValues);
 
       // Update auction lot count
-      await db
+      await tx
         .update(auctions)
         .set({
-          lotCount: sql`${auctions.lotCount} + ${createdLots.length}`,
+          lotCount: sql`${auctions.lotCount} + ${created.length}`,
           updatedAt: new Date(),
         })
         .where(eq(auctions.id, auctionId));
     }
+
+    return created;
+    });
 
     logger.info('Lots created from prospect items', {
       prospectId,

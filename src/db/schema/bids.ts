@@ -10,9 +10,13 @@ export const bidStatusEnum = pgEnum('bid_status', ['active', 'outbid', 'winning'
 
 export const bids = pgTable('bids', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  auctionId: uuid('auction_id').references(() => auctions.id, { onDelete: 'cascade' }).notNull(),
-  lotId: uuid('lot_id').references(() => lots.id, { onDelete: 'cascade' }).notNull(),
-  bidderId: uuid('bidder_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  // Bids are financial/legal records — establishing who owes what and feeding
+  // settlement. Deleting a user or lot must NOT silently erase them: use
+  // 'restrict' so a user/lot with bid history can't be hard-deleted (soft-delete
+  // / anonymize instead).
+  auctionId: uuid('auction_id').references(() => auctions.id, { onDelete: 'restrict' }).notNull(),
+  lotId: uuid('lot_id').references(() => lots.id, { onDelete: 'restrict' }).notNull(),
+  bidderId: uuid('bidder_id').references(() => users.id, { onDelete: 'restrict' }).notNull(),
 
   amount: integer('amount').notNull(),
   maxBidAmount: integer('max_bid_amount'),

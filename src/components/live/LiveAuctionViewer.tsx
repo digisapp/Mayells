@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { LiveVideoPlayer } from './LiveVideoPlayer';
 import { LiveChat } from './LiveChat';
@@ -30,6 +31,41 @@ interface LiveAuctionViewerProps {
 export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
   const [activeLotIndex, setActiveLotIndex] = useState(0);
   const activeLot = lots[activeLotIndex];
+  const router = useRouter();
+
+  // The lot bid amounts / counts are server-rendered props that would
+  // otherwise freeze at page-load. Poll a soft refresh so live bidders always
+  // see current prices. router.refresh() re-runs the server component while
+  // preserving client state (the selected lot), and pauses while the tab is
+  // hidden to avoid needless load.
+  useEffect(() => {
+    const REFRESH_MS = 5000;
+    let timer: ReturnType<typeof setInterval> | undefined;
+
+    const start = () => {
+      if (timer) return;
+      timer = setInterval(() => router.refresh(), REFRESH_MS);
+    };
+    const stop = () => {
+      if (timer) clearInterval(timer);
+      timer = undefined;
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        router.refresh();
+        start();
+      } else {
+        stop();
+      }
+    };
+
+    if (document.visibilityState === 'visible') start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [router]);
 
   return (
     <div className="min-h-screen dark bg-background text-foreground">

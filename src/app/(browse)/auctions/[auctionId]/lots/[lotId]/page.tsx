@@ -13,7 +13,7 @@ import { BUSINESS } from '@/lib/config';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
-import { generateLotJsonLd, generateBreadcrumbJsonLd } from '@/lib/seo/structured-data';
+import { generateLotJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 import { categories } from '@/db/schema';
 import { track } from '@vercel/analytics/server';
 
@@ -108,8 +108,8 @@ export default async function LotDetailPage({
 
   return (
     <>
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(lotJsonLd) }} />
-    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(lotJsonLd) }} />
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Left: Images + Details */}
@@ -270,7 +270,7 @@ export default async function LotDetailPage({
                 <Phone className="h-4 w-4" />
                 {BUSINESS.phone}
               </a>
-              <a href={`mailto:${BUSINESS.email}?subject=Bid Inquiry: ${encodeURIComponent(lot.title)}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <a href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(`Bid Inquiry: ${lot.title}`)}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <Mail className="h-4 w-4" />
                 {BUSINESS.email}
               </a>

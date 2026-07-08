@@ -163,6 +163,32 @@ export async function getShipmentRates(shipmentId: string) {
  * Generate a shipping label for a shipment using the cheapest available rate.
  */
 export async function generateLabelForShipment(shipmentId: string, rateId?: string) {
+  const shipment = await db.query.shipments.findFirst({
+    where: eq(shipments.id, shipmentId),
+  });
+  if (!shipment) throw new Error(`Shipment ${shipmentId} not found`);
+
+  // Never buy a real label against fabricated parcel/address defaults. A
+  // high-value auction lot silently shipping at a guessed 2 lb / 12×12×6 to a
+  // half-parsed address means carrier adjustment charges, refusal, or a label
+  // to the wrong place. Require real values (set them via getRates flow / admin
+  // before generating a label).
+  const missingDims =
+    !shipment.lengthIn || !shipment.widthIn || !shipment.heightIn ||
+    (!shipment.weightLbs && !shipment.weightOz);
+  if (missingDims) {
+    throw new Error(
+      `Cannot purchase label for shipment ${shipmentId}: parcel weight and dimensions must be set first.`,
+    );
+  }
+  const missingAddress =
+    !shipment.toStreet || !shipment.toCity || !shipment.toState || !shipment.toZip;
+  if (missingAddress) {
+    throw new Error(
+      `Cannot purchase label for shipment ${shipmentId}: destination address is incomplete (street, city, state, zip required).`,
+    );
+  }
+
   let selectedRateId = rateId;
 
   // If no rate specified, get rates and pick cheapest
@@ -195,16 +221,10 @@ export async function generateLabelForShipment(shipmentId: string, rateId?: stri
   }).where(eq(shipments.id, shipmentId));
 
   // Also update the invoice tracking number
-  const shipment = await db.query.shipments.findFirst({
-    where: eq(shipments.id, shipmentId),
-  });
-
-  if (shipment) {
-    await db.update(invoices).set({
-      trackingNumber: label.trackingNumber,
-      updatedAt: new Date(),
-    }).where(eq(invoices.id, shipment.invoiceId));
-  }
+  await db.update(invoices).set({
+    trackingNumber: label.trackingNumber,
+    updatedAt: new Date(),
+  }).where(eq(invoices.id, shipment.invoiceId));
 
   return label;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -48,8 +49,15 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    // Broadcast via Supabase Realtime
-    const channel = supabase.channel(`live:${auctionId}`);
+    // Broadcast on the PRIVATE auction channel using the service-role client.
+    // The channel's RLS policy (see migration 0006) lets authenticated users
+    // only receive — not send — so regular clients can no longer connect
+    // directly and forge auctioneer/bid-notification messages. Only this
+    // server path, holding the service role, can publish.
+    const admin = createAdminClient();
+    const channel = admin.channel(`live:${auctionId}`, {
+      config: { private: true },
+    });
     await channel.send({
       type: 'broadcast',
       event: 'chat',
@@ -62,6 +70,7 @@ export async function POST(
         timestamp: new Date().toISOString(),
       },
     });
+    await admin.removeChannel(channel);
 
     return NextResponse.json({ sent: true });
   } catch (error) {

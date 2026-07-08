@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, integer, jsonb, timestamp, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const webhookLogs = pgTable('webhook_logs', {
@@ -32,6 +32,12 @@ export const webhookLogs = pgTable('webhook_logs', {
   index('whl_event_type_idx').on(t.eventType),
   index('whl_created_at_idx').on(t.createdAt),
   index('whl_event_id_idx').on(t.eventId),
+  // Atomic dedup: a provider+eventId can only be logged once, so a concurrent
+  // duplicate webhook delivery loses the insert race instead of both being
+  // processed. Partial (eventId may be null for events that lack an id).
+  uniqueIndex('whl_provider_event_unique_idx')
+    .on(t.provider, t.eventId)
+    .where(sql`${t.eventId} is not null`),
 ]);
 
 export type WebhookLog = typeof webhookLogs.$inferSelect;

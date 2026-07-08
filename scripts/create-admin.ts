@@ -5,11 +5,24 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { users } from '../src/db/schema/users';
 
-const EMAIL = 'admin@mayells.com';
-const PASSWORD = 'Test#123';
-const FULL_NAME = 'Mayell Admin';
+// Credentials come from the environment — never hardcode an admin password.
+// Usage: ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='...' npm run create-admin
+const EMAIL = process.env.ADMIN_EMAIL;
+const PASSWORD = process.env.ADMIN_PASSWORD;
+const FULL_NAME = process.env.ADMIN_FULL_NAME || 'Mayell Admin';
 
 async function main() {
+  if (!EMAIL || !PASSWORD) {
+    console.error(
+      'Set ADMIN_EMAIL and ADMIN_PASSWORD (min 12 chars) before running this script.',
+    );
+    process.exit(1);
+  }
+  if (PASSWORD.length < 12) {
+    console.error('ADMIN_PASSWORD must be at least 12 characters.');
+    process.exit(1);
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,

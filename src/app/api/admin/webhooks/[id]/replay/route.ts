@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { webhookLogs, users, invoices, payments, lots, emails } from '@/db/schema';
+import { webhookLogs, users, emails } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import Stripe from 'stripe';
+import { handleStripeEvent } from '@/lib/stripe/handlers';
 
 export async function POST(
   _req: NextRequest,
@@ -34,69 +35,15 @@ export async function POST(
 
     try {
       if (log.provider === 'stripe') {
+        // Replay through the SAME guarded handler as the live webhook — so a
+        // replayed event honours amount/currency verification, payable-status
+        // transitions, and partial-refund rules instead of blindly re-applying
+        // financial mutations.
         const event = payload as unknown as Stripe.Event;
-
-        switch (event.type) {
-          case 'payment_intent.succeeded': {
-            const pi = event.data.object as Stripe.PaymentIntent;
-            const invoiceId = pi.metadata.invoiceId;
-            if (invoiceId) {
-              await db.update(invoices).set({
-                status: 'paid',
-                paidAt: new Date(),
-                stripeChargeId: pi.latest_charge as string,
-                updatedAt: new Date(),
-              }).where(eq(invoices.id, invoiceId));
-
-              await db.update(payments).set({
-                status: 'succeeded',
-                stripeChargeId: pi.latest_charge as string,
-                updatedAt: new Date(),
-              }).where(eq(payments.stripePaymentIntentId, pi.id));
-
-              if (pi.metadata.lotId) {
-                await db.update(lots).set({ status: 'sold', updatedAt: new Date() })
-                  .where(eq(lots.id, pi.metadata.lotId));
-              }
-              relatedType = 'invoice';
-              relatedId = invoiceId;
-            }
-            status = 'success';
-            break;
-          }
-          case 'payment_intent.payment_failed': {
-            const pi = event.data.object as Stripe.PaymentIntent;
-            const invoiceId = pi.metadata.invoiceId;
-            if (invoiceId) {
-              await db.update(payments).set({
-                status: 'failed',
-                failureReason: pi.last_payment_error?.message ?? 'Payment failed',
-                updatedAt: new Date(),
-              }).where(eq(payments.stripePaymentIntentId, pi.id));
-              relatedType = 'invoice';
-              relatedId = invoiceId;
-            }
-            status = 'success';
-            break;
-          }
-          case 'charge.refunded': {
-            const charge = event.data.object as Stripe.Charge;
-            const [payment] = await db.select().from(payments)
-              .where(eq(payments.stripePaymentIntentId, charge.payment_intent as string)).limit(1);
-            if (payment) {
-              await db.update(payments).set({ status: 'refunded', updatedAt: new Date() })
-                .where(eq(payments.id, payment.id));
-              await db.update(invoices).set({ status: 'refunded', updatedAt: new Date() })
-                .where(eq(invoices.id, payment.invoiceId));
-              relatedType = 'invoice';
-              relatedId = payment.invoiceId;
-            }
-            status = 'success';
-            break;
-          }
-          default:
-            status = 'ignored';
-        }
+        const result = await handleStripeEvent(event);
+        status = result.status;
+        relatedType = result.relatedType;
+        relatedId = result.relatedId;
       } else if (log.provider === 'resend') {
         const { type, data } = payload as { type: string; data: Record<string, unknown> };
 
