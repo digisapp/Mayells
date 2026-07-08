@@ -21,7 +21,13 @@ export function useLiveChat(auctionId: string) {
   const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
-    const channel = supabase.channel(`live:${auctionId}`);
+    // Private channel: the client must present its session JWT so Realtime
+    // can authorize it against the receive-only RLS policy. Regular users can
+    // receive but not send, so forged broadcasts are rejected server-side.
+    supabase.realtime.setAuth();
+    const channel = supabase.channel(`live:${auctionId}`, {
+      config: { private: true },
+    });
 
     channel
       .on('broadcast', { event: 'chat' }, ({ payload }) => {

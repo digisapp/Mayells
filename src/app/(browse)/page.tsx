@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
+import { serializeJsonLd } from '@/lib/seo/structured-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -82,7 +83,7 @@ export default async function HomePage() {
     <div>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
 
       {/* Hero — Editorial, full-width */}

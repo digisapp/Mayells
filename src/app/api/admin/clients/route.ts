@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { users, consignments, lots } from '@/db/schema';
 import { eq, sql, or, ilike } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { parsePagination } from '@/lib/pagination';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,8 +20,7 @@ export async function GET(request: NextRequest) {
     }
 
     const search = request.nextUrl.searchParams.get('search') || '';
-    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50'), 100);
-    const offset = parseInt(request.nextUrl.searchParams.get('offset') || '0');
+    const { limit, offset } = parsePagination(request.nextUrl.searchParams, { defaultLimit: 50, maxLimit: 100 });
 
     const searchFilter = search
       ? sql`AND (

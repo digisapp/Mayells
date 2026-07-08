@@ -138,6 +138,28 @@ redis.call('INCR', KEYS[1] .. ':bid_count')
 return cjson.encode({ok=true, previousBidderId=current.bidderId, previousAmount=current.amount})
 `;
 
+// Compensating revert used when the Postgres write fails after Redis already
+// accepted the bid. Restores the previous bid state ONLY if the current state
+// is still exactly the bid we wrote (compare-and-set), so a concurrent higher
+// bid that landed in the gap is never clobbered.
+//
+// KEYS[1] = current bid state
+// ARGV[1] = our bid amount (cents), ARGV[2] = our bidder id
+// ARGV[3] = JSON of the previous state to restore {amount, bidderId, timestamp}
+const REVERT_BID_LUA_SCRIPT = `
+local currentJson = redis.call('GET', KEYS[1])
+if not currentJson then return 0 end
+local current = cjson.decode(currentJson)
+if tostring(current.amount) == ARGV[1] and current.bidderId == ARGV[2] then
+  local prev = cjson.decode(ARGV[3])
+  prev.startingBid = current.startingBid or 0
+  redis.call('SET', KEYS[1], cjson.encode(prev))
+  redis.call('DECR', KEYS[1] .. ':bid_count')
+  return 1
+end
+return 0
+`;
+
 export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
   const {
     lotId,
@@ -156,6 +178,21 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
   const now = Math.floor(Date.now() / 1000);
   const currentBidKey = `bid:lot:${lotId}:current`;
   const closeTimeKey = `bid:lot:${lotId}:close_time`;
+
+  // Step 0: True idempotency. If this exact request was already persisted
+  // (client retry after a network timeout), return the original bid instead
+  // of re-running the Redis eval — which would either raise the minimum for
+  // everyone or return ALREADY_HIGH_BIDDER for a bid that actually succeeded.
+  if (idempotencyKey) {
+    const [existing] = await db
+      .select()
+      .from(bids)
+      .where(eq(bids.idempotencyKey, idempotencyKey))
+      .limit(1);
+    if (existing) {
+      return { success: true, bid: existing };
+    }
+  }
 
   // Step 1: Atomic validation + set in Redis. The increment tier table is
   // shipped into the script so the minimum increment can be derived from
@@ -183,8 +220,15 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
   }
 
   // Step 2: Persist to Postgres atomically — bid insert, outbid demotion,
-  // and the denormalized lots update succeed or fail together.
-  const newBid = await db.transaction(async (tx) => {
+  // and the denormalized lots update succeed or fail together. If the DB
+  // write fails, Redis already holds this bid as the new high bid, which
+  // would leave a phantom leader with no DB row. Compensate by rolling the
+  // Redis state back to the previous bid — but only if nothing has bid on
+  // top of us in the meantime (compare-and-set), so a concurrent higher bid
+  // is never clobbered.
+  let newBid: typeof bids.$inferSelect;
+  try {
+    newBid = await db.transaction(async (tx) => {
     const [insertedBid] = await tx.insert(bids).values({
       auctionId,
       lotId,
@@ -233,7 +277,29 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
       .where(and(eq(lots.id, lotId), lt(lots.currentBidAmount, amount)));
 
     return insertedBid;
-  });
+    });
+  } catch (dbError) {
+    // Best-effort compensation: revert Redis to the previous bid only if the
+    // current state is still the one we just wrote. Uses previousBidderId /
+    // previousAmount from the Lua result to reconstruct the prior state.
+    await redis.eval(
+      REVERT_BID_LUA_SCRIPT,
+      [currentBidKey],
+      [
+        amount.toString(),
+        bidderId,
+        JSON.stringify({
+          amount: parsed.previousAmount ?? 0,
+          bidderId: parsed.previousBidderId ?? '',
+          timestamp: now,
+        }),
+      ],
+    ).catch(() => {
+      // If the revert itself fails, the phantom persists until the lot
+      // settles; the DB error below is the primary signal.
+    });
+    throw dbError;
+  }
 
   // Step 3: Anti-snipe check
   const antiSnipeResult = await checkAndExtendAuction(

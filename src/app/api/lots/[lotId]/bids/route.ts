@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lots, auctions, auctionLots, bids, maxBids } from '@/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { bidSchema } from '@/lib/validation/schemas';
 import { placeBid } from '@/lib/bidding/bid-engine';
 import { rateLimit } from '@/lib/rate-limit';
@@ -31,6 +31,22 @@ async function loadLotWithAuction(lotId: string) {
     .innerJoin(auctionLots, eq(auctionLots.lotId, lots.id))
     .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
     .where(byId ? eq(lots.id, lotId) : eq(lots.slug, lotId))
+    // A relisted lot can belong to more than one auction row. Prefer the
+    // currently-biddable auction, then closing/closed, then upcoming, and
+    // only fall back to completed/cancelled last — so a bid is never
+    // rejected (or stamped with the wrong auctionId) because an old
+    // completed auction happened to sort first.
+    .orderBy(
+      sql`CASE ${auctions.status}
+        WHEN 'open' THEN 0
+        WHEN 'live' THEN 0
+        WHEN 'closing' THEN 1
+        WHEN 'closed' THEN 1
+        WHEN 'scheduled' THEN 2
+        WHEN 'preview' THEN 2
+        ELSE 3 END`,
+      desc(auctions.biddingEndsAt),
+    )
     .limit(1);
 
   return row;
@@ -69,7 +85,15 @@ export async function POST(
     if (lot.status !== 'in_auction') {
       return NextResponse.json({ error: 'This lot is not open for bidding' }, { status: 409 });
     }
-    if (auction.status !== 'open' && auction.status !== 'live') {
+    // Bidding is governed per-lot by the lot's own closingAt (staggered
+    // closing + anti-snipe) and the atomic Redis close-time check — NOT by
+    // the auction row flipping to 'closed' at biddingEndsAt. The settlement
+    // cron marks an auction 'closed' while its later lots are still inside
+    // their staggered close windows, so we must keep accepting bids on those
+    // lots. Reject only auctions that are genuinely not biddable (upcoming,
+    // completed, cancelled) or being ended early ('closing').
+    const biddableAuctionStatuses = ['open', 'live', 'closed'];
+    if (!biddableAuctionStatuses.includes(auction.status)) {
       return NextResponse.json({ error: 'This auction is not open for bidding' }, { status: 409 });
     }
 
@@ -129,6 +153,31 @@ export async function POST(
     });
 
     if (!result.success) {
+      // Raising your own max bid while already the high bidder is a valid
+      // action, not an error — the max was already persisted above. Report
+      // success so the client doesn't think the update failed.
+      if (result.error === 'ALREADY_HIGH_BIDDER' && maxBidAmount !== undefined) {
+        const [current] = await db
+          .select({
+            currentBidAmount: lots.currentBidAmount,
+            currentBidderId: lots.currentBidderId,
+            bidCount: lots.bidCount,
+          })
+          .from(lots)
+          .where(eq(lots.id, lot.id))
+          .limit(1);
+        return NextResponse.json(
+          {
+            data: {
+              maxBidUpdated: true,
+              currentBidAmount: current?.currentBidAmount ?? amount,
+              bidCount: current?.bidCount ?? lot.bidCount,
+              isHighBidder: current?.currentBidderId === user.id,
+            },
+          },
+          { status: 200 },
+        );
+      }
       const mapped = result.error ? ENGINE_ERRORS[result.error] : undefined;
       if (mapped) {
         return NextResponse.json(

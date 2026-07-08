@@ -4,6 +4,13 @@ import { logger } from './logger';
 interface RateLimitConfig {
   maxRequests: number;
   windowSeconds: number;
+  /**
+   * When Redis is unavailable: default (false) fails OPEN — allow the request
+   * so the whole API doesn't go down with Redis. Set true on cost-sensitive or
+   * abuse-prone endpoints (LLM calls, voice tokens) to fail CLOSED instead, so
+   * an outage can't be used to bypass the limit and run up third-party spend.
+   */
+  failClosed?: boolean;
 }
 
 interface RateLimitResult {
@@ -35,9 +42,18 @@ export async function rateLimit(
       resetAt,
     };
   } catch (err) {
-    // Fail open: if Redis is unavailable, allow the request through rather than
-    // taking down the entire API. Log so we know Redis needs attention.
-    logger.error('Rate limit Redis error — failing open', err, { key });
-    return { success: true, remaining: config.maxRequests, resetAt };
+    // If Redis is unavailable, fail open by default (don't take down the whole
+    // API), but fail closed for endpoints that opt in — better to reject than
+    // to leave a metered/expensive endpoint unbounded during an outage.
+    logger.error(
+      `Rate limit Redis error — failing ${config.failClosed ? 'closed' : 'open'}`,
+      err,
+      { key },
+    );
+    return {
+      success: !config.failClosed,
+      remaining: config.failClosed ? 0 : config.maxRequests,
+      resetAt,
+    };
   }
 }

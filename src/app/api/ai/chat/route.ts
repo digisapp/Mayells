@@ -108,7 +108,7 @@ async function getSystemPrompt(): Promise<{ prompt: string; enabled: boolean }> 
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-  const { success } = await rateLimit(`ai:chat:${ip}`, { maxRequests: 30, windowSeconds: 3600 });
+  const { success } = await rateLimit(`ai:chat:${ip}`, { maxRequests: 30, windowSeconds: 3600, failClosed: true });
   if (!success) {
     return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
       status: 429,

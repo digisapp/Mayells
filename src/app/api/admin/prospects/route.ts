@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { sellerProspects, uploadLinks, uploadItems, users } from '@/db/schema';
-import { eq, desc, count, sql } from 'drizzle-orm';
+import { eq, desc, countDistinct, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { parsePagination } from '@/lib/pagination';
 
 const PROSPECT_SOURCES = ['phone', 'email', 'website', 'referral', 'estate_visit', 'walk_in', 'other'] as const;
 const PROSPECT_STATUSES = ['new', 'contacted', 'upload_sent', 'items_received', 'under_review', 'agreement_sent', 'agreement_signed', 'accepted', 'declined', 'archived'] as const;
@@ -52,15 +53,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const limit = Math.min(parseInt(request.nextUrl.searchParams.get('limit') || '50'), 100);
-    const offset = parseInt(request.nextUrl.searchParams.get('offset') || '0');
+    const { limit, offset } = parsePagination(request.nextUrl.searchParams, { defaultLimit: 50, maxLimit: 100 });
 
     const [prospects, [{ total }]] = await Promise.all([
       db
         .select({
           prospect: sellerProspects,
-          uploadLinkCount: count(uploadLinks.id),
-          uploadItemCount: count(uploadItems.id),
+          // count DISTINCT — joining both uploadLinks and uploadItems produces a
+          // cartesian product (links × items rows per prospect), so a plain
+          // count() would inflate both totals.
+          uploadLinkCount: countDistinct(uploadLinks.id),
+          uploadItemCount: countDistinct(uploadItems.id),
         })
         .from(sellerProspects)
         .leftJoin(uploadLinks, eq(uploadLinks.prospectId, sellerProspects.id))

@@ -63,10 +63,11 @@ export async function POST(req: NextRequest) {
       // lookup failed — default to buyer, login still succeeds
     }
 
+    // Do NOT return the session/refresh token in the body — the SSR client has
+    // already set httpOnly auth cookies. Echoing tokens to client-side JS only
+    // widens the XSS blast radius (a stolen refresh token mints new sessions).
     return NextResponse.json({
       success: true,
-      user: data.user,
-      session: data.session,
       role,
     });
   } catch (error) {

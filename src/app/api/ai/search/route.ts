@@ -6,7 +6,7 @@ import { rateLimit } from '@/lib/rate-limit';
 export async function GET(request: NextRequest) {
   try {
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const { success } = await rateLimit(`ai:search:${ip}`, { maxRequests: 60, windowSeconds: 3600 });
+    const { success } = await rateLimit(`ai:search:${ip}`, { maxRequests: 60, windowSeconds: 3600, failClosed: true });
     if (!success) {
       return NextResponse.json({ error: 'Rate limit exceeded. Please try again later.' }, { status: 429, headers: { 'Retry-After': '3600' } });
     }

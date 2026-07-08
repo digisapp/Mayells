@@ -52,7 +52,10 @@ export async function POST(req: NextRequest) {
       if (photos.length > 0) {
         const admin = createAdminClient();
         const uploadPromises = photos
-          .filter((p) => p.size > 0 && p.size <= MAX_FILE_SIZE)
+          // Enforce the declared allow-list: reject empty/oversized files AND
+          // anything that isn't an accepted image type (this is a public,
+          // unauthenticated endpoint writing to a public bucket).
+          .filter((p) => p.size > 0 && p.size <= MAX_FILE_SIZE && ALLOWED_TYPES.includes(p.type))
           .map(async (photo) => {
             const ext = photo.name.split('.').pop()?.toLowerCase() || 'jpg';
             const path = `submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;

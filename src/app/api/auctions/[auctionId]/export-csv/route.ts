@@ -142,9 +142,20 @@ export async function GET(
 
 function escapeCSV(value: string): string {
   if (!value) return '';
-  // Wrap in quotes if contains comma, quote, or newline
-  if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('<br>')) {
-    return `"${value.replace(/"/g, '""')}"`;
+
+  // Neutralize spreadsheet formula injection: a cell beginning with =, +, -, @
+  // (or a leading tab/CR that some parsers strip) is executed as a formula when
+  // the CSV is opened in Excel/Sheets. These files are ingested by third parties
+  // (LiveAuctioneers), so prefix such values with a single quote to force text.
+  let out = value;
+  if (/^[=+\-@\t\r]/.test(out)) {
+    out = `'${out}`;
   }
-  return value;
+
+  // Wrap in quotes if it contains a delimiter, quote, or any line break
+  // (handle bare \r as well as \n / \r\n, since records are \r\n-separated).
+  if (/[",\n\r]/.test(out) || out.includes('<br>')) {
+    return `"${out.replace(/"/g, '""')}"`;
+  }
+  return out;
 }

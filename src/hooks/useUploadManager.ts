@@ -29,6 +29,11 @@ export function useUploadManager(token: string) {
   const tasksRef = useRef<UploadTask[]>([]);
   const activeCountRef = useRef(0);
   const queueRef = useRef<string[]>([]);
+  // In-flight XHRs and pending retry timers, keyed by task id, so a removed
+  // task can abort its upload (freeing a concurrency slot and not leaving an
+  // orphaned Storage object) and everything can be torn down on unmount.
+  const xhrRef = useRef<Map<string, XMLHttpRequest>>(new Map());
+  const retryTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const updateTask = useCallback((id: string, updates: Partial<UploadTask>) => {
     tasksRef.current = tasksRef.current.map((t) => (t.id === id ? { ...t, ...updates } : t));
@@ -86,6 +91,9 @@ export function useUploadManager(token: string) {
         // Step 2: Upload directly to Supabase Storage with progress
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
+          xhrRef.current.set(task.id, xhr);
+
+          const done = () => xhrRef.current.delete(task.id);
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
@@ -95,6 +103,7 @@ export function useUploadManager(token: string) {
           };
 
           xhr.onload = () => {
+            done();
             if (xhr.status >= 200 && xhr.status < 300) {
               resolve();
             } else {
@@ -102,8 +111,9 @@ export function useUploadManager(token: string) {
             }
           };
 
-          xhr.onerror = () => reject(new Error('Network error during upload'));
-          xhr.ontimeout = () => reject(new Error('Upload timed out'));
+          xhr.onerror = () => { done(); reject(new Error('Network error during upload')); };
+          xhr.ontimeout = () => { done(); reject(new Error('Upload timed out')); };
+          xhr.onabort = () => { done(); reject(new Error('Upload aborted')); };
 
           // Supabase signed upload URL expects PUT with the token as a header
           xhr.open('PUT', signedUrl);
@@ -144,10 +154,12 @@ export function useUploadManager(token: string) {
             retryCount: newRetry,
             progress: 0,
           });
-          setTimeout(() => {
+          const timer = setTimeout(() => {
+            retryTimersRef.current.delete(task.id);
             queueRef.current.push(task.id);
             processNext();
           }, 1000 * Math.pow(2, newRetry));
+          retryTimersRef.current.set(task.id, timer);
         } else {
           updateTask(task.id, { status: 'error', error: message });
         }
@@ -208,17 +220,30 @@ export function useUploadManager(token: string) {
   const removeTask = useCallback((id: string) => {
     const task = tasksRef.current.find((t) => t.id === id);
     if (task?.thumbnailUrl) URL.revokeObjectURL(task.thumbnailUrl);
+    // Abort an in-flight upload and cancel any pending retry so a removed task
+    // stops consuming a slot and doesn't leave an orphaned Storage object.
+    const xhr = xhrRef.current.get(id);
+    if (xhr) { xhr.abort(); xhrRef.current.delete(id); }
+    const timer = retryTimersRef.current.get(id);
+    if (timer) { clearTimeout(timer); retryTimersRef.current.delete(id); }
     tasksRef.current = tasksRef.current.filter((t) => t.id !== id);
     setTasks(tasksRef.current);
     queueRef.current = queueRef.current.filter((qid) => qid !== id);
   }, []);
 
-  // Revoke any remaining thumbnail object URLs on unmount
+  // Tear everything down on unmount: revoke thumbnail object URLs, abort
+  // in-flight uploads, and clear pending retry timers.
   useEffect(() => {
+    const xhrs = xhrRef.current;
+    const timers = retryTimersRef.current;
     return () => {
       tasksRef.current.forEach((t) => {
         if (t.thumbnailUrl) URL.revokeObjectURL(t.thumbnailUrl);
       });
+      xhrs.forEach((xhr) => xhr.abort());
+      xhrs.clear();
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
   }, []);
 

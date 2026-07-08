@@ -116,16 +116,20 @@ export async function GET(
     // reservePrice and raw bid data; everyone else gets a public-safe shape.
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    // This response varies by auth (admins get reservePrice + raw bids), so it
+    // must never be stored in a shared/CDN cache keyed only by URL — otherwise
+    // an admin-cached full-detail payload could be served to anonymous users.
+    const noStore = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
     if (user) {
       const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
       if (profile?.role === 'admin') {
-        return NextResponse.json({ data: { ...lot, images, bidHistory: bidRows } });
+        return NextResponse.json({ data: { ...lot, images, bidHistory: bidRows } }, { headers: noStore });
       }
     }
 
     return NextResponse.json({
       data: { ...toPublicLot(lot), images, bidHistory: toPublicBidHistory(bidRows) },
-    });
+    }, { headers: noStore });
   } catch (error) {
     logger.error('Get lot error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

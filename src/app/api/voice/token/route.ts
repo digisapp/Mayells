@@ -7,7 +7,7 @@ import { rateLimit } from '@/lib/rate-limit';
 export async function POST(req: NextRequest) {
   try {
     const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const { success } = await rateLimit(`voice:token:${ip}`, { maxRequests: 10, windowSeconds: 3600 });
+    const { success } = await rateLimit(`voice:token:${ip}`, { maxRequests: 10, windowSeconds: 3600, failClosed: true });
     if (!success) {
       return NextResponse.json({ error: 'Rate limit exceeded. Please try again later.' }, { status: 429 });
     }

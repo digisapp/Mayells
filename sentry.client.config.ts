@@ -10,10 +10,17 @@ Sentry.init({
   // Only enable in production to avoid noise during development
   enabled: process.env.NODE_ENV === 'production',
 
+  // Don't attach default PII (IP, cookies, headers) to events.
+  sendDefaultPii: false,
+
   // Strip PII from error reports
   beforeSend(event) {
-    if (event.request?.cookies) {
+    if (event.request) {
       event.request.cookies = {};
+      if (event.request.headers) {
+        delete event.request.headers['authorization'];
+        delete event.request.headers['Authorization'];
+      }
     }
     return event;
   },

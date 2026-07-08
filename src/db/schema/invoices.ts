@@ -15,6 +15,9 @@ export const invoiceStatusEnum = pgEnum('invoice_status', [
 export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   invoiceNumber: text('invoice_number').unique().notNull(),
+  // Unguessable token for buyer-facing invoice access without an on-site
+  // account (matches the upload-link pattern). Sent in the invoice email.
+  accessToken: uuid('access_token').default(sql`gen_random_uuid()`).notNull().unique(),
   buyerId: uuid('buyer_id').references(() => users.id).notNull(),
   auctionId: uuid('auction_id').references(() => auctions.id),
   lotId: uuid('lot_id').references(() => lots.id).notNull(),
