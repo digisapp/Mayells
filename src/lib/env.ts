@@ -6,15 +6,22 @@ const envSchema = z.object({
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   DATABASE_URL: z.string().min(1),
-  UPSTASH_REDIS_REST_URL: z.string().url(),
-  UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
-  STRIPE_SECRET_KEY: z.string().min(1),
-  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1),
-  STRIPE_WEBHOOK_SECRET: z.string().min(1),
   RESEND_API_KEY: z.string().min(1),
   RESEND_WEBHOOK_SECRET: z.string().min(1),
   CRON_SECRET: z.string().min(1),
   NEXT_PUBLIC_APP_URL: z.string().url(),
+  // Required for their respective features to FUNCTION, but optional to BOOT so
+  // a deployment can come up (and serve everything else) before these external
+  // services are provisioned. Redis powers bidding + anti-snipe; Stripe powers
+  // payments. The clients (src/lib/redis.ts, src/lib/stripe/config.ts) surface a
+  // clear error at call time if the feature is used while unconfigured, instead
+  // of taking the whole server down at startup. Set these before going live with
+  // bidding or checkout.
+  UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().min(1).optional(),
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: z.string().min(1).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
   // Feature-specific — optional so a deployment that doesn't use LiveKit,
   // xAI/OpenAI, or Shippo still validates, but they're documented here.
   AI_PROVIDER: z.enum(['anthropic', 'openai', 'xai']).optional(),
