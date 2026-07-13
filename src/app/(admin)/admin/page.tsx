@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { db } from '@/db';
 import { lots, auctions, users, outreachContacts, consignments, estateVisits } from '@/db/schema';
 import { sql, desc, eq } from 'drizzle-orm';
@@ -30,7 +31,7 @@ async function requireAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect('/admin/login');
   const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-  if (!profile || profile.role !== 'admin') redirect('/admin/login');
+  if (!isAdminProfile(profile)) redirect('/admin/login');
   return profile;
 }
 

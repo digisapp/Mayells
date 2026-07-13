@@ -24,12 +24,15 @@ export default async function AuctionsPage() {
   const allAuctions = await db
     .select()
     .from(auctions)
-    .where(inArray(auctions.status, ['scheduled', 'preview', 'open', 'live', 'closed']))
+    // Include 'completed' — settlement flips every finished auction to
+    // 'completed', so omitting it made the entire past-sale archive vanish
+    // within one cron tick of an auction ending.
+    .where(inArray(auctions.status, ['scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed']))
     .orderBy(desc(auctions.biddingStartsAt));
 
   const openAuctions = allAuctions.filter((a) => a.status === 'open' || a.status === 'live');
   const upcomingAuctions = allAuctions.filter((a) => a.status === 'scheduled' || a.status === 'preview');
-  const pastAuctions = allAuctions.filter((a) => a.status === 'closed');
+  const pastAuctions = allAuctions.filter((a) => a.status === 'closing' || a.status === 'closed' || a.status === 'completed');
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

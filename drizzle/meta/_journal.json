@@ -64,6 +64,27 @@
       "when": 1783468712390,
       "tag": "0008_invoice_access_token",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783876635727,
+      "tag": "0009_invoice_checkout_session",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783898082078,
+      "tag": "0010_watchlist_ending_soon",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783901730816,
+      "tag": "0011_bidder_verification",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { auctionLots, lots, auctions, users } from '@/db/schema';
 import { eq, asc, sql } from 'drizzle-orm';
 import { assignLotSchema } from '@/lib/validation/schemas';
+import { initializeLotBidState } from '@/lib/bidding/bid-engine';
+import { LIVE_FALLBACK_CLOSE_MS } from '@/lib/bidding/lifecycle';
 import { logger } from '@/lib/logger';
 
 export async function GET(
@@ -67,7 +70,7 @@ export async function POST(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -83,20 +86,48 @@ export async function POST(
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    // If the auction is already live/open, a newly-assigned lot must get a
+    // close time so it can be settled, and its Redis bid state must be seeded —
+    // otherwise every bid on it is rejected with STATE_MISSING ("Bidding is
+    // not open for this lot"). The cron's open step only runs once, at the
+    // scheduled→open transition, so it never covers lots added afterward.
+    //
+    // A live-type auction commonly has no biddingEndsAt (openAuctionLots seeds
+    // its lots with a 12h fallback close); mirror that here so a lot added
+    // mid-session is actually biddable and forceCloseAuctionLots (which filters
+    // on a non-null closingAt) can close it when the auctioneer ends the sale.
+    const isAuctionLive = auction.status === 'open' || auction.status === 'live';
+    const closingAt = !isAuctionLive
+      ? null
+      : auction.biddingEndsAt
+        ? auction.biddingEndsAt
+        : auction.type === 'live'
+          ? new Date(Date.now() + LIVE_FALLBACK_CLOSE_MS)
+          : null;
+
     const [auctionLot] = await db
       .insert(auctionLots)
       .values({
         auctionId,
         lotId: parsed.data.lotId,
         lotNumber: parsed.data.lotNumber,
+        closingAt,
       })
       .returning();
 
-    // Update lot status and auction lot count
+    // Only flip the lot into the biddable state when the auction is actually
+    // running; otherwise leave it in its current (pre-auction) status.
+    const [lotRow] = await db.select().from(lots).where(eq(lots.id, parsed.data.lotId)).limit(1);
     await Promise.all([
-      db.update(lots).set({ status: 'in_auction', updatedAt: sql`now()` }).where(eq(lots.id, parsed.data.lotId)),
+      isAuctionLive
+        ? db.update(lots).set({ status: 'in_auction', updatedAt: sql`now()` }).where(eq(lots.id, parsed.data.lotId))
+        : Promise.resolve(),
       db.update(auctions).set({ lotCount: sql`${auctions.lotCount} + 1`, updatedAt: sql`now()` }).where(eq(auctions.id, auctionId)),
     ]);
+
+    if (isAuctionLive && closingAt) {
+      await initializeLotBidState(parsed.data.lotId, closingAt, lotRow?.startingBid ?? 0);
+    }
 
     return NextResponse.json({ data: auctionLot }, { status: 201 });
   } catch (error) {
@@ -117,7 +148,7 @@ export async function DELETE(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

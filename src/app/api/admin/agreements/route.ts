@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
 import { getResend } from '@/lib/email/resend';
 
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const [profile] = await db.select().from(users).where(eq(users.id, user.id));
-    if (profile?.role !== 'admin') {
+    if (!isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

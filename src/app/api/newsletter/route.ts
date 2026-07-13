@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { db } from '@/db';
@@ -8,7 +9,7 @@ import { logger } from '@/lib/logger';
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ip = getClientIp(req);
     const { success, remaining } = await rateLimit(`newsletter:${ip}`, {
       maxRequests: 5,
       windowSeconds: 3600,

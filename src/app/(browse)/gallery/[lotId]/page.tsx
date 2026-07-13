@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { db } from '@/db';
 import { lots, lotImages } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
 import { BuyNowPanel } from '@/components/gallery/BuyNowPanel';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -64,7 +65,7 @@ export default async function GalleryDetailPage({
   const lot = await getLot(lotId);
   // Gallery detail serves both gallery buy-now lots and private-sale lots
   // (which render an "Inquire for Price" panel) — LotCard links both here.
-  if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private')) notFound();
+  if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private') || !isPubliclyVisibleLot(lot.status)) notFound();
 
   void track('gallery_item_viewed', { lotId: lot.id, status: lot.status });
 

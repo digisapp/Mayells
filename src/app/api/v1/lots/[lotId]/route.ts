@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 import { db } from '@/db';
 import { lots } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -15,7 +16,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ lotId: string }> }
 ) {
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const ip = getClientIp(request);
   const { success, resetAt } = await rateLimit(`v1:lots:${ip}`, {
     maxRequests: 300,
     windowSeconds: 3600,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
@@ -29,7 +30,7 @@ export async function POST(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -85,7 +86,7 @@ export async function DELETE(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

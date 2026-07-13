@@ -4,7 +4,9 @@ import { eq, and, desc, ne, lt, sql } from 'drizzle-orm';
 import { redis } from '@/lib/redis';
 import { getMinIncrement, INCREMENT_TIERS } from './bid-increments';
 import { checkAndExtendAuction } from './anti-snipe';
+import { getBidderVerification, checkBidAllowed } from './verification';
 import { track } from '@vercel/analytics/server';
+import { logger } from '@/lib/logger';
 
 interface PlaceBidInput {
   lotId: string;
@@ -23,6 +25,13 @@ interface PlaceBidInput {
     antiSnipeMinutes: number;
     antiSnipeWindowMinutes: number;
   };
+  /**
+   * Whether to run proxy (max-bid) resolution after this bid lands. The proxy
+   * loop itself places counter-bids with this set to false so it drives the
+   * war iteratively instead of each proxy bid recursing into another full
+   * resolution — which previously stacked hundreds deep and could time out.
+   */
+  processProxies?: boolean;
 }
 
 interface BidResult {
@@ -74,6 +83,12 @@ export function parseBidScriptResult(raw: unknown): BidScriptResult {
 // ARGV[4] = JSON array of increment tiers [{threshold, increment}, ...]
 // ARGV[5] = starting bid (cents) — floor for the first bid
 const BID_LUA_SCRIPT = `
+-- Settlement fence: if the cron has sealed this lot for settlement, reject
+-- immediately so no bid can slip in between the winner SELECT and the demote.
+if redis.call('GET', KEYS[3]) then
+  return cjson.encode({ok=false, error='AUCTION_CLOSED'})
+end
+
 local currentJson = redis.call('GET', KEYS[1])
 local closeTimeRaw = redis.call('GET', KEYS[2])
 
@@ -173,11 +188,13 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
     userAgent,
     startingBid = 0,
     antiSnipeSettings,
+    processProxies = true,
   } = input;
 
   const now = Math.floor(Date.now() / 1000);
   const currentBidKey = `bid:lot:${lotId}:current`;
   const closeTimeKey = `bid:lot:${lotId}:close_time`;
+  const settlingKey = settlingKeyFor(lotId);
 
   // Step 0: True idempotency. If this exact request was already persisted
   // (client retry after a network timeout), return the original bid instead
@@ -199,7 +216,7 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
   // the current bid amount inside the atomic section.
   const redisResult = await redis.eval(
     BID_LUA_SCRIPT,
-    [currentBidKey, closeTimeKey],
+    [currentBidKey, closeTimeKey, settlingKey],
     [
       amount.toString(),
       bidderId,
@@ -308,12 +325,14 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
     antiSnipeSettings,
   );
 
-  // Update Postgres closing time if extended
+  // Update Postgres closing time if extended. Scope to THIS auction — a
+  // relisted lot can appear in more than one auction row, and updating by
+  // lotId alone would clobber another auction's closingAt.
   if (antiSnipeResult.extended && antiSnipeResult.newCloseTime) {
     await db
       .update(auctionLots)
       .set({ closingAt: new Date(antiSnipeResult.newCloseTime * 1000) })
-      .where(eq(auctionLots.lotId, lotId));
+      .where(and(eq(auctionLots.lotId, lotId), eq(auctionLots.auctionId, auctionId)));
 
     // Mark bid as having triggered extension
     await db
@@ -322,8 +341,12 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
       .where(eq(bids.id, newBid.id));
   }
 
-  // Step 4: Process max bids (proxy bidding)
-  await processMaxBids(lotId, auctionId, bidderId, amount, antiSnipeSettings, startingBid);
+  // Step 4: Process max bids (proxy bidding). Only the originating bid drives
+  // resolution; proxy counter-bids it places pass processProxies=false so the
+  // war runs as one bounded loop rather than unbounded recursion.
+  if (processProxies) {
+    await runProxyResolution(lotId, auctionId, bidderId, amount, antiSnipeSettings, startingBid);
+  }
 
   void track('bid_placed', {
     lotId,
@@ -342,7 +365,24 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
   };
 }
 
-async function processMaxBids(
+// Hard cap on proxy counter-bids resolved for a single originating bid. The
+// increment ladder from a low start up to the card-verification ceiling
+// ($25k) is ~75 rounds, so 120 comfortably resolves every realistic war while
+// still bounding worst-case sequential I/O per request. If it's ever hit
+// (only with two enormous maxes slammed simultaneously) we log and stop — the
+// next human bid resumes the war.
+const MAX_PROXY_ROUNDS = 120;
+
+/**
+ * Iteratively resolve a proxy (max-bid) war after a bid lands. Each round reads
+ * the current high-bid state, finds the highest competing max from another
+ * bidder, and places exactly one counter-bid one increment above the current
+ * price (capped at that bidder's max). Successive rounds naturally alternate
+ * sides until one side can no longer outbid — same outcome and bid history as
+ * the previous recursive version, but with no call-stack growth and a bounded
+ * number of rounds so a pathological war can't exhaust the serverless budget.
+ */
+async function runProxyResolution(
   lotId: string,
   auctionId: string,
   currentBidderId: string,
@@ -350,31 +390,45 @@ async function processMaxBids(
   antiSnipeSettings: PlaceBidInput['antiSnipeSettings'],
   startingBid = 0,
 ) {
-  // Find active max bids from OTHER users that exceed the current bid
-  const activeMaxBids = await db
-    .select()
-    .from(maxBids)
-    .where(
-      and(
-        eq(maxBids.lotId, lotId),
-        eq(maxBids.isActive, true),
-        ne(maxBids.bidderId, currentBidderId),
-      ),
-    )
-    .orderBy(desc(maxBids.maxAmount))
-    .limit(1);
+  let leaderId = currentBidderId;
+  let leaderAmount = currentAmount;
 
-  if (activeMaxBids.length === 0) return;
+  for (let round = 0; round < MAX_PROXY_ROUNDS; round++) {
+    // Highest active max from someone OTHER than the current leader.
+    const [topMaxBid] = await db
+      .select()
+      .from(maxBids)
+      .where(
+        and(
+          eq(maxBids.lotId, lotId),
+          eq(maxBids.isActive, true),
+          ne(maxBids.bidderId, leaderId),
+        ),
+      )
+      .orderBy(desc(maxBids.maxAmount))
+      .limit(1);
 
-  const topMaxBid = activeMaxBids[0];
-  const nextIncrement = getMinIncrement(currentAmount);
-  const proxyBidAmount = Math.min(
-    currentAmount + nextIncrement,
-    topMaxBid.maxAmount,
-  );
+    if (!topMaxBid) return;
 
-  if (proxyBidAmount > currentAmount) {
-    // Place automatic bid on behalf of max-bid holder
+    const nextIncrement = getMinIncrement(leaderAmount);
+    const proxyBidAmount = Math.min(leaderAmount + nextIncrement, topMaxBid.maxAmount);
+
+    // The challenger's ceiling can't beat the current price — they stay outbid.
+    if (proxyBidAmount <= leaderAmount) return;
+
+    // Verification gate for the AUTO-bid too: a max armed before verification
+    // was required (or after the holder's card was removed / threshold lowered)
+    // must not win via proxy. If this holder isn't cleared for this amount,
+    // retire their max so it can't fire, and let a lower competitor proceed.
+    const proxyGate = checkBidAllowed(await getBidderVerification(topMaxBid.bidderId), proxyBidAmount);
+    if (!proxyGate.allowed) {
+      await db
+        .update(maxBids)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(maxBids.id, topMaxBid.id));
+      continue;
+    }
+
     const result = await placeBid({
       lotId,
       auctionId,
@@ -383,11 +437,11 @@ async function processMaxBids(
       bidType: 'auto',
       startingBid,
       antiSnipeSettings,
+      processProxies: false, // this loop drives the war — do not recurse
     });
 
-    // Only consume the proxy holder's max when the bid actually landed.
-    // On failure (e.g. BID_TOO_LOW from a concurrent higher bid, or
-    // AUCTION_CLOSED) leave the record active and untouched, and stop.
+    // On failure (concurrent higher bid, closed, sealed for settlement) leave
+    // the max record untouched and stop.
     if (!result.success) return;
 
     await db
@@ -398,7 +452,13 @@ async function processMaxBids(
         updatedAt: new Date(),
       })
       .where(eq(maxBids.id, topMaxBid.id));
+
+    // The challenger is now the leader; loop to let the other side counter.
+    leaderId = topMaxBid.bidderId;
+    leaderAmount = proxyBidAmount;
   }
+
+  logger.warn('Proxy resolution hit round cap — stopping', { lotId, auctionId, rounds: MAX_PROXY_ROUNDS });
 }
 
 // Initialize Redis state for a lot when auction opens.
@@ -415,6 +475,43 @@ export async function initializeLotBidState(lotId: string, closeTime: Date, star
   const currentBidKey = `bid:lot:${lotId}:current`;
   const closeTimeKey = `bid:lot:${lotId}:close_time`;
 
-  await redis.set(currentBidKey, { amount: 0, bidderId: '', timestamp: 0, startingBid });
-  await redis.set(closeTimeKey, Math.floor(closeTime.getTime() / 1000));
+  // NX (set-only-if-absent): opening a lot must never RESET an already-live
+  // bid state to zero. If openAuctionLots is ever re-entered for a lot that
+  // already carries bids (e.g. live-start opened the lots, the subsequent
+  // status flip failed, and the next cron tick re-selects the auction), a
+  // plain SET would wipe the current high bid and let the lot be re-won at the
+  // starting bid. A relisted lot has its keys deleted at settlement, so NX
+  // still seeds those fresh.
+  await redis.set(currentBidKey, { amount: 0, bidderId: '', timestamp: 0, startingBid }, { nx: true });
+  await redis.set(closeTimeKey, Math.floor(closeTime.getTime() / 1000), { nx: true });
+}
+
+export function settlingKeyFor(lotId: string): string {
+  return `bid:lot:${lotId}:settling`;
+}
+
+/**
+ * Settlement fence. Before the cron picks a winner, it calls this to seal the
+ * lot's Redis bid gate so no new bid can be accepted mid-settlement. Returns
+ * whether the lot is actually ready to settle:
+ *  - If the authoritative Redis close time is still in the future (e.g. an
+ *    anti-snipe extension landed after the cron read Postgres `closingAt`), the
+ *    lot is NOT ready — do not seal, let it keep bidding, settle next tick.
+ *  - Otherwise seal it (the bid Lua rejects while the seal exists) and report
+ *    ready. If Redis state is missing entirely, treat as ready (nothing to
+ *    fence) so a lot with no Redis state can still be settled.
+ *
+ * The seal is cleared when the cron deletes the lot's Redis keys after commit.
+ */
+export async function sealLotForSettlement(lotId: string, nowSeconds: number): Promise<boolean> {
+  const closeTimeKey = `bid:lot:${lotId}:close_time`;
+  const closeTimeRaw = await redis.get<number>(closeTimeKey);
+
+  // Respect a live extension: Redis is the source of truth for the close time.
+  if (closeTimeRaw != null && Number(closeTimeRaw) > nowSeconds) {
+    return false;
+  }
+
+  await redis.set(settlingKeyFor(lotId), 1, { ex: 600 });
+  return true;
 }

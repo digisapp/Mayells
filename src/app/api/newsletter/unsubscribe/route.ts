@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 import { z } from 'zod';
 import { db } from '@/db';
 import { newsletterSubscribers } from '@/db/schema';
@@ -13,7 +14,7 @@ const unsubscribeSchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     // Rate limit to prevent mass-unsubscribe griefing (no ownership token here).
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ip = getClientIp(req);
     const { success } = await rateLimit(`newsletter:unsub:${ip}`, { maxRequests: 10, windowSeconds: 3600 });
     if (!success) {
       return NextResponse.json({ error: 'Too many requests. Please try again later.' }, { status: 429 });

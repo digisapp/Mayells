@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { webhookLogs, users } from '@/db/schema';
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

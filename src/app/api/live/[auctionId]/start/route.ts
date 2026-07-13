@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { users, auctions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { users, auctions, auctionLots } from '@/db/schema';
+import { eq, sql } from 'drizzle-orm';
 import { createAuctionRoom } from '@/lib/livekit/config';
+import { openAuctionLots } from '@/lib/bidding/lifecycle';
 import { logger } from '@/lib/logger';
 
 export async function POST(
@@ -19,7 +21,7 @@ export async function POST(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'auctioneer')) {
+    if (!profile || (!isAdminProfile(profile) && profile.role !== 'auctioneer')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -41,6 +43,38 @@ export async function POST(
         { error: `Cannot start a live session for an auction with status "${auction.status}"` },
         { status: 409 },
       );
+    }
+
+    // If the auction hasn't been opened yet (started live directly from
+    // scheduled/preview), open its lots now — in_auction status, closingAt, and
+    // Redis bid state — so bids are actually accepted. Without this, flipping
+    // straight to 'live' leaves every lot unbiddable and the settlement cron
+    // (which only opens 'scheduled'/'preview') never runs the open step, so the
+    // auction closes having sold nothing.
+    if (auction.status === 'scheduled' || auction.status === 'preview') {
+      // A timed auction with no biddingEndsAt can't be opened correctly
+      // (openAuctionLots refuses it) — don't flip it to 'live' with unbiddable
+      // lots; make the auctioneer set an end date first.
+      if (auction.type !== 'live' && !auction.biddingEndsAt) {
+        return NextResponse.json(
+          { error: 'Set a bidding end date before starting this auction.' },
+          { status: 409 },
+        );
+      }
+      const opened = await openAuctionLots(auction, new Date());
+      if (opened === 0) {
+        const [{ count } = { count: 0 }] = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(auctionLots)
+          .where(eq(auctionLots.auctionId, auctionId));
+        if (Number(count) > 0) {
+          // Had lots but none opened → misconfiguration; don't go live blind.
+          return NextResponse.json(
+            { error: 'Could not open this auction for bidding. Check its configuration.' },
+            { status: 409 },
+          );
+        }
+      }
     }
 
     const roomName = `auction-${auctionId}`;

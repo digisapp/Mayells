@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -45,7 +46,7 @@ export async function POST(
     // Only staff may broadcast system message types — anyone could otherwise
     // spoof bid_notification events to the live room. Plain chat and emoji
     // reactions remain open to all authenticated users.
-    if (type !== 'chat' && type !== 'reaction' && profile?.role !== 'admin' && profile?.role !== 'auctioneer') {
+    if (type !== 'chat' && type !== 'reaction' && !isAdminProfile(profile) && profile?.role !== 'auctioneer') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

@@ -5,7 +5,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, inArray } from 'drizzle-orm';
 import { LotGrid } from '@/components/lots/LotGrid';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
@@ -53,7 +53,11 @@ export default async function CategoryPage({
   const categoryLots = await db
     .select()
     .from(lots)
-    .where(eq(lots.categoryId, category!.id))
+    // Public listing — never expose draft / pending / withdrawn / unsold lots.
+    .where(and(
+      eq(lots.categoryId, category!.id),
+      inArray(lots.status, ['for_sale', 'in_auction', 'sold']),
+    ))
     .orderBy(desc(lots.createdAt))
     .limit(48);
 

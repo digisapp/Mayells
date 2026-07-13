@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { db } from '@/db';
 import { lots, lotImages, users } from '@/db/schema';
-import { eq, desc, asc, and, ilike, sql } from 'drizzle-orm';
+import { eq, desc, asc, and, ilike, sql, inArray } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { lotSchema } from '@/lib/validation/schemas';
+import { PUBLIC_LOT_STATUSES } from '@/lib/lots/visibility';
 import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
@@ -34,12 +36,35 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // This GET is public. Only an authenticated admin may see non-public lot
+    // statuses (draft, pending_review, withdrawn, unsold); everyone else is
+    // hard-constrained to publicly listable statuses so unpublished/withdrawn
+    // consignments never leak into search, category, or browse results.
+    let isAdmin = false;
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const [profile] = await db
+          .select({ role: users.role, isAdmin: users.isAdmin })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .limit(1);
+        isAdmin = isAdminProfile(profile);
+      }
+    } catch {
+      isAdmin = false;
+    }
+
     const conditions = [];
 
     if (category) {
       conditions.push(eq(lots.categoryId, category));
     }
-    if (status) {
+    if (!isAdmin) {
+      // Ignore any client-supplied status for non-admins; force public set.
+      conditions.push(inArray(lots.status, [...PUBLIC_LOT_STATUSES]));
+    } else if (status) {
       conditions.push(eq(lots.status, status as (typeof VALID_STATUSES)[number]));
     }
     if (saleType) {
@@ -100,7 +125,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

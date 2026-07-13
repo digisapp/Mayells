@@ -1,4 +1,4 @@
-import { redis } from './redis';
+import { redis, isRedisConfigured } from './redis';
 import { logger } from './logger';
 
 interface RateLimitConfig {
@@ -42,17 +42,20 @@ export async function rateLimit(
       resetAt,
     };
   } catch (err) {
-    // If Redis is unavailable, fail open by default (don't take down the whole
-    // API), but fail closed for endpoints that opt in — better to reject than
-    // to leave a metered/expensive endpoint unbounded during an outage.
+    // Distinguish "Redis intentionally absent" (local dev — never configured)
+    // from "Redis configured but erroring" (production outage or attack). Only
+    // honor failClosed in the latter case, so a dev box with no Redis can still
+    // log in / bid, while a metered or brute-force-sensitive endpoint is not
+    // left unbounded during a real outage.
+    const shouldFailClosed = config.failClosed && isRedisConfigured;
     logger.error(
-      `Rate limit Redis error — failing ${config.failClosed ? 'closed' : 'open'}`,
+      `Rate limit Redis error — failing ${shouldFailClosed ? 'closed' : 'open'}`,
       err,
       { key },
     );
     return {
-      success: !config.failClosed,
-      remaining: config.failClosed ? 0 : config.maxRequests,
+      success: !shouldFailClosed,
+      remaining: shouldFailClosed ? 0 : config.maxRequests,
       resetAt,
     };
   }

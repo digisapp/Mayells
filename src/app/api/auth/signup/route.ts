@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users } from '@/db/schema';
@@ -8,8 +9,8 @@ import { rateLimit } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
-    const { success: ipOk } = await rateLimit(`auth:signup:ip:${ip}`, { maxRequests: 10, windowSeconds: 3600 });
+    const ip = getClientIp(req);
+    const { success: ipOk } = await rateLimit(`auth:signup:ip:${ip}`, { maxRequests: 10, windowSeconds: 3600, failClosed: true });
     if (!ipOk) {
       return NextResponse.json({ error: 'Too many sign-up attempts. Please try again later.' }, { status: 429, headers: { 'Retry-After': '3600' } });
     }

@@ -1,8 +1,10 @@
 import { db } from '@/db';
-import { invoices, payments, lots } from '@/db/schema';
-import { eq, and, inArray } from 'drizzle-orm';
+import { invoices, payments, lots, users } from '@/db/schema';
+import { eq, and, inArray, isNull } from 'drizzle-orm';
 import Stripe from 'stripe';
+import { stripe } from '@/lib/stripe/config';
 import { logger } from '@/lib/logger';
+import { ensurePaddleNumber } from '@/lib/bidding/verification';
 
 export interface HandlerResult {
   status: 'success' | 'ignored';
@@ -25,9 +27,95 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<HandlerRes
       return handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
     case 'charge.refunded':
       return handleChargeRefunded(event.data.object as Stripe.Charge);
+    case 'charge.dispute.created':
+    case 'charge.dispute.closed':
+      return handleChargeDispute(event.data.object as Stripe.Dispute, event.type);
+    case 'checkout.session.completed':
+      return handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
     default:
       return { status: 'ignored' };
   }
+}
+
+/**
+ * A completed Checkout session. We only act on `setup`-mode sessions created for
+ * bidder card verification: mark the bidder card-verified, save the default
+ * payment method, and assign a paddle number. Payment-mode sessions are handled
+ * via their PaymentIntent events, so they're ignored here.
+ */
+async function handleCheckoutSessionCompleted(
+  session: Stripe.Checkout.Session,
+): Promise<HandlerResult> {
+  if (session.mode !== 'setup' || session.metadata?.purpose !== 'bidder_card_verification') {
+    return { status: 'ignored' };
+  }
+  const userId = session.metadata?.userId;
+  if (!userId) return { status: 'ignored' };
+
+  // Persist the saved card as the customer's default so it's reusable at checkout.
+  const setupIntentId = typeof session.setup_intent === 'string' ? session.setup_intent : null;
+  let paymentMethodId: string | null = null;
+  if (setupIntentId) {
+    try {
+      const si = await stripe.setupIntents.retrieve(setupIntentId);
+      paymentMethodId = typeof si.payment_method === 'string' ? si.payment_method : si.payment_method?.id ?? null;
+      if (paymentMethodId && typeof session.customer === 'string') {
+        await stripe.customers.update(session.customer, {
+          invoice_settings: { default_payment_method: paymentMethodId },
+        });
+      }
+    } catch (err) {
+      logger.warn('Could not attach default payment method after verification', {
+        userId,
+        err: String(err),
+      });
+    }
+  }
+
+  // Mark card-verified only once (don't clobber the original timestamp).
+  await db
+    .update(users)
+    .set({ cardVerifiedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.cardVerifiedAt)));
+
+  await ensurePaddleNumber(userId);
+
+  return { status: 'success', relatedType: 'user', relatedId: userId };
+}
+
+/**
+ * A chargeback pulls funds back from us but Stripe does NOT emit a refund, so
+ * without handling it the invoice would stay `paid` and the lot `sold` while
+ * the money is gone. There is no `disputed` invoice status, so raise a loud
+ * alert for manual reconciliation (hold shipment, decide whether to contest).
+ */
+async function handleChargeDispute(
+  dispute: Stripe.Dispute,
+  eventType: string,
+): Promise<HandlerResult> {
+  const paymentIntentId = (dispute.payment_intent as string) ?? null;
+  let invoiceId: string | null = null;
+  if (paymentIntentId) {
+    const [invoice] = await db
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(eq(invoices.stripePaymentIntentId, paymentIntentId))
+      .limit(1);
+    invoiceId = invoice?.id ?? null;
+  }
+
+  logger.error('Stripe DISPUTE received — manual reconciliation required', undefined, {
+    eventType,
+    disputeStatus: dispute.status,
+    reason: dispute.reason,
+    amount: dispute.amount,
+    paymentIntentId,
+    invoiceId,
+  });
+
+  return invoiceId
+    ? { status: 'success', relatedType: 'invoice', relatedId: invoiceId }
+    : { status: 'success' };
 }
 
 async function handlePaymentIntentSucceeded(
@@ -147,10 +235,20 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent): Promise
     .limit(1);
 
   if (payment) {
-    await db
-      .update(payments)
-      .set({ status: 'failed', failureReason, updatedAt: new Date() })
-      .where(eq(payments.id, payment.id));
+    // Never overwrite a terminal success/refund with a late or replayed
+    // failure event (e.g. a reused PaymentIntent that declined once then
+    // succeeded, delivered out of order). Only pending/processing → failed.
+    if (payment.status === 'succeeded' || payment.status === 'refunded') {
+      logger.warn('Ignoring payment_failed for an already-settled payment', {
+        paymentIntentId: paymentIntent.id,
+        currentStatus: payment.status,
+      });
+    } else {
+      await db
+        .update(payments)
+        .set({ status: 'failed', failureReason, updatedAt: new Date() })
+        .where(eq(payments.id, payment.id));
+    }
   } else {
     logger.warn('Payment failed for payment intent with no payments row', {
       paymentIntentId: paymentIntent.id,
@@ -197,10 +295,20 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<HandlerResul
     if (invoiceId) {
       // Only move a paid invoice to refunded — don't overwrite cancelled/other
       // terminal states.
-      await db
+      const refundedInvoice = await db
         .update(invoices)
         .set({ status: 'refunded', updatedAt: new Date() })
-        .where(and(eq(invoices.id, invoiceId), eq(invoices.status, 'paid')));
+        .where(and(eq(invoices.id, invoiceId), eq(invoices.status, 'paid')))
+        .returning({ lotId: invoices.lotId });
+
+      // The sale is unwound — release the lot so it isn't stuck 'sold' with a
+      // winner. Mark it 'unsold' so an admin can relist/re-auction it.
+      if (refundedInvoice.length > 0) {
+        await db
+          .update(lots)
+          .set({ status: 'unsold', winnerId: null, hammerPrice: null, updatedAt: new Date() })
+          .where(eq(lots.id, refundedInvoice[0].lotId));
+      }
     }
   } else {
     // Partial refund — record the event but leave statuses unchanged

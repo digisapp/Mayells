@@ -19,6 +19,15 @@ export function PayButton({ token, amountLabel }: PayButtonProps) {
     try {
       const res = await fetch(`/api/invoices/${token}/checkout`, { method: 'POST' });
       const data = await res.json();
+      // 202: a payment is already being processed for this invoice — don't
+      // offer to pay again (that would double-charge). Reload shortly to pick up
+      // the paid state once the webhook lands.
+      if (res.status === 202 || data.processing) {
+        setError(data.message || 'Your payment is being processed. This page will update shortly.');
+        setLoading(false);
+        setTimeout(() => window.location.reload(), 4000);
+        return;
+      }
       if (!res.ok || !data.url) {
         setError(data.error || 'Unable to start checkout. Please try again.');
         setLoading(false);

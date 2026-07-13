@@ -35,7 +35,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const activeAuctions = await db
       .select()
       .from(auctions)
-      .where(inArray(auctions.status, ['scheduled', 'preview', 'open', 'live', 'closed']));
+      // 'completed' included — settled auctions still have live, indexable
+      // result pages and should stay in the sitemap.
+      .where(inArray(auctions.status, ['scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed']));
 
     for (const auction of activeAuctions) {
       entries.push({

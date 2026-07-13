@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { estateVisits, users } from '@/db/schema';
@@ -12,7 +13,7 @@ async function requireAdmin() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-  if (!profile || profile.role !== 'admin') return null;
+  if (!profile || !isAdminProfile(profile)) return null;
   return profile;
 }
 

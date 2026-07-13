@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { db } from '@/db';
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     // Check user is admin or seller
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'seller')) {
+    if (!profile || (!isAdminProfile(profile) && profile.role !== 'seller')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

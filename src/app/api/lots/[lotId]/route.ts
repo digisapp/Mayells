@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lots, lotImages, bids, users } from '@/db/schema';
@@ -122,7 +123,7 @@ export async function GET(
     const noStore = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
     if (user) {
       const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-      if (profile?.role === 'admin') {
+      if (isAdminProfile(profile)) {
         return NextResponse.json({ data: { ...lot, images, bidHistory: bidRows } }, { headers: noStore });
       }
     }
@@ -148,7 +149,7 @@ export async function PATCH(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -188,7 +189,7 @@ export async function DELETE(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || !isAdminProfile(profile)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 

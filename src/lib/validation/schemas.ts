@@ -36,7 +36,7 @@ export const lotSchema = z.object({
   buyNowPrice: z.number().int().positive().optional(),
 });
 
-export const auctionSchema = z.object({
+const auctionBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   subtitle: z.string().optional(),
   description: z.string().optional(),
@@ -51,9 +51,20 @@ export const auctionSchema = z.object({
   antiSnipeWindowMinutes: z.number().int().min(1).max(15).default(5),
 });
 
+const endsAfterStart = (d: { biddingStartsAt?: string; biddingEndsAt?: string }) =>
+  !d.biddingStartsAt || !d.biddingEndsAt || new Date(d.biddingEndsAt) > new Date(d.biddingStartsAt);
+const endsAfterStartMsg = { message: 'Bidding end must be after bidding start', path: ['biddingEndsAt'] };
+
+export const auctionSchema = auctionBaseSchema.refine(endsAfterStart, endsAfterStartMsg);
+
+// Ceiling for any monetary field stored in an int4 column (cents). int4 maxes
+// at 2,147,483,647; cap well below it ($20,000,000) so a legal higher bid — or
+// a bid + increment tier — can never overflow the column and corrupt the lot.
+const MAX_MONEY_CENTS = 2_000_000_000;
+
 export const bidSchema = z.object({
-  amount: z.number().int().positive('Bid amount must be positive'),
-  maxBidAmount: z.number().int().positive().optional(),
+  amount: z.number().int().positive('Bid amount must be positive').max(MAX_MONEY_CENTS),
+  maxBidAmount: z.number().int().positive().max(MAX_MONEY_CENTS).optional(),
   idempotencyKey: z.string().max(255).optional(),
 }).refine(
   (data) => data.maxBidAmount === undefined || data.maxBidAmount >= data.amount,
@@ -98,12 +109,12 @@ export const lotUpdateSchema = lotSchema.partial().extend({
   primaryImageUrl: z.string().optional(),
 });
 
-export const auctionUpdateSchema = auctionSchema.partial().extend({
+export const auctionUpdateSchema = auctionBaseSchema.partial().extend({
   status: z.enum(['draft', 'scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed', 'cancelled']).optional(),
   isFeatured: z.boolean().optional(),
   coverImageUrl: z.string().optional(),
   bannerImageUrl: z.string().optional(),
-});
+}).refine(endsAfterStart, endsAfterStartMsg);
 
 export const assignLotSchema = z.object({
   lotId: z.string().uuid(),

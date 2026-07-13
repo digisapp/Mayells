@@ -1,15 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { createHash } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lots, auctions, auctionLots, bids, maxBids } from '@/db/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { bidSchema } from '@/lib/validation/schemas';
 import { placeBid } from '@/lib/bidding/bid-engine';
+import { notifyOutbid, computeOutbidRecipients } from '@/lib/bidding/notify-outbid';
+import { getBidderVerification, checkBidAllowed } from '@/lib/bidding/verification';
+import { UUID_RE, biddableAuctionOrder } from '@/lib/bidding/lot-resolution';
 import { rateLimit } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/request-ip';
 import { logger } from '@/lib/logger';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Map bid-engine error codes to HTTP responses
 const ENGINE_ERRORS: Record<string, { status: number; message: string }> = {
@@ -32,21 +34,10 @@ async function loadLotWithAuction(lotId: string) {
     .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
     .where(byId ? eq(lots.id, lotId) : eq(lots.slug, lotId))
     // A relisted lot can belong to more than one auction row. Prefer the
-    // currently-biddable auction, then closing/closed, then upcoming, and
-    // only fall back to completed/cancelled last — so a bid is never
-    // rejected (or stamped with the wrong auctionId) because an old
-    // completed auction happened to sort first.
-    .orderBy(
-      sql`CASE ${auctions.status}
-        WHEN 'open' THEN 0
-        WHEN 'live' THEN 0
-        WHEN 'closing' THEN 1
-        WHEN 'closed' THEN 1
-        WHEN 'scheduled' THEN 2
-        WHEN 'preview' THEN 2
-        ELSE 3 END`,
-      desc(auctions.biddingEndsAt),
-    )
+    // currently-biddable auction (shared ordering with the lot-state route) so
+    // a bid is never rejected or stamped with the wrong auctionId because an
+    // old completed auction happened to sort first.
+    .orderBy(...biddableAuctionOrder, desc(auctions.biddingEndsAt))
     .limit(1);
 
   return row;
@@ -110,9 +101,30 @@ export async function POST(
       return NextResponse.json({ error: 'You cannot bid on your own lot' }, { status: 403 });
     }
 
+    // Bidder-verification gate. The commitment being made is the greater of the
+    // live bid and any proxy max — a $30k max requires the same clearance as a
+    // $30k bid — so gate on that. Returns the tier the bidder must reach so the
+    // UI can launch the right verification flow.
+    const commitment = Math.max(amount, maxBidAmount ?? 0);
+    const verification = await getBidderVerification(user.id);
+    const gate = checkBidAllowed(verification, commitment);
+    if (!gate.allowed) {
+      return NextResponse.json(
+        { error: gate.reason, code: 'VERIFICATION_REQUIRED', requiredTier: gate.requiredTier },
+        { status: 403 },
+      );
+    }
+
     // Record/refresh the user's max bid before placing, so proxy bidding
     // can resolve competing max bids in this same call. No unique
     // constraint exists on (lotId, bidderId) yet, so select-then-write.
+    //
+    // Capture the prior state so we can ROLL BACK if the manual bid ends up
+    // rejected — otherwise a bid that returns BID_TOO_LOW / AUCTION_CLOSED
+    // would still leave the user's proxy armed, and it could later win the lot
+    // on their behalf without a single confirmed bid.
+    let priorMax: { id: string; maxAmount: number; isActive: boolean } | null = null;
+    let insertedMaxId: string | null = null;
     if (maxBidAmount !== undefined) {
       const [existing] = await db
         .select()
@@ -121,18 +133,34 @@ export async function POST(
         .limit(1);
 
       if (existing) {
+        priorMax = { id: existing.id, maxAmount: existing.maxAmount, isActive: existing.isActive };
         await db
           .update(maxBids)
           .set({ maxAmount: maxBidAmount, isActive: true, updatedAt: new Date() })
           .where(eq(maxBids.id, existing.id));
       } else {
-        await db.insert(maxBids).values({
-          lotId: lot.id,
-          bidderId: user.id,
-          maxAmount: maxBidAmount,
-        });
+        const [inserted] = await db
+          .insert(maxBids)
+          .values({ lotId: lot.id, bidderId: user.id, maxAmount: maxBidAmount })
+          .returning({ id: maxBids.id });
+        insertedMaxId = inserted.id;
       }
     }
+
+    const rollbackMaxBid = async () => {
+      try {
+        if (priorMax) {
+          await db
+            .update(maxBids)
+            .set({ maxAmount: priorMax.maxAmount, isActive: priorMax.isActive, updatedAt: new Date() })
+            .where(eq(maxBids.id, priorMax.id));
+        } else if (insertedMaxId) {
+          await db.delete(maxBids).where(eq(maxBids.id, insertedMaxId));
+        }
+      } catch (err) {
+        logger.error('Failed to roll back max bid after rejected bid', err, { lotId: lot.id });
+      }
+    };
 
     const result = await placeBid({
       lotId: lot.id,
@@ -142,7 +170,7 @@ export async function POST(
       maxBidAmount,
       bidType: 'manual',
       idempotencyKey,
-      ipAddress: request.headers.get('x-forwarded-for') || undefined,
+      ipAddress: getClientIp(request),
       userAgent: request.headers.get('user-agent') || undefined,
       startingBid: lot.startingBid ?? 0,
       antiSnipeSettings: {
@@ -178,6 +206,9 @@ export async function POST(
           { status: 200 },
         );
       }
+      // The bid was rejected (too low / closed / etc.) — undo the proxy we
+      // armed above so it can't win the lot for a bid that never landed.
+      await rollbackMaxBid();
       const mapped = result.error ? ENGINE_ERRORS[result.error] : undefined;
       if (mapped) {
         return NextResponse.json(
@@ -204,6 +235,37 @@ export async function POST(
       .from(lots)
       .where(eq(lots.id, lot.id))
       .limit(1);
+
+    // Outbid notifications — sent AFTER the response so they never slow a bid.
+    // Comparing the high bidder before this request against the final high
+    // bidder (after any proxy war resolved) notifies exactly the people who
+    // lost the top spot, each once:
+    //   • the person who was leading before this bid, if now displaced; and
+    //   • this bidder, if a rival's proxy instantly bid over them.
+    const finalHighBidderId = updatedLot?.currentBidderId ?? null;
+    const finalAmount = updatedLot?.currentBidAmount ?? amount;
+    const lotRef = lot.slug || lot.id;
+    const recipients = computeOutbidRecipients({
+      priorHighBidderId: lot.currentBidderId,
+      priorAmount: lot.currentBidAmount,
+      requesterId: user.id,
+      requesterAmount: amount,
+      finalHighBidderId,
+    });
+
+    if (recipients.length > 0) {
+      after(async () => {
+        for (const { bidderId, yourBid } of recipients) {
+          await notifyOutbid({
+            bidderId,
+            yourBid,
+            currentBid: finalAmount,
+            lotTitle: lot.title,
+            lotRef,
+          });
+        }
+      });
+    }
 
     return NextResponse.json(
       {
