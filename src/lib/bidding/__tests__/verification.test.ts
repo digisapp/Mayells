@@ -25,6 +25,23 @@ describe('tierFromFlags', () => {
   });
 });
 
+describe('account status (canBid)', () => {
+  it('active accounts can bid', () => {
+    expect(tierFromFlags(true, false, 'active').canBid).toBe(true);
+  });
+  it('suspended accounts cannot bid', () => {
+    const v = tierFromFlags(true, true, 'suspended');
+    expect(v.canBid).toBe(false);
+    expect(v.accountStatus).toBe('suspended');
+  });
+  it('banned accounts cannot bid', () => {
+    expect(tierFromFlags(true, true, 'banned').canBid).toBe(false);
+  });
+  it('defaults to active/can-bid when status omitted', () => {
+    expect(tierFromFlags(false, false).canBid).toBe(true);
+  });
+});
+
 describe('checkBidAllowed', () => {
   const registered = tierFromFlags(false, false);
   const card = tierFromFlags(true, false);

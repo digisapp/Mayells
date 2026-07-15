@@ -34,6 +34,8 @@ vi.mock('../verification', () => ({
     cardVerified: true,
     identityVerified: true,
     maxBidAllowed: Number.MAX_SAFE_INTEGER,
+    accountStatus: 'active',
+    canBid: true,
   })),
   checkBidAllowed: vi.fn(() => ({ allowed: true })),
 }));

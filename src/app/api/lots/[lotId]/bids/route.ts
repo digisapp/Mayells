@@ -107,6 +107,16 @@ export async function POST(
     // UI can launch the right verification flow.
     const commitment = Math.max(amount, maxBidAmount ?? 0);
     const verification = await getBidderVerification(user.id);
+
+    // A suspended or banned bidder cannot place bids — enforced here so the
+    // admin "suspend" action actually has teeth in the bid flow.
+    if (!verification.canBid) {
+      return NextResponse.json(
+        { error: 'Your account is not permitted to place bids. Please contact us.', code: 'ACCOUNT_RESTRICTED' },
+        { status: 403 },
+      );
+    }
+
     const gate = checkBidAllowed(verification, commitment);
     if (!gate.allowed) {
       return NextResponse.json(

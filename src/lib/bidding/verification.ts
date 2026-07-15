@@ -25,9 +25,17 @@ export interface BidderVerification {
   identityVerified: boolean;
   /** Highest bid (cents) this bidder may currently place. */
   maxBidAllowed: number;
+  /** 'active' | 'suspended' | 'banned' — bidding is blocked unless 'active'. */
+  accountStatus: string;
+  /** Whether the account is allowed to bid at all (not suspended/banned). */
+  canBid: boolean;
 }
 
-export function tierFromFlags(cardVerified: boolean, identityVerified: boolean): BidderVerification {
+export function tierFromFlags(
+  cardVerified: boolean,
+  identityVerified: boolean,
+  accountStatus = 'active',
+): BidderVerification {
   const tier: BidderTier = identityVerified ? 'identity' : cardVerified ? 'card' : 'registered';
   // maxBidAllowed must match checkBidAllowed's boundaries exactly, or the UI
   // advertises a ceiling the gate then rejects. The card tier is blocked at
@@ -38,16 +46,27 @@ export function tierFromFlags(cardVerified: boolean, identityVerified: boolean):
       : tier === 'card'
         ? CARD_MAX_BID - 1
         : TIER1_MAX_BID;
-  return { tier, cardVerified, identityVerified, maxBidAllowed };
+  return {
+    tier,
+    cardVerified,
+    identityVerified,
+    maxBidAllowed,
+    accountStatus,
+    canBid: accountStatus === 'active',
+  };
 }
 
 export async function getBidderVerification(userId: string): Promise<BidderVerification> {
   const [row] = await db
-    .select({ cardVerifiedAt: users.cardVerifiedAt, identityVerifiedAt: users.identityVerifiedAt })
+    .select({
+      cardVerifiedAt: users.cardVerifiedAt,
+      identityVerifiedAt: users.identityVerifiedAt,
+      accountStatus: users.accountStatus,
+    })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-  return tierFromFlags(!!row?.cardVerifiedAt, !!row?.identityVerifiedAt);
+  return tierFromFlags(!!row?.cardVerifiedAt, !!row?.identityVerifiedAt, row?.accountStatus ?? 'active');
 }
 
 export interface BidGateResult {

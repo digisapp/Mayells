@@ -417,11 +417,13 @@ async function runProxyResolution(
     if (proxyBidAmount <= leaderAmount) return;
 
     // Verification gate for the AUTO-bid too: a max armed before verification
-    // was required (or after the holder's card was removed / threshold lowered)
-    // must not win via proxy. If this holder isn't cleared for this amount,
-    // retire their max so it can't fire, and let a lower competitor proceed.
-    const proxyGate = checkBidAllowed(await getBidderVerification(topMaxBid.bidderId), proxyBidAmount);
-    if (!proxyGate.allowed) {
+    // was required (or after the holder's card was removed / threshold lowered),
+    // or a holder who has since been suspended, must not win via proxy. If this
+    // holder isn't cleared for this amount, retire their max so it can't fire,
+    // and let a lower competitor proceed.
+    const proxyVerification = await getBidderVerification(topMaxBid.bidderId);
+    const proxyGate = checkBidAllowed(proxyVerification, proxyBidAmount);
+    if (!proxyVerification.canBid || !proxyGate.allowed) {
       await db
         .update(maxBids)
         .set({ isActive: false, updatedAt: new Date() })
