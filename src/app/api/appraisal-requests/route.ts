@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 import { z } from 'zod';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -20,7 +21,7 @@ const appraisalSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ip = getClientIp(req);
     const { success: allowed } = await rateLimit(`appraisal:${ip}`, {
       maxRequests: 5,
       windowSeconds: 3600,

@@ -28,14 +28,31 @@ export async function createShipmentForInvoice(invoiceId: string) {
   });
 
   if (!invoice) throw new Error(`Invoice ${invoiceId} not found`);
-  if (!invoice.lot?.sellerId) throw new Error('Lot has no seller');
+
+  // Prospect-sourced lots can legitimately have no seller-of-record (the
+  // consignor never created an account). Don't hard-throw and fail the caller
+  // (e.g. settlement / payment webhook) — surface it for manual handling and
+  // return null so a shipment is simply deferred, not crashed.
+  if (!invoice.lot?.sellerId) {
+    logger.warn('Cannot auto-create shipment: lot has no seller — needs manual handling', {
+      invoiceId,
+      lotId: invoice.lotId,
+    });
+    return null;
+  }
 
   // Get seller info
   const seller = await db.query.users.findFirst({
     where: eq(users.id, invoice.lot.sellerId),
   });
 
-  if (!seller) throw new Error('Seller not found');
+  if (!seller) {
+    logger.warn('Cannot auto-create shipment: seller record not found', {
+      invoiceId,
+      sellerId: invoice.lot.sellerId,
+    });
+    return null;
+  }
 
   // Determine shipping method based on item value
   const settings = await getAutomationSettings();

@@ -2,7 +2,7 @@ import { generateText } from 'ai';
 import { getModel } from './client';
 import { db } from '@/db';
 import { emails, automationSettings } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { BUSINESS } from '@/lib/config';
 import { logger } from '@/lib/logger';
@@ -246,6 +246,49 @@ export async function processInboundEmail(emailId: string) {
         safeCategory: isSafeCategory,
         highConfidence: isHighConfidence,
       });
+      return;
+    }
+
+    // ─── Mail-loop guards ────────────────────────────────────────────────────
+    // Never auto-reply to our own addresses or to another automated system —
+    // and cap replies per thread — so two auto-responders can't ping-pong
+    // forever, flooding inboxes and burning Resend/LLM spend.
+    const fromAddr = (email.fromEmail || '').toLowerCase();
+
+    // 1. Self / same-domain guard.
+    if (fromAddr.endsWith('@mayells.com') || fromAddr.includes('notifications@')) {
+      logger.warn('Skipping AI auto-reply to our own domain', { emailId, fromAddr });
+      return;
+    }
+
+    // 2. Auto-responder / system-address detection.
+    const subject = (email.subject || '').toLowerCase();
+    const AUTO_MARKERS = [
+      'auto-reply', 'auto reply', 'autoreply', 'automatic reply', 'out of office',
+      'out-of-office', 'vacation', 'do not reply', 'undeliverable', 'delivery status',
+      'mail delivery', 'mailer-daemon', 'postmaster',
+    ];
+    const looksAutomated =
+      /(^|[.@+])(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce)/i.test(fromAddr) ||
+      AUTO_MARKERS.some((m) => subject.includes(m));
+    if (looksAutomated) {
+      logger.warn('Skipping AI auto-reply to an automated/no-reply sender', { emailId, fromAddr, subject });
+      return;
+    }
+
+    // 3. Thread depth cap — stop after a few auto-sends in one thread.
+    const MAX_AUTO_REPLIES_PER_THREAD = 3;
+    const threadKey = email.threadId || emailId;
+    const [{ n } = { n: 0 }] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(emails)
+      .where(and(
+        eq(emails.threadId, threadKey),
+        eq(emails.direction, 'outbound'),
+        eq(emails.aiAutoSent, true),
+      ));
+    if (Number(n) >= MAX_AUTO_REPLIES_PER_THREAD) {
+      logger.warn('Thread hit AI auto-reply cap — not auto-sending', { emailId, threadKey, count: Number(n) });
       return;
     }
 

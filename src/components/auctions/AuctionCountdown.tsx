@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Clock } from 'lucide-react';
 
 interface AuctionCountdownProps {
@@ -8,10 +8,17 @@ interface AuctionCountdownProps {
   onExpired?: () => void;
   className?: string;
   variant?: 'inline' | 'card';
+  /**
+   * The server's clock (ms since epoch) captured when the page was rendered.
+   * When provided, the countdown corrects for client clock skew so a device
+   * whose clock is wrong doesn't show the wrong time-to-close — critical during
+   * anti-snipe in the final seconds. Without it, falls back to the local clock.
+   */
+  serverNow?: number;
 }
 
-function getTimeRemaining(endTime: Date) {
-  const total = endTime.getTime() - Date.now();
+function getTimeRemaining(endTime: Date, nowMs: number) {
+  const total = endTime.getTime() - nowMs;
   if (total <= 0) return { total: 0, days: 0, hours: 0, minutes: 0, seconds: 0 };
 
   return {
@@ -23,18 +30,43 @@ function getTimeRemaining(endTime: Date) {
   };
 }
 
-export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inline' }: AuctionCountdownProps) {
+export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inline', serverNow }: AuctionCountdownProps) {
   // Initialized to null and computed after mount: calling Date.now() during
   // render would produce different output on server vs client (hydration mismatch).
   const [time, setTime] = useState<ReturnType<typeof getTimeRemaining> | null>(null);
 
+  // The clock-skew offset must be measured EXACTLY ONCE (against the original
+  // serverNow), not recomputed each time the effect re-runs — otherwise a
+  // parent re-render (e.g. LiveLotPanel's 6s poll) would recompute skew with a
+  // fresh Date.now() but the same fixed serverNow, pinning "now" back to page
+  // load and making the countdown freeze/jump backwards. A ref survives renders.
+  const skewRef = useRef<number | null>(null);
+  // Hold the latest onExpired in a ref so it isn't an effect dependency (a new
+  // inline arrow on every parent render must not tear down the interval). The
+  // ref is refreshed in an effect — never assigned during render.
+  const onExpiredRef = useRef(onExpired);
   useEffect(() => {
+    onExpiredRef.current = onExpired;
+  }, [onExpired]);
+
+  // Depend on the close time's numeric value, not the Date object identity, so
+  // the effect only re-runs when the actual deadline changes (anti-snipe
+  // extension), not on every unrelated re-render.
+  const endsAtMs = endsAt.getTime();
+
+  useEffect(() => {
+    if (skewRef.current === null) {
+      skewRef.current = serverNow != null ? serverNow - Date.now() : 0;
+    }
+    const skew = skewRef.current;
+
     const tick = () => {
-      const remaining = getTimeRemaining(endsAt);
+      const correctedNow = Date.now() + skew;
+      const remaining = getTimeRemaining(new Date(endsAtMs), correctedNow);
       setTime(remaining);
       if (remaining.total <= 0) {
         clearInterval(timer);
-        onExpired?.();
+        onExpiredRef.current?.();
       }
     };
 
@@ -47,7 +79,7 @@ export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inli
       clearInterval(timer);
       cancelAnimationFrame(raf);
     };
-  }, [endsAt, onExpired]);
+  }, [endsAtMs, serverNow]);
 
   if (!time) {
     return (

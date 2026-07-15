@@ -14,6 +14,13 @@ export const users = pgTable('users', {
   isAdmin: boolean('is_admin').default(false).notNull(),
   accountStatus: accountStatusEnum('account_status').default('active').notNull(),
 
+  // Bidder verification tiers:
+  //  - registered (email) = account exists
+  //  - card-verified = valid card on file via Stripe SetupIntent (unlocks normal bidding)
+  //  - identity-verified = government ID via Stripe Identity (reserved for high-value lots)
+  cardVerifiedAt: timestamp('card_verified_at'),
+  identityVerifiedAt: timestamp('identity_verified_at'),
+
   // Buyer info
   paddleNumber: text('paddle_number').unique(),
   phone: text('phone'),

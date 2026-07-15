@@ -107,6 +107,40 @@ export async function sendOutbidNotification(params: {
   });
 }
 
+export async function sendEndingSoonNotification(params: {
+  email: string;
+  lotTitle: string;
+  lotUrl: string;
+  currentBid: number;
+  hasBids: boolean;
+  closingAt: Date;
+}) {
+  const closesLabel = params.closingAt.toLocaleString('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  await sendAndLog({
+    to: params.email,
+    subject: `Ending soon: "${params.lotTitle}"`,
+    html: emailLayout(`
+        <p>A lot on your watchlist is closing soon.</p>
+        <p style="font-size: 18px; font-weight: bold; margin: 16px 0 4px;">${escapeHtml(params.lotTitle)}</p>
+        <table style="margin: 12px 0 20px; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">${params.hasBids ? 'Current bid:' : 'Status:'}</td>
+            <td style="padding: 8px 16px; font-weight: bold;">${params.hasBids ? formatCurrency(params.currentBid) : 'No bids yet — be the first'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Closes:</td>
+            <td style="padding: 8px 16px; font-weight: bold; color: #c33;">${closesLabel}</td>
+          </tr>
+        </table>
+        ${ctaButton(params.lotUrl, 'Place Your Bid')}
+        <p style="margin-top: 20px; font-size: 12px; color: #999;">You're receiving this because you added this lot to your watchlist.</p>
+    `, 'Ending Soon'),
+  });
+}
+
 export async function sendInvoiceNotification(params: {
   email: string;
   lotTitle: string;

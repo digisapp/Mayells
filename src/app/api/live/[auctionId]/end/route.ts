@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users, auctions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { deleteAuctionRoom } from '@/lib/livekit/config';
+import { forceCloseAuctionLots } from '@/lib/bidding/lifecycle';
 import { logger } from '@/lib/logger';
 
 export async function POST(
@@ -19,7 +21,7 @@ export async function POST(
     }
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || (profile.role !== 'admin' && profile.role !== 'auctioneer')) {
+    if (!profile || (!isAdminProfile(profile) && profile.role !== 'auctioneer')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -50,13 +52,22 @@ export async function POST(
       }
     }
 
+    const endedAt = new Date();
+
+    // Force every still-open lot to close right now. The settlement cron will
+    // shortly flip this auction 'closing' -> 'closed' (a status that stays
+    // biddable for naturally-staggered timed auctions), so unless we collapse
+    // each lot's closingAt (DB + Redis) to now, bidding would silently reopen
+    // on lots whose staggered close time is still in the future.
+    await forceCloseAuctionLots(auctionId, endedAt);
+
     // Update auction status
     await db
       .update(auctions)
       .set({
         status: 'closing',
-        actualEndedAt: new Date(),
-        updatedAt: new Date(),
+        actualEndedAt: endedAt,
+        updatedAt: endedAt,
       })
       .where(eq(auctions.id, auctionId));
 

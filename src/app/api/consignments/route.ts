@@ -7,6 +7,7 @@ import { consignmentSchema } from '@/lib/validation/schemas';
 import { sendConsignmentNotification } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/request-ip';
 import { catalogLotFromImages } from '@/lib/ai/cataloging';
 import { appraiseLot } from '@/lib/ai/appraisal';
 
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
         sellerId: user.id,
         ...consignmentData,
         agreementSignedAt: agreementAccepted ? new Date() : null,
-        agreementIp: agreementAccepted ? (request.headers.get('x-forwarded-for') || 'unknown') : null,
+        agreementIp: agreementAccepted ? getClientIp(request) : null,
       })
       .returning();
 

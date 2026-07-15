@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 import { db } from '@/db';
 import { lots, inquiries } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -21,7 +22,7 @@ const inquirySchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ip = getClientIp(req);
     const { success, remaining } = await rateLimit(`inquiry:${ip}`, {
       maxRequests: 10,
       windowSeconds: 3600,

@@ -14,7 +14,16 @@ interface UserRow {
   displayName: string | null;
   role: string;
   accountStatus: string;
+  cardVerifiedAt: string | null;
+  identityVerifiedAt: string | null;
+  paddleNumber: string | null;
   createdAt: string;
+}
+
+function verificationLabel(u: UserRow): { label: string; className: string } {
+  if (u.identityVerifiedAt) return { label: 'ID verified', className: 'bg-green-100 text-green-800' };
+  if (u.cardVerifiedAt) return { label: 'Card', className: 'bg-blue-100 text-blue-800' };
+  return { label: 'Registered', className: 'bg-gray-100 text-gray-600' };
 }
 
 interface Pagination {
@@ -142,6 +151,8 @@ export default function AdminUsersPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Verification</TableHead>
+                  <TableHead>Paddle</TableHead>
                   <TableHead>Registered</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
@@ -181,6 +192,14 @@ export default function AdminUsersPage() {
                         </Badge>
                       )}
                     </TableCell>
+                    <TableCell>
+                      {(() => { const v = verificationLabel(user); return (
+                        <Badge className={v.className}>{v.label}</Badge>
+                      ); })()}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground tabular-nums">
+                      {user.paddleNumber ? `#${user.paddleNumber}` : '—'}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
                     </TableCell>
@@ -198,7 +217,7 @@ export default function AdminUsersPage() {
                 ))}
                 {userList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       {searchQuery ? `No users matching "${searchQuery}"` : 'No users yet.'}
                     </TableCell>
                   </TableRow>

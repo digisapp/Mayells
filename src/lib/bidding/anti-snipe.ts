@@ -11,6 +11,29 @@ interface AntiSnipeResult {
   newCloseTime?: number;
 }
 
+// Atomic read-modify-write of the close time. A plain GET→SET lets a bidder
+// holding a stale read overwrite a larger close time that landed in between,
+// moving the deadline BACKWARDS. Doing the compare-and-extend inside one Lua
+// call removes the race and guarantees the close time is monotonic.
+//
+// KEYS[1] = close time key
+// ARGV[1] = bid timestamp (unix secs)
+// ARGV[2] = anti-snipe window (secs)
+// ARGV[3] = anti-snipe extension (secs)
+const EXTEND_CLOSE_TIME_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if not raw then return cjson.encode({extended=false}) end
+local closeTime = tonumber(raw)
+local bidTs = tonumber(ARGV[1])
+local windowStart = closeTime - tonumber(ARGV[2])
+if bidTs >= windowStart and bidTs < closeTime then
+  local newCloseTime = closeTime + tonumber(ARGV[3])
+  redis.call('SET', KEYS[1], newCloseTime)
+  return cjson.encode({extended=true, newCloseTime=newCloseTime})
+end
+return cjson.encode({extended=false})
+`;
+
 export async function checkAndExtendAuction(
   lotId: string,
   bidTimestamp: number,
@@ -19,17 +42,19 @@ export async function checkAndExtendAuction(
   if (!settings.antiSnipeEnabled) return { extended: false };
 
   const closeTimeKey = `bid:lot:${lotId}:close_time`;
-  const currentCloseTime = await redis.get<number>(closeTimeKey);
 
-  if (!currentCloseTime) return { extended: false };
+  const raw = await redis.eval(
+    EXTEND_CLOSE_TIME_LUA,
+    [closeTimeKey],
+    [
+      bidTimestamp.toString(),
+      (settings.antiSnipeWindowMinutes * 60).toString(),
+      (settings.antiSnipeMinutes * 60).toString(),
+    ],
+  );
 
-  const windowStart = currentCloseTime - (settings.antiSnipeWindowMinutes * 60);
-
-  if (bidTimestamp >= windowStart && bidTimestamp < currentCloseTime) {
-    const newCloseTime = currentCloseTime + (settings.antiSnipeMinutes * 60);
-    await redis.set(closeTimeKey, newCloseTime);
-    return { extended: true, newCloseTime };
-  }
-
-  return { extended: false };
+  const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as AntiSnipeResult;
+  return parsed && parsed.extended
+    ? { extended: true, newCloseTime: parsed.newCloseTime }
+    : { extended: false };
 }

@@ -4,7 +4,9 @@ import { db } from '@/db';
 import { auctions, auctionLots, lots, bids, maxBids, consignments, users, invoices } from '@/db/schema';
 import { eq, lte, and, or, inArray, desc, asc } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
-import { initializeLotBidState } from '@/lib/bidding/bid-engine';
+import { openAuctionLots } from '@/lib/bidding/lifecycle';
+import { sealLotForSettlement, settlingKeyFor } from '@/lib/bidding/bid-engine';
+import { notifyWatchersOfEndingLots } from '@/lib/bidding/ending-soon';
 import { sendInvoiceNotification } from '@/lib/email/notifications';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
@@ -18,7 +20,10 @@ const CRON_SECRET = process.env.CRON_SECRET;
 // the next 5-minute tick, or a manual POST alongside the scheduled GET) can't
 // both settle the same lots and race on bid/lot status updates.
 const LOCK_KEY = 'cron:auction-lifecycle:lock';
-const LOCK_TTL_SECONDS = 290;
+// Must exceed maxDuration (300s) so a run that is killed at the Vercel limit
+// still holds the lock until it expires — otherwise the lock could lapse while
+// a slow run is finishing and the next tick would start concurrently.
+const LOCK_TTL_SECONDS = 330;
 
 // Release the lock only if we still own it (avoid deleting a lock a later run
 // acquired after ours expired).
@@ -68,6 +73,7 @@ async function runLifecycle() {
     relistedToGallery: 0,
     returnedToSeller: 0,
     markedOverdue: 0,
+    endingSoonEmailed: 0,
     errors: [] as string[],
   };
 
@@ -85,37 +91,24 @@ async function runLifecycle() {
 
     for (const auction of toOpen) {
       try {
-        const aLots = await db
-          .select({ auctionLot: auctionLots, lot: lots })
-          .from(auctionLots)
-          .innerJoin(lots, eq(lots.id, auctionLots.lotId))
-          .where(eq(auctionLots.auctionId, auction.id))
-          .orderBy(asc(auctionLots.lotNumber));
-
-        const intervalSeconds = auction.lotClosingIntervalSeconds ?? 0;
-
-        for (const [index, { auctionLot: al, lot }] of aLots.entries()) {
-          await db
-            .update(lots)
-            .set({ status: 'in_auction', updatedAt: now })
-            .where(eq(lots.id, al.lotId));
-
-          // Staggered closing: each lot closes intervalSeconds after the previous one.
-          // The bid engine's anti-snipe may push closingAt later as bids come in.
-          if (auction.biddingEndsAt) {
-            const closingAt = new Date(
-              auction.biddingEndsAt.getTime() + index * intervalSeconds * 1000,
-            );
-            await db
-              .update(auctionLots)
-              .set({ closingAt })
-              .where(eq(auctionLots.id, al.id));
-
-            await initializeLotBidState(al.lotId, closingAt, lot.startingBid ?? 0);
+        // An auction with no end time is not cron-openable:
+        //  - a LIVE auction with no scheduled end opens when the auctioneer
+        //    starts the session (/api/live/[id]/start), not on a timer — opening
+        //    it here would stamp a fabricated close time and show a bogus
+        //    countdown that could expire before the live session even begins.
+        //  - a TIMED auction with no end can never be settled correctly.
+        if (!auction.biddingEndsAt) {
+          if (auction.type !== 'live') {
+            results.errors.push(`Cannot open auction ${auction.id}: timed auction has no biddingEndsAt`);
           }
+          continue; // live auctions await their manual start
         }
 
-        // Flip status last so a crash mid-initialization re-runs the (idempotent) loop
+        // Move lots into the biddable state (in_auction + staggered closingAt +
+        // Redis init). Shared with the live-start route so both paths agree.
+        await openAuctionLots(auction, now);
+
+        // Flip status last so a crash mid-initialization re-runs the (idempotent) opener
         await db
           .update(auctions)
           .set({ status: 'open', updatedAt: now })
@@ -178,6 +171,20 @@ async function runLifecycle() {
           }
 
           try {
+            // Settlement fence: seal the Redis bid gate so no bid can land
+            // during settlement, and re-check the AUTHORITATIVE Redis close
+            // time. If an anti-snipe extension pushed the close time past `now`
+            // after we read Postgres `closingAt`, the lot is still live — defer
+            // to next tick. Kept INSIDE the per-lot try so a Redis hiccup defers
+            // just this lot instead of aborting settlement of every remaining
+            // lot in the auction.
+            const nowSeconds = Math.floor(now.getTime() / 1000);
+            const readyToSettle = await sealLotForSettlement(al.lotId, nowSeconds);
+            if (!readyToSettle) {
+              unsettledRemaining++;
+              continue;
+            }
+
             // Settle each lot atomically: choosing the winner, marking the
             // winning/outbid bids, updating the lot, generating the invoice,
             // and deactivating max bids all commit together or not at all. A
@@ -286,6 +293,7 @@ async function runLifecycle() {
                 `bid:lot:${al.lotId}:current`,
                 `bid:lot:${al.lotId}:current:bid_count`,
                 `bid:lot:${al.lotId}:close_time`,
+                settlingKeyFor(al.lotId),
               );
             } catch (err) {
               results.errors.push(`Failed to clear Redis bid state for lot ${al.lotId}: ${err}`);
@@ -322,6 +330,17 @@ async function runLifecycle() {
       results.markedOverdue = overdue.length;
     } catch (err) {
       results.errors.push(`Failed to mark overdue invoices: ${err}`);
+    }
+
+    // 4. Email watchlist "closing soon" alerts (once per watched lot).
+    try {
+      const endingSoon = await notifyWatchersOfEndingLots(now, 60);
+      results.endingSoonEmailed = endingSoon.sent;
+      if (endingSoon.capped) {
+        results.errors.push('Ending-soon alerts hit the per-run cap — some deferred to next tick');
+      }
+    } catch (err) {
+      results.errors.push(`Failed to send ending-soon alerts: ${err}`);
     }
 
     return NextResponse.json({

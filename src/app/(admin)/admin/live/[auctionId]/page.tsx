@@ -51,7 +51,25 @@ export default function AuctioneerDashboardPage() {
         const aData = await aRes.json();
         const lData = await lRes.json();
         setAuction(aData.data);
-        setLots(lData.data ?? []);
+        // The lots API returns a FLAT shape ({ ...lot, lotNumber }); this
+        // console renders the nested { lotNumber, lot } shape. Map it here so
+        // reads like `activeLot.lot.title` don't hit `undefined` and crash the
+        // whole auctioneer console.
+        const rawLots: Array<Record<string, unknown>> = lData.data ?? [];
+        setLots(
+          rawLots.map((row) => ({
+            lotNumber: row.lotNumber as number,
+            lot: {
+              id: row.id as string,
+              title: row.title as string,
+              primaryImageUrl: (row.primaryImageUrl as string | null) ?? null,
+              currentBidAmount: (row.currentBidAmount as number) ?? 0,
+              bidCount: (row.bidCount as number) ?? 0,
+              estimateLow: (row.estimateLow as number | null) ?? null,
+              estimateHigh: (row.estimateHigh as number | null) ?? null,
+            },
+          })),
+        );
         setIsLive(aData.data?.status === 'live');
       } catch {
         toast.error('Failed to load auction');

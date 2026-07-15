@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
+import { isAdminProfile } from '@/lib/auth/admin';
 
 const adminAuthRoutes = ['/admin/login'];
 
@@ -17,9 +18,9 @@ async function getUserProfile(userId: string) {
   return profile;
 }
 
-function isAdminUser(profile: { role: string; is_admin: boolean } | null): boolean {
-  return profile?.role === 'admin' || profile?.is_admin === true;
-}
+// Single source of truth shared with every API route (src/lib/auth/admin.ts):
+// admin === role 'admin' OR is_admin true.
+const isAdminUser = isAdminProfile;
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });

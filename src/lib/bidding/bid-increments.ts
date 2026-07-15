@@ -40,6 +40,18 @@ export function getNextMinBid(currentBidCents: number): number {
   return currentBidCents + getMinIncrement(currentBidCents);
 }
 
+/**
+ * Minimum acceptable next bid, mirroring the bid engine's Lua rule exactly. The
+ * single source of truth for both the client (LiveLotPanel/BidForm) and the
+ * server (lot-state endpoint) so they can never disagree and bounce a bid.
+ *  - No bids yet: must meet the starting bid, and at least one increment off zero.
+ *  - Otherwise: current bid plus its tier increment.
+ */
+export function getMinNextBid(currentBidCents: number, startingBidCents: number): number {
+  if (currentBidCents > 0) return getNextMinBid(currentBidCents);
+  return Math.max(startingBidCents, getMinIncrement(0));
+}
+
 export function getQuickBidOptions(currentBidCents: number): number[] {
   const increment = getMinIncrement(currentBidCents);
   return [

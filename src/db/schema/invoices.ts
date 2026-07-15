@@ -37,6 +37,10 @@ export const invoices = pgTable('invoices', {
   // Stripe
   stripePaymentIntentId: text('stripe_payment_intent_id'),
   stripeChargeId: text('stripe_charge_id'),
+  // The most recent Checkout session created for this invoice. Reused while it
+  // is still open so a double-click / second tab can't spawn a second
+  // PaymentIntent and double-charge the buyer.
+  stripeCheckoutSessionId: text('stripe_checkout_session_id'),
 
   // Shipping
   shippingAddress: text('shipping_address'),

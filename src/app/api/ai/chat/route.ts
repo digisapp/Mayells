@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { aiChatSettings } from '@/db/schema';
 import { rateLimit } from '@/lib/rate-limit';
 import { NextRequest } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 
 // Streaming + multi-step tool calls can exceed the default function timeout
 export const maxDuration = 60;
@@ -107,7 +108,7 @@ async function getSystemPrompt(): Promise<{ prompt: string; enabled: boolean }> 
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const ip = getClientIp(req);
   const { success } = await rateLimit(`ai:chat:${ip}`, { maxRequests: 30, windowSeconds: 3600, failClosed: true });
   if (!success) {
     return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {

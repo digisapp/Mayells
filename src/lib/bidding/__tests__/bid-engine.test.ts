@@ -25,7 +25,22 @@ vi.mock('../anti-snipe', () => ({
   checkAndExtendAuction: vi.fn(),
 }));
 
-import { placeBid, initializeLotBidState, parseBidScriptResult } from '../bid-engine';
+// Proxy auto-bids are verification-gated; keep the gate permissive here so the
+// proxy-resolution tests exercise the bidding logic, not the KYC lookup (which
+// has its own dedicated tests in verification.test.ts).
+vi.mock('../verification', () => ({
+  getBidderVerification: vi.fn(async () => ({
+    tier: 'identity',
+    cardVerified: true,
+    identityVerified: true,
+    maxBidAllowed: Number.MAX_SAFE_INTEGER,
+    accountStatus: 'active',
+    canBid: true,
+  })),
+  checkBidAllowed: vi.fn(() => ({ allowed: true })),
+}));
+
+import { placeBid, initializeLotBidState, parseBidScriptResult, sealLotForSettlement, settlingKeyFor } from '../bid-engine';
 import { INCREMENT_TIERS } from '../bid-increments';
 import { checkAndExtendAuction } from '../anti-snipe';
 import { redis } from '@/lib/redis';
@@ -146,7 +161,7 @@ describe('placeBid – Redis validation', () => {
     expect(mockedRedis.eval).toHaveBeenCalledTimes(1);
     const [script, keys, args] = mockedRedis.eval.mock.calls[0];
     expect(script).toContain('STATE_MISSING');
-    expect(keys).toEqual(['bid:lot:lot-1:current', 'bid:lot:lot-1:close_time']);
+    expect(keys).toEqual(['bid:lot:lot-1:current', 'bid:lot:lot-1:close_time', 'bid:lot:lot-1:settling']);
     expect(args[0]).toBe('10500'); // amount
     expect(args[1]).toBe('bidder-1'); // bidder
     expect(args[3]).toBe(JSON.stringify(INCREMENT_TIERS)); // tier table
@@ -158,6 +173,36 @@ describe('placeBid – Redis validation', () => {
     await placeBid(baseInput);
     const [script] = mockedRedis.eval.mock.calls[0];
     expect(script).toContain('now >= closeTime');
+  });
+
+  it('bid Lua rejects when the settlement seal is present', async () => {
+    mockedRedis.eval.mockResolvedValue({ ok: false, error: 'AUCTION_CLOSED' });
+    await placeBid(baseInput);
+    const [script] = mockedRedis.eval.mock.calls[0];
+    // The fence check reads KEYS[3] (the settling key) and bails first.
+    expect(script).toContain("redis.call('GET', KEYS[3])");
+  });
+});
+
+describe('sealLotForSettlement – settlement fence', () => {
+  it('defers settlement when Redis close time is still in the future (live extension)', async () => {
+    mockedRedis.get.mockResolvedValue(2_000); // close time
+    const ready = await sealLotForSettlement('lot-1', 1_500); // now < close
+    expect(ready).toBe(false);
+    expect(mockedRedis.set).not.toHaveBeenCalledWith(settlingKeyFor('lot-1'), expect.anything(), expect.anything());
+  });
+
+  it('seals and reports ready when the close time has passed', async () => {
+    mockedRedis.get.mockResolvedValue(1_000);
+    const ready = await sealLotForSettlement('lot-1', 1_500); // now >= close
+    expect(ready).toBe(true);
+    expect(mockedRedis.set).toHaveBeenCalledWith('bid:lot:lot-1:settling', 1, { ex: 600 });
+  });
+
+  it('treats missing Redis state as ready (nothing to fence)', async () => {
+    mockedRedis.get.mockResolvedValue(null);
+    const ready = await sealLotForSettlement('lot-1', 1_500);
+    expect(ready).toBe(true);
   });
 });
 
@@ -254,12 +299,11 @@ describe('initializeLotBidState', () => {
 
     await initializeLotBidState('lot-1', closeTime, 5_000);
 
-    expect(mockedRedis.set).toHaveBeenCalledWith('bid:lot:lot-1:current', {
-      amount: 0,
-      bidderId: '',
-      timestamp: 0,
-      startingBid: 5_000,
-    });
+    expect(mockedRedis.set).toHaveBeenCalledWith(
+      'bid:lot:lot-1:current',
+      { amount: 0, bidderId: '', timestamp: 0, startingBid: 5_000 },
+      { nx: true },
+    );
     // NOT a pre-stringified value (that would get double-encoded by Upstash)
     const [, storedValue] = mockedRedis.set.mock.calls[0];
     expect(typeof storedValue).toBe('object');
@@ -270,7 +314,7 @@ describe('initializeLotBidState', () => {
 
     await initializeLotBidState('lot-1', closeTime, 1_000);
 
-    expect(mockedRedis.set).toHaveBeenCalledWith('bid:lot:lot-1:close_time', 1_750_000_000);
+    expect(mockedRedis.set).toHaveBeenCalledWith('bid:lot:lot-1:close_time', 1_750_000_000, { nx: true });
   });
 
   it('starts amount at 0 so the Lua script enforces the starting-bid floor on the first bid', async () => {

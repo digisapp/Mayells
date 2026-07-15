@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { aiSearch } from '@/lib/ai/search';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/request-ip';
 
 export async function GET(request: NextRequest) {
   try {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const ip = getClientIp(request);
     const { success } = await rateLimit(`ai:search:${ip}`, { maxRequests: 60, windowSeconds: 3600, failClosed: true });
     if (!success) {
       return NextResponse.json({ error: 'Rate limit exceeded. Please try again later.' }, { status: 429, headers: { 'Retry-After': '3600' } });

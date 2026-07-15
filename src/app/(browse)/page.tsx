@@ -60,7 +60,9 @@ async function getHomeData() {
       db
         .select()
         .from(lots)
-        .where(eq(lots.isFeatured, true))
+        // Only surface publicly-visible featured lots — a featured draft or
+        // withdrawn lot would render on the homepage and link to a 404.
+        .where(and(eq(lots.isFeatured, true), inArray(lots.status, ['for_sale', 'in_auction', 'sold'])))
         .orderBy(desc(lots.createdAt))
         .limit(8),
       db

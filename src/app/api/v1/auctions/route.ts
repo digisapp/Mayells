@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getClientIp } from '@/lib/request-ip';
 import { db } from '@/db';
 import { auctions } from '@/db/schema';
 import { inArray, desc, asc, sql, and } from 'drizzle-orm';
@@ -17,7 +18,7 @@ import { parsePagination } from '@/lib/pagination';
  *   offset — pagination offset
  */
 export async function GET(request: NextRequest) {
-  const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+  const ip = getClientIp(request);
   const { success, remaining, resetAt } = await rateLimit(`v1:auctions:${ip}`, {
     maxRequests: 200,
     windowSeconds: 3600,
