@@ -32,9 +32,37 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<HandlerRes
       return handleChargeDispute(event.data.object as Stripe.Dispute, event.type);
     case 'checkout.session.completed':
       return handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+    case 'identity.verification_session.verified':
+      return handleIdentityVerified(event.data.object as Stripe.Identity.VerificationSession);
     default:
       return { status: 'ignored' };
   }
+}
+
+/**
+ * A Stripe Identity session that passed. Mark the bidder identity-verified
+ * (Tier 3), lifting their bid ceiling. Guarded so it only ever acts on our own
+ * bidder-identity sessions and never clobbers an earlier verification time.
+ */
+async function handleIdentityVerified(
+  session: Stripe.Identity.VerificationSession,
+): Promise<HandlerResult> {
+  if (session.metadata?.purpose !== 'bidder_identity_verification') {
+    return { status: 'ignored' };
+  }
+  const userId = session.metadata?.userId;
+  if (!userId) return { status: 'ignored' };
+
+  await db
+    .update(users)
+    .set({ identityVerifiedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(users.id, userId), isNull(users.identityVerifiedAt)));
+
+  // A high-value bidder should have a paddle even if they skipped card
+  // verification and went straight to identity.
+  await ensurePaddleNumber(userId);
+
+  return { status: 'success', relatedType: 'user', relatedId: userId };
 }
 
 /**

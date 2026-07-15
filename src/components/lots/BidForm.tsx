@@ -76,10 +76,13 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
     return () => { active = false; };
   }, []);
 
-  async function startCardVerification() {
+  // Kick off card (Tier 2) or identity (Tier 3) verification and hand off to
+  // the Stripe-hosted flow, returning to this lot afterward.
+  async function startVerification(tier: 'card' | 'identity') {
     setVerifying(true);
     try {
-      const res = await fetch('/api/bidder/verify-card', {
+      const endpoint = tier === 'identity' ? '/api/bidder/verify-identity' : '/api/bidder/verify-card';
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ returnTo: `/lots/${lotRef}` }),
@@ -220,18 +223,26 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
             </div>
           </div>
           {verifyPrompt.tier === 'identity' ? (
-            <p className="text-xs text-muted-foreground">
-              For high-value lots we verify your identity. Please contact us to complete verification and bid.
-            </p>
+            <>
+              <Button variant="champagne" className="w-full gap-2" disabled={verifying} onClick={() => startVerification('identity')}>
+                {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                Verify my identity
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                For high-value lots we confirm your identity with a quick government-ID check, handled securely by Stripe. Takes about a minute.
+              </p>
+            </>
           ) : (
-            <Button variant="champagne" className="w-full gap-2" disabled={verifying} onClick={startCardVerification}>
-              {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-              Add a card to verify
-            </Button>
+            <>
+              <Button variant="champagne" className="w-full gap-2" disabled={verifying} onClick={() => startVerification('card')}>
+                {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                Add a card to verify
+              </Button>
+              <p className="text-[11px] text-muted-foreground">
+                We authorize your card to confirm you&apos;re a genuine bidder. You are not charged until you win.
+              </p>
+            </>
           )}
-          <p className="text-[11px] text-muted-foreground">
-            We authorize your card to confirm you&apos;re a genuine bidder. You are not charged until you win.
-          </p>
         </div>
       )}
 
