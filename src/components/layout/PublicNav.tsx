@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Search, Menu, X, Heart } from 'lucide-react';
+import { Search, Menu, X, Heart, Gavel } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
 const navLinks = [
@@ -58,6 +58,12 @@ export function PublicNav() {
               </Button>
             </Link>
 
+            <Link href="/my-bids" aria-label="My bids" className="hidden sm:block">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-10 w-10">
+                <Gavel className="h-[18px] w-[18px]" />
+              </Button>
+            </Link>
+
             <Link href="/watchlist" aria-label="My watchlist">
               <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-10 w-10">
                 <Heart className="h-[18px] w-[18px]" />
@@ -99,6 +105,13 @@ export function PublicNav() {
                   {link.label}
                 </Link>
               ))}
+              <Link
+                href="/my-bids"
+                className="block py-3 px-3 text-[15px] text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                onClick={() => setMobileOpen(false)}
+              >
+                My Bids
+              </Link>
               <Link
                 href="/watchlist"
                 className="block py-3 px-3 text-[15px] text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
