@@ -7,7 +7,9 @@ const provider = process.env.AI_PROVIDER || 'xai';
 const models = {
   standard: { xai: 'grok-3-fast', anthropic: 'claude-sonnet-4-20250514', openai: 'gpt-4o' },
   fast: { xai: 'grok-3-fast', anthropic: 'claude-haiku-4-5-20251001', openai: 'gpt-4o-mini' },
-  vision: { xai: 'grok-2-vision-1212', anthropic: 'claude-sonnet-4-20250514', openai: 'gpt-4o' },
+  // grok-2-vision-1212 was retired by xAI (returns "Model not found" as of
+  // July 2026); grok-4.3 is multimodal and verified working with image URLs.
+  vision: { xai: 'grok-4.3', anthropic: 'claude-sonnet-4-20250514', openai: 'gpt-4o' },
 } as const;
 
 // The public chat widget always uses xAI (Grok) for its vision support,

@@ -5,6 +5,10 @@ import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
+import { instantEstimate } from '@/lib/ai/instant-estimate';
+
+// Photo uploads plus a vision-model estimate can exceed the default timeout.
+export const maxDuration = 60;
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB per file
@@ -90,15 +94,34 @@ export async function POST(req: NextRequest) {
     }
     ({ name, phone, email, items, service, message } = parsed.data as typeof parsed.data & { name: string; phone: string });
 
+    // Preliminary AI estimate for the prospect. Strictly best-effort: any
+    // failure (model down, unparseable photos) must not fail the request.
+    const estimate = photoUrls.length > 0
+      ? await instantEstimate({ imageUrls: photoUrls, itemsDescription: items })
+      : null;
+
     sendAppraisalRequestNotification(
       { name, phone, email, service, items, message },
       photoUrls,
+      estimate,
     ).catch((err) =>
       logger.error('Failed to send appraisal notification', err),
     );
 
     return NextResponse.json(
-      { data: { message: 'Request submitted successfully' } },
+      {
+        data: {
+          message: 'Request submitted successfully',
+          estimate: estimate
+            ? {
+                estimateLow: estimate.estimateLow,
+                estimateHigh: estimate.estimateHigh,
+                confidence: estimate.confidence,
+                summary: estimate.summary,
+              }
+            : null,
+        },
+      },
       { status: 201 },
     );
   } catch {

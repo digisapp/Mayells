@@ -6,6 +6,17 @@ import { eq, and, desc, or } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { logger } from '@/lib/logger';
 import { processInboundEmail } from '@/lib/ai/email-reply';
+import { forwardInboundEmail } from '@/lib/email/notifications';
+
+// Never forward mail that originates from our own sending identities — a
+// platform notification delivered back to an @mayells.com address would
+// otherwise be re-forwarded on every such email.
+const OWN_DOMAINS = ['@mayells.com', '@mayellauctions.com'];
+
+function isOwnAddress(email: string): boolean {
+  const lower = email.toLowerCase();
+  return OWN_DOMAINS.some((d) => lower.endsWith(d));
+}
 
 // ─── Spam Filtering ───────────────────────────────────────────────────────────
 
@@ -230,6 +241,24 @@ export async function POST(req: NextRequest) {
         userId,
         isSpam: spam,
       }).returning();
+
+      // Copy to the owner's external mailbox so inbound mail survives
+      // platform outages. Best-effort: a forward failure must not fail the
+      // webhook (the original is already stored and visible in /admin/emails).
+      if (!spam && saved && !isOwnAddress(fromEmail)) {
+        try {
+          await forwardInboundEmail({
+            fromEmail,
+            fromName,
+            toEmail,
+            subject,
+            bodyHtml,
+            bodyText,
+          });
+        } catch (err) {
+          logger.error('Inbound email forward failed', err, { emailId: saved.id });
+        }
+      }
 
       if (!spam && saved) {
         try {

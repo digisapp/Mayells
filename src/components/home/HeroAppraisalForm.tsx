@@ -2,12 +2,27 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, ArrowRight, Camera, X, MessageCircle } from 'lucide-react';
+import { CheckCircle, ArrowRight, Camera, X, MessageCircle, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PhotoItem {
   file: File;
   preview: string;
+}
+
+interface EstimateResult {
+  estimateLow: number;
+  estimateHigh: number;
+  confidence: 'low' | 'medium' | 'high';
+  summary: string;
+}
+
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -24,6 +39,7 @@ export function HeroAppraisalForm() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [estimate, setEstimate] = useState<EstimateResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,6 +77,8 @@ export function HeroAppraisalForm() {
         body: formData,
       });
       if (res.ok) {
+        const body = await res.json().catch(() => null);
+        setEstimate(body?.data?.estimate ?? null);
         setSubmitted(true);
       } else {
         toast.error('Failed to submit. Please try again.');
@@ -75,16 +93,44 @@ export function HeroAppraisalForm() {
   return (
     <div className="bg-white/[0.04] border border-white/10 rounded-xl sm:rounded-2xl p-5 sm:p-7">
       {submitted ? (
-        <div className="text-center py-6">
-          <CheckCircle className="h-10 w-10 text-champagne mx-auto mb-3" />
-          <h3 className="font-display text-lg mb-1">Request Received</h3>
-          <p className="text-white/60 text-sm">
-            A specialist will contact you within 24 hours.
-          </p>
-        </div>
+        estimate ? (
+          <div className="py-2">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="h-4 w-4 text-champagne" />
+              <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">
+                Preliminary Estimate
+              </span>
+            </div>
+            <p className="font-display text-3xl tracking-tight tabular-nums">
+              {formatUsd(estimate.estimateLow)} – {formatUsd(estimate.estimateHigh)}
+            </p>
+            <p className="mt-3 text-sm text-white/70 leading-relaxed">{estimate.summary}</p>
+            <div className="mt-5 pt-4 border-t border-white/10 flex items-start gap-2.5">
+              <CheckCircle className="h-4 w-4 text-champagne mt-0.5 shrink-0" />
+              <p className="text-[13px] text-white/60 leading-relaxed">
+                Request received. A specialist will confirm this estimate and contact you within 24 hours.
+              </p>
+            </div>
+            <p className="mt-3 text-[11px] text-white/35">
+              AI-generated preliminary range based on your photos — not a formal appraisal.
+            </p>
+          </div>
+        ) : (
+          <div className="text-center py-6">
+            <CheckCircle className="h-10 w-10 text-champagne mx-auto mb-3" />
+            <h3 className="font-display text-lg mb-1">Request Received</h3>
+            <p className="text-white/60 text-sm">
+              A specialist will contact you within 24 hours.
+            </p>
+          </div>
+        )
       ) : (
         <>
-          <h3 className="font-display text-lg mb-5">Request a Free Appraisal</h3>
+          <h3 className="font-display text-lg mb-1">Request a Free Appraisal</h3>
+          <p className="text-[13px] text-white/45 mb-5 flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-champagne/80" />
+            Add photos to get an instant AI estimate
+          </p>
           <form onSubmit={handleSubmit} className="space-y-3">
             <input
               type="text"
@@ -150,12 +196,18 @@ export function HeroAppraisalForm() {
                 className="w-full flex items-center justify-center gap-2 bg-white/[0.06] border border-dashed border-white/20 hover:border-champagne/40 rounded-lg px-4 py-2.5 text-sm text-white/50 hover:text-white/70 transition-colors"
               >
                 <Camera className="h-4 w-4" />
-                {photos.length > 0 ? `${photos.length} photo${photos.length !== 1 ? 's' : ''} — add more` : 'Upload photos (optional)'}
+                {photos.length > 0 ? `${photos.length} photo${photos.length !== 1 ? 's' : ''} — add more` : 'Upload photos for an instant estimate'}
               </button>
             </div>
 
             <Button type="submit" variant="champagne" size="lg" className="w-full" disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Get Free Appraisal'}
+              {submitting
+                ? photos.length > 0
+                  ? 'Analyzing your photos…'
+                  : 'Submitting...'
+                : photos.length > 0
+                  ? 'Get Instant Estimate'
+                  : 'Get Free Appraisal'}
               {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
             </Button>
             <div className="flex items-center justify-center gap-2 pt-2">

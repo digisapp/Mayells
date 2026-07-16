@@ -8,10 +8,11 @@ import { logger } from '@/lib/logger';
 
 const FROM = 'Mayell <notifications@mayells.com>';
 const FROM_EMAIL = 'notifications@mayells.com';
-const ADMIN_EMAIL = BUSINESS.email;
+const ADMIN_EMAIL = [...BUSINESS.notifyEmails];
 
-async function sendAndLog(params: { to: string; subject: string; html: string }) {
+async function sendAndLog(params: { to: string | string[]; subject: string; html: string }) {
   const resend = getResend();
+  const toLabel = Array.isArray(params.to) ? params.to.join(', ') : params.to;
   // The Resend SDK returns { data, error } and never throws
   const { data: sent, error } = await resend.emails.send({
     from: FROM,
@@ -22,7 +23,7 @@ async function sendAndLog(params: { to: string; subject: string; html: string })
 
   if (error) {
     logger.error('Failed to send email via Resend', undefined, {
-      to: params.to,
+      to: toLabel,
       subject: params.subject,
       error: error.message,
     });
@@ -32,12 +33,12 @@ async function sendAndLog(params: { to: string; subject: string; html: string })
       direction: 'outbound',
       fromEmail: FROM_EMAIL,
       fromName: 'Mayell',
-      toEmail: params.to,
+      toEmail: toLabel,
       subject: params.subject,
       bodyHtml: params.html,
       status: 'bounced',
     });
-    throw new Error(`Failed to send email to ${params.to}: ${error.message}`);
+    throw new Error(`Failed to send email to ${toLabel}: ${error.message}`);
   }
 
   await db.insert(emails).values({
@@ -45,7 +46,7 @@ async function sendAndLog(params: { to: string; subject: string; html: string })
     direction: 'outbound',
     fromEmail: FROM_EMAIL,
     fromName: 'Mayell',
-    toEmail: params.to,
+    toEmail: toLabel,
     subject: params.subject,
     bodyHtml: params.html,
     status: 'sent',
@@ -141,6 +142,98 @@ export async function sendEndingSoonNotification(params: {
   });
 }
 
+/**
+ * Forward a copy of an inbound email to the owner's external mailbox.
+ * Deliberately NOT routed through sendAndLog: the original message is already
+ * stored in the emails table, and logging the forward too would double every
+ * inbound thread in the admin inbox. Reply-To is set to the original sender
+ * so replying from the external mailbox goes straight to the customer.
+ */
+export async function forwardInboundEmail(params: {
+  fromEmail: string;
+  fromName: string | null;
+  toEmail: string;
+  subject: string;
+  bodyHtml: string | null;
+  bodyText: string | null;
+}) {
+  const resend = getResend();
+  const senderLabel = params.fromName
+    ? `${params.fromName} <${params.fromEmail}>`
+    : params.fromEmail;
+
+  const originalBody =
+    params.bodyHtml ??
+    (params.bodyText
+      ? `<pre style="font-family: inherit; white-space: pre-wrap;">${escapeHtml(params.bodyText)}</pre>`
+      : '<p style="color: #999;">(no message body)</p>');
+
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: BUSINESS.forwardInboundTo,
+    replyTo: params.fromEmail,
+    subject: `Fwd: ${params.subject}`,
+    html: `
+      <div style="font-size: 12px; color: #666; border-bottom: 1px solid #ddd; padding-bottom: 8px; margin-bottom: 12px;">
+        Forwarded from the Mayells inbox — reply goes directly to the sender.<br />
+        <strong>From:</strong> ${escapeHtml(senderLabel)}<br />
+        <strong>To:</strong> ${escapeHtml(params.toEmail)}
+      </div>
+      ${originalBody}
+    `,
+  });
+  if (error) {
+    throw new Error(`Failed to forward inbound email: ${error.message}`);
+  }
+}
+
+export async function sendSavedSearchAlert(params: {
+  email: string;
+  searchLabel: string;
+  searchUrl: string;
+  baseUrl: string;
+  lots: Array<{
+    title: string;
+    url: string;
+    imageUrl: string | null;
+    estimateLow: number | null;
+    estimateHigh: number | null;
+    buyNowPrice: number | null;
+  }>;
+}) {
+  const lotRows = params.lots
+    .map((lot) => {
+      const price = lot.buyNowPrice
+        ? `Buy now: ${formatCurrency(lot.buyNowPrice)}`
+        : lot.estimateLow && lot.estimateHigh
+          ? `Est. ${formatCurrency(lot.estimateLow)} – ${formatCurrency(lot.estimateHigh)}`
+          : '';
+      return `
+        <tr>
+          ${lot.imageUrl ? `<td style="padding: 10px 12px 10px 0; width: 84px;"><a href="${lot.url}"><img src="${lot.imageUrl}" alt="" style="width: 72px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid #eee;" /></a></td>` : '<td style="padding: 10px 12px 10px 0; width: 84px;"></td>'}
+          <td style="padding: 10px 0;">
+            <a href="${lot.url}" style="color: #272D35; font-weight: bold; text-decoration: none;">${escapeHtml(lot.title)}</a>
+            ${price ? `<div style="color: #666; font-size: 13px; margin-top: 4px;">${price}</div>` : ''}
+          </td>
+        </tr>`;
+    })
+    .join('');
+
+  await sendAndLog({
+    to: params.email,
+    subject: `New arrivals for "${params.searchLabel}"`,
+    html: emailLayout(`
+        <p>New items matching a search you follow just arrived at Mayell.</p>
+        <p style="font-size: 16px; font-weight: bold; margin: 16px 0 8px;">&ldquo;${escapeHtml(params.searchLabel)}&rdquo;</p>
+        <table style="margin: 8px 0 20px; border-collapse: collapse; width: 100%;">${lotRows}</table>
+        ${ctaButton(params.searchUrl, 'View All Matches')}
+        <p style="margin-top: 20px; font-size: 12px; color: #999;">
+          You follow this search on Mayell. <a href="${params.baseUrl}/watchlist" style="color: #999;">Manage followed searches</a>.
+        </p>
+    `, 'New Arrivals'),
+  });
+}
+
 export async function sendInvoiceNotification(params: {
   email: string;
   lotTitle: string;
@@ -199,6 +292,13 @@ export async function sendAppraisalRequestNotification(
     message?: string;
   },
   photoUrls?: string[],
+  aiEstimate?: {
+    estimateLow: number;
+    estimateHigh: number;
+    confidence: string;
+    summary: string;
+    worthConsigning: boolean;
+  } | null,
 ) {
   const rows = [
     `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Name:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(params.name)}</td></tr>`,
@@ -218,11 +318,25 @@ export async function sendAppraisalRequestNotification(
     `
     : '';
 
+  const estimateSection = aiEstimate
+    ? `
+      <h2 style="color: #272D35; font-size: 18px; margin-top: 24px;">AI Preliminary Estimate</h2>
+      <table style="margin: 12px 0; border-collapse: collapse;">
+        <tr><td style="padding: 6px 12px; color: #666;">Range:</td><td style="padding: 6px 12px; font-weight: bold;">${formatCurrency(aiEstimate.estimateLow)} – ${formatCurrency(aiEstimate.estimateHigh)}</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666;">Confidence:</td><td style="padding: 6px 12px;">${escapeHtml(aiEstimate.confidence)}</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666;">Fit:</td><td style="padding: 6px 12px;">${aiEstimate.worthConsigning ? 'Looks consignable' : 'Possibly below threshold'}</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Summary:</td><td style="padding: 6px 12px;">${escapeHtml(aiEstimate.summary)}</td></tr>
+      </table>
+      <p style="font-size: 12px; color: #999;">This range was already shown to the prospect on mayells.com.</p>
+    `
+    : '';
+
   await sendAndLog({
     to: ADMIN_EMAIL,
-    subject: `New Service Request from ${params.name}${photoUrls?.length ? ` (${photoUrls.length} photos)` : ''}`,
+    subject: `New Service Request from ${params.name}${photoUrls?.length ? ` (${photoUrls.length} photos)` : ''}${aiEstimate ? ` — AI est. ${formatCurrency(aiEstimate.estimateLow)}–${formatCurrency(aiEstimate.estimateHigh)}` : ''}`,
     html: adminEmailLayout(`
         <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">${rows}</table>
+        ${estimateSection}
         ${photoSection}
     `, 'New Service / Appraisal Request'),
   });
