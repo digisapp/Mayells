@@ -2,7 +2,9 @@ import { openai } from '@ai-sdk/openai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { xai } from '@ai-sdk/xai';
 
-const provider = process.env.AI_PROVIDER || 'xai';
+// trim(): a trailing newline in the env var (e.g. from `echo xai | vercel env
+// add`) silently failed every provider match and broke all non-chat AI in prod.
+const provider = (process.env.AI_PROVIDER || 'xai').trim();
 
 const models = {
   standard: { xai: 'grok-3-fast', anthropic: 'claude-sonnet-4-20250514', openai: 'gpt-4o' },
