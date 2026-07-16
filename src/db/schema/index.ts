@@ -6,6 +6,7 @@ export * from './auctions';
 export * from './bids';
 export * from './invoices';
 export * from './payments';
+export * from './payouts';
 export * from './consignments';
 export * from './watchlist';
 export * from './saved-searches';

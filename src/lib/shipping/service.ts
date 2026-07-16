@@ -83,7 +83,9 @@ export async function createShipmentForInvoice(invoiceId: string) {
     country: buyerAddress.country || invoice.buyer?.shippingCountry || 'US',
   };
 
-  // Create shipment record
+  // Create shipment record. onConflictDoNothing + the partial unique index on
+  // invoice_id make concurrent auto-creation (racing webhook deliveries)
+  // collapse to a single shipment instead of duplicates.
   const [shipment] = await db.insert(shipments).values({
     invoiceId: invoice.id,
     lotId: invoice.lotId,
@@ -113,7 +115,10 @@ export async function createShipmentForInvoice(invoiceId: string) {
     toState: toAddress.state,
     toZip: toAddress.zip,
     toCountry: toAddress.country,
-  }).returning();
+  }).onConflictDoNothing().returning();
+
+  // Conflict — another concurrent call already created this invoice's shipment
+  if (!shipment) return null;
 
   // Auto-generate label if enabled
   if (settings?.autoGenerateLabel && !isWhiteGlove) {

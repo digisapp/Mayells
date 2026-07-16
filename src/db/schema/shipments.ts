@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, pgEnum, index, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, pgEnum, index, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 import { users } from './users';
 import { invoices } from './invoices';
@@ -113,6 +113,10 @@ export const shipments = pgTable('shipments', {
   createdAt: timestamp('created_at').default(sql`now()`),
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [
+  // One shipment per invoice (one lot per invoice) — makes auto-creation on
+  // payment idempotent under concurrent webhook deliveries. 'returned' is
+  // excluded so a returned-to-sender shipment can be re-attempted.
+  uniqueIndex('shipments_invoice_unique_idx').on(table.invoiceId).where(sql`status <> 'returned'`),
   index('shipments_invoice_idx').on(table.invoiceId),
   index('shipments_lot_idx').on(table.lotId),
   index('shipments_seller_idx').on(table.sellerId),

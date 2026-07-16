@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { invoices, payments, lots, users } from '@/db/schema';
 import { eq, and, inArray, isNull } from 'drizzle-orm';
+import { processPaidInvoice, cancelPayoutForRefundedInvoice } from '@/lib/payouts/service';
 import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe/config';
 import { logger } from '@/lib/logger';
@@ -168,6 +169,22 @@ async function handlePaymentIntentSucceeded(
 
   const chargeId = (paymentIntent.latest_charge as string) ?? null;
 
+  // Out-of-order delivery guard: if the charge was already refunded (refund
+  // event processed first, or refunded from the dashboard while our endpoint
+  // was down), do NOT mark the invoice paid — that would re-sell the lot and
+  // owe the seller a payout for money we returned.
+  if (chargeId) {
+    const charge = await stripe.charges.retrieve(chargeId);
+    if (charge.refunded) {
+      logger.error('payment_intent.succeeded for an already-refunded charge — manual reconciliation required', undefined, {
+        invoiceId,
+        paymentIntentId: paymentIntent.id,
+        chargeId,
+      });
+      return result;
+    }
+  }
+
   // Only transition payable invoices — never resurrect refunded/cancelled
   const updated = await db
     .update(invoices)
@@ -188,6 +205,10 @@ async function handlePaymentIntentSucceeded(
     if (lotId) {
       await db.update(lots).set({ status: 'sold', updatedAt: new Date() }).where(eq(lots.id, lotId));
     }
+
+    // Seller-side settlement: record the payout, create the shipment, send the
+    // seller statement + buyer confirmation. Internally guarded — never throws.
+    await processPaidInvoice(invoiceId, { sendBuyerConfirmation: true });
     return result;
   }
 
@@ -208,6 +229,12 @@ async function handlePaymentIntentSucceeded(
       invoiceStatus: invoice.status,
       paymentIntentId: paymentIntent.id,
     });
+    // Self-heal: if a prior delivery marked the invoice paid but crashed before
+    // the seller-side settlement finished, this re-run completes it (every step
+    // is idempotent). Skipped for refunded/cancelled invoices.
+    if (invoice.status === 'paid') {
+      await processPaidInvoice(invoiceId);
+    }
     return result;
   }
 
@@ -312,6 +339,20 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<HandlerResul
       .limit(1);
     invoiceId = invoice?.id ?? null;
   }
+  // Last resort: the PaymentIntent's metadata (set at checkout creation).
+  // Needed when the refund event arrives before the succeeded event ever
+  // wrote a payments row or stamped the invoice.
+  if (!invoiceId) {
+    try {
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      invoiceId = pi.metadata?.invoiceId ?? null;
+    } catch (err) {
+      logger.warn('Could not resolve invoice for refunded charge via payment intent', {
+        paymentIntentId,
+        err: String(err),
+      });
+    }
+  }
 
   if (fullyRefunded) {
     if (payment) {
@@ -337,6 +378,9 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<HandlerResul
           .set({ status: 'unsold', winnerId: null, hammerPrice: null, updatedAt: new Date() })
           .where(eq(lots.id, refundedInvoice[0].lotId));
       }
+
+      // The seller must not be paid for an unwound sale.
+      await cancelPayoutForRefundedInvoice(invoiceId);
     }
   } else {
     // Partial refund — record the event but leave statuses unchanged

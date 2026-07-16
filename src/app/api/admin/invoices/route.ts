@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { invoices, users, lots } from '@/db/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
+import { processPaidInvoice, cancelPayoutForRefundedInvoice } from '@/lib/payouts/service';
 
 const invoicePatchSchema = z.object({
   id: z.string().uuid('Valid invoice ID required'),
@@ -92,6 +93,33 @@ export async function PATCH(req: NextRequest) {
 
       updates.status = status;
       if (status === 'paid') updates.paidAt = sql`now()`;
+
+      // Compare-and-swap on the status we validated against — two admins
+      // racing (e.g. paid vs cancelled) must not both slip through the
+      // transition table.
+      const [updated] = await db
+        .update(invoices)
+        .set(updates)
+        .where(and(eq(invoices.id, id), eq(invoices.status, existing.status)))
+        .returning();
+
+      if (!updated) {
+        return NextResponse.json(
+          { error: 'Invoice was modified by someone else — reload and try again' },
+          { status: 409 },
+        );
+      }
+
+      // Manual transitions need the same seller-side settlement as Stripe ones:
+      // a wire/check payment recorded here still owes the seller a payout, and
+      // a manual refund unwinds it. Both are idempotent and never throw.
+      if (status === 'paid') {
+        await processPaidInvoice(updated.id);
+      } else if (status === 'refunded') {
+        await cancelPayoutForRefundedInvoice(updated.id);
+      }
+
+      return NextResponse.json({ data: updated });
     }
 
     const [updated] = await db

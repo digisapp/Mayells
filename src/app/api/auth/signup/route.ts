@@ -6,6 +6,7 @@ import { users } from '@/db/schema';
 import { signupSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
+import { claimShadowUserByEmail } from '@/lib/sellers/shadow';
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,13 +38,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Sign-up failed. Please try again.' }, { status: 400 });
     }
 
+    // With email confirmation on, Supabase "succeeds" for an already-registered
+    // email by returning an obfuscated fake user (random id, no identities)
+    // instead of an error. Creating/claiming anything for that fake id would
+    // corrupt real data — respond exactly like a fresh confirmation-pending
+    // signup so account existence isn't leaked either way.
+    if (!data.user.identities || data.user.identities.length === 0) {
+      return NextResponse.json({ success: true, needsConfirmation: true, role });
+    }
+
     // Create the profile row. db uses the service-role connection so this works
     // regardless of RLS. onConflictDoNothing tolerates a DB trigger that may
     // already provision the profile from auth.users.
-    await db
-      .insert(users)
-      .values({ id: data.user.id, email, fullName, role })
-      .onConflictDoNothing({ target: users.id });
+    try {
+      await db
+        .insert(users)
+        .values({ id: data.user.id, email, fullName, role })
+        .onConflictDoNothing({ target: users.id });
+    } catch (insertError) {
+      // A unique-email conflict here means a shadow seller row (a prospect
+      // consignor we minted as seller-of-record) already holds this email —
+      // Supabase auth would have rejected the signup if a real account owned
+      // it. Claim the shadow row so their lots/payouts follow them.
+      const claimed = await claimShadowUserByEmail({
+        authUserId: data.user.id,
+        email,
+        fullName,
+        role,
+      }).catch(() => false);
+      if (!claimed) throw insertError;
+    }
 
     // If email confirmation is required, there's no session yet — tell the
     // client to prompt the user to confirm; otherwise they're logged in.

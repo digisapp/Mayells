@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "shipments_invoice_unique_idx" ON "shipments" USING btree ("invoice_id") WHERE status <> 'returned';
