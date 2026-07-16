@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, ArrowRight, Camera, X, MessageCircle, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { compressImage, uploadPhotosDirect, MAX_PHOTOS, MAX_FILE_SIZE } from '@/lib/upload/direct-upload';
 
 interface PhotoItem {
   file: File;
@@ -25,6 +26,10 @@ function formatUsd(cents: number): string {
   }).format(cents / 100);
 }
 
+function formatRange(low: number, high: number): string {
+  return low === high ? formatUsd(low) : `${formatUsd(low)} – ${formatUsd(high)}`;
+}
+
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -40,18 +45,30 @@ export function HeroAppraisalForm() {
   const [submitting, setSubmitting] = useState(false);
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [estimate, setEstimate] = useState<EstimateResult | null>(null);
+  const [stage, setStage] = useState<'uploading' | 'analyzing' | 'submitting' | null>(null);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const imageFiles = files.filter((f) => f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.heic'));
-    if (photos.length + imageFiles.length > 50) {
-      toast.error('Maximum 50 photos allowed');
+    if (imageFiles.length < files.length) {
+      toast.error('Some files were skipped — only photos can be uploaded.');
+    }
+    if (photos.length + imageFiles.length > MAX_PHOTOS) {
+      toast.error(`Maximum ${MAX_PHOTOS} photos allowed`);
       return;
+    }
+    // Shrink on-device before preview/upload: faster on cell connections and
+    // converts HEIC to JPEG on browsers that can decode it.
+    const compressed = await Promise.all(imageFiles.map((f) => compressImage(f)));
+    const sized = compressed.filter((f) => f.size <= MAX_FILE_SIZE);
+    if (sized.length < compressed.length) {
+      toast.error('Some photos were over 15MB and were skipped.');
     }
     // Build each preview alongside its file so the two can never get out of order
     const newPhotos = await Promise.all(
-      imageFiles.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
+      sized.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
     );
     setPhotos((prev) => [...prev, ...newPhotos]);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -65,16 +82,36 @@ export function HeroAppraisalForm() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append('name', form.name);
-      formData.append('email', form.email);
-      formData.append('phone', form.phone);
-      formData.append('items', form.items);
-      photos.forEach((photo) => formData.append('photos', photo.file));
+      // Photos go directly to storage (request bodies through the API are
+      // size-capped), then only their paths are submitted.
+      let photoPaths: string[] = [];
+      if (photos.length > 0) {
+        setStage('uploading');
+        const { paths, failed } = await uploadPhotosDirect(
+          photos.map((p) => p.file),
+          (done, total) => setUploadProgress({ done, total }),
+        );
+        photoPaths = paths;
+        if (failed > 0 && paths.length === 0) {
+          toast.error('Photo upload failed. Please try again.');
+          return;
+        }
+        if (failed > 0) {
+          toast.error(`${failed} photo${failed !== 1 ? 's' : ''} failed to upload — continuing with the rest.`);
+        }
+      }
 
+      setStage(photoPaths.length > 0 ? 'analyzing' : 'submitting');
       const res = await fetch('/api/appraisal-requests', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          items: form.items,
+          photoPaths,
+        }),
       });
       if (res.ok) {
         const body = await res.json().catch(() => null);
@@ -87,6 +124,7 @@ export function HeroAppraisalForm() {
       toast.error('Network error. Please try again.');
     } finally {
       setSubmitting(false);
+      setStage(null);
     }
   };
 
@@ -102,7 +140,7 @@ export function HeroAppraisalForm() {
               </span>
             </div>
             <p className="font-display text-3xl tracking-tight tabular-nums">
-              {formatUsd(estimate.estimateLow)} – {formatUsd(estimate.estimateHigh)}
+              {formatRange(estimate.estimateLow, estimate.estimateHigh)}
             </p>
             <p className="mt-3 text-sm text-white/70 leading-relaxed">{estimate.summary}</p>
             <div className="mt-5 pt-4 border-t border-white/10 flex items-start gap-2.5">
@@ -178,7 +216,16 @@ export function HeroAppraisalForm() {
                 <div className="flex gap-2 mb-2 flex-wrap">
                   {photos.map((photo, i) => (
                     <div key={i} className="relative group">
-                      <img src={photo.preview} alt={`Photo ${i + 1}`} className="h-12 w-12 object-cover rounded-lg border border-white/10" />
+                      <img
+                        src={photo.preview}
+                        alt={`Photo ${i + 1}`}
+                        className="h-12 w-12 object-cover rounded-lg border border-white/10"
+                        onError={(e) => {
+                          // Browsers that can't decode HEIC show a neutral tile
+                          e.currentTarget.src =
+                            'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="48" height="48" fill="%23555" rx="8"/></svg>';
+                        }}
+                      />
                       <button
                         type="button"
                         onClick={() => removePhoto(i)}
@@ -202,9 +249,11 @@ export function HeroAppraisalForm() {
 
             <Button type="submit" variant="champagne" size="lg" className="w-full" disabled={submitting}>
               {submitting
-                ? photos.length > 0
-                  ? 'Analyzing your photos…'
-                  : 'Submitting...'
+                ? stage === 'uploading'
+                  ? `Uploading photos… (${uploadProgress.done}/${uploadProgress.total})`
+                  : stage === 'analyzing'
+                    ? 'Analyzing your photos…'
+                    : 'Submitting...'
                 : photos.length > 0
                   ? 'Get Instant Estimate'
                   : 'Get Free Appraisal'}

@@ -12,8 +12,10 @@ import {
   X,
   MessageCircle,
   Clock,
+  Sparkles,
 } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
+import { compressImage, uploadPhotosDirect, MAX_PHOTOS, MAX_FILE_SIZE } from '@/lib/upload/direct-upload';
 
 
 const steps = [
@@ -54,57 +56,46 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+interface ConsignEstimate {
+  estimateLow: number;
+  estimateHigh: number;
+  confidence: 'low' | 'medium' | 'high';
+  summary: string;
+}
+
+function formatUsd(cents: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
 export default function ConsignPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [estimate, setEstimate] = useState<ConsignEstimate | null>(null);
+  const [stage, setStage] = useState<'uploading' | 'analyzing' | 'submitting' | null>(null);
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  function compressImage(file: File, maxDim = 2000, quality = 0.8): Promise<File> {
-    return new Promise((resolve) => {
-      if (file.size <= 500 * 1024) { resolve(file); return; }
-      const img = new window.Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDim || height > maxDim) {
-          const scale = maxDim / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => {
-            if (blob && blob.size < file.size) {
-              resolve(new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' }));
-            } else {
-              resolve(file);
-            }
-          },
-          'image/jpeg',
-          quality,
-        );
-        URL.revokeObjectURL(img.src);
-      };
-      img.onerror = () => resolve(file);
-      img.src = URL.createObjectURL(file);
-    });
-  }
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const imageFiles = files.filter((f) => f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.heic'));
-    if (photos.length + imageFiles.length > 50) {
-      toast.error('Maximum 50 photos allowed');
+    if (photos.length + imageFiles.length > MAX_PHOTOS) {
+      toast.error(`Maximum ${MAX_PHOTOS} photos allowed`);
       return;
     }
     const compressed = await Promise.all(imageFiles.map((f) => compressImage(f)));
+    const sized = compressed.filter((f) => f.size <= MAX_FILE_SIZE);
+    if (sized.length < compressed.length) {
+      toast.error('Some photos were over 15MB and were skipped.');
+    }
     // Build each preview alongside its file so the two can never get out of order
     const newPhotos = await Promise.all(
-      compressed.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
+      sized.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
     );
     setPhotos((prev) => [...prev, ...newPhotos]);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -118,19 +109,41 @@ export default function ConsignPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const formData = new FormData();
-      formData.append('name', form.name);
-      formData.append('phone', form.phone);
-      formData.append('email', form.email);
-      formData.append('items', form.items);
-      formData.append('service', 'Consignment');
-      photos.forEach((photo) => formData.append('photos', photo.file));
+      // Photos upload directly to storage — the API request body is
+      // size-capped by the platform, so only the paths go through it.
+      let photoPaths: string[] = [];
+      if (photos.length > 0) {
+        setStage('uploading');
+        const { paths, failed } = await uploadPhotosDirect(
+          photos.map((p) => p.file),
+          (done, total) => setUploadProgress({ done, total }),
+        );
+        photoPaths = paths;
+        if (failed > 0 && paths.length === 0) {
+          toast.error('Photo upload failed. Please try again.');
+          return;
+        }
+        if (failed > 0) {
+          toast.error(`${failed} photo${failed !== 1 ? 's' : ''} failed to upload — continuing with the rest.`);
+        }
+      }
 
+      setStage(photoPaths.length > 0 ? 'analyzing' : 'submitting');
       const res = await fetch('/api/appraisal-requests', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          phone: form.phone,
+          email: form.email,
+          items: form.items,
+          service: 'Consignment',
+          photoPaths,
+        }),
       });
       if (res.ok) {
+        const body = await res.json().catch(() => null);
+        setEstimate(body?.data?.estimate ?? null);
         setSubmitted(true);
         track('consignment_started', { photoCount: photos.length });
       } else {
@@ -140,6 +153,7 @@ export default function ConsignPage() {
       toast.error('Network error. Please try again.');
     } finally {
       setSubmitting(false);
+      setStage(null);
     }
   };
 
@@ -259,6 +273,26 @@ export default function ConsignPage() {
                 Thank you! We&apos;ll review your submission and call you within 24 hours.
               </p>
 
+              {estimate && (
+                <div className="bg-charcoal text-white rounded-xl p-6 mb-8 text-left">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="h-4 w-4 text-champagne" />
+                    <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">
+                      Preliminary Estimate
+                    </span>
+                  </div>
+                  <p className="font-display text-3xl tracking-tight tabular-nums">
+                    {estimate.estimateLow === estimate.estimateHigh
+                      ? formatUsd(estimate.estimateLow)
+                      : `${formatUsd(estimate.estimateLow)} – ${formatUsd(estimate.estimateHigh)}`}
+                  </p>
+                  <p className="mt-3 text-sm text-white/70 leading-relaxed">{estimate.summary}</p>
+                  <p className="mt-4 text-[11px] text-white/35">
+                    AI-generated preliminary range based on your photos — a specialist will confirm before anything is finalized.
+                  </p>
+                </div>
+              )}
+
               <div className="bg-gray-50 rounded-xl border border-gray-100 p-6 mb-8 text-left">
                 <h3 className="font-semibold text-sm text-charcoal mb-4 text-center">What happens next</h3>
                 <div className="space-y-3">
@@ -349,7 +383,16 @@ export default function ConsignPage() {
                     <div className="flex gap-2 mb-3 flex-wrap">
                       {photos.map((photo, i) => (
                         <div key={i} className="relative group">
-                          <img src={photo.preview} alt={`Photo ${i + 1}`} className="h-16 w-16 object-cover rounded-lg border border-gray-200" />
+                          <img
+                            src={photo.preview}
+                            alt={`Photo ${i + 1}`}
+                            className="h-16 w-16 object-cover rounded-lg border border-gray-200"
+                            onError={(e) => {
+                              // Browsers that can't decode HEIC show a neutral tile
+                              e.currentTarget.src =
+                                'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="%23ddd" rx="8"/></svg>';
+                            }}
+                          />
                           <button
                             type="button"
                             onClick={() => removePhoto(i)}
@@ -372,7 +415,15 @@ export default function ConsignPage() {
                 </div>
 
                 <Button type="submit" variant="champagne" size="lg" className="w-full" disabled={submitting}>
-                  {submitting ? 'Submitting...' : 'Get Your Free Appraisal'}
+                  {submitting
+                    ? stage === 'uploading'
+                      ? `Uploading photos… (${uploadProgress.done}/${uploadProgress.total})`
+                      : stage === 'analyzing'
+                        ? 'Analyzing your photos…'
+                        : 'Submitting...'
+                    : photos.length > 0
+                      ? 'Get Instant Estimate'
+                      : 'Get Your Free Appraisal'}
                   {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
                 </Button>
                 <p className="text-[11px] text-muted-foreground text-center">
