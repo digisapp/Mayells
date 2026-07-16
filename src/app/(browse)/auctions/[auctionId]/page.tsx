@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   if (!auction) return {};
 
   const title = `${auction.title} | Mayells`;
-  const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayell.`;
+  const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayells.`;
 
   const canonicalUrl = `${BASE_URL}/auctions/${auction.slug || auction.id}`;
 

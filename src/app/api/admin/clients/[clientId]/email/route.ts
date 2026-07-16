@@ -83,23 +83,23 @@ export async function POST(
       <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
         <p>Dear ${escapeHtml(client.fullName || 'Valued Client')},</p>
         ${customMessage}
-        <p>Here is a summary of your items with Mayell:</p>
+        <p>Here is a summary of your items with Mayells:</p>
         ${itemsHtml || '<p style="color: #999;">No items on file.</p>'}
         <p style="margin-top: 24px;">If you have any questions, please don&rsquo;t hesitate to reach out.</p>
-        <p>Best regards,<br />Mayell</p>
+        <p>Best regards,<br />Mayells</p>
       </div>
       <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
         <p style="font-size: 12px; color: #999;">
-          Mayell — The Auction House of the Future<br />
+          Mayells — The Auction House of the Future<br />
           <a href="https://mayells.com" style="color: #D4C5A0;">mayells.com</a>
         </p>
       </div>
     `;
 
     const resend = getResend();
-    const emailSubject = subject || 'Your Item Summary — Mayell';
+    const emailSubject = subject || 'Your Item Summary — Mayells';
     const { data: sent } = await resend.emails.send({
-      from: 'Mayell <outreach@mayells.com>',
+      from: 'Mayells <outreach@mayells.com>',
       to: client.email,
       subject: emailSubject,
       html,
@@ -108,7 +108,7 @@ export async function POST(
       resendId: sent?.id || null,
       direction: 'outbound',
       fromEmail: 'outreach@mayells.com',
-      fromName: 'Mayell',
+      fromName: 'Mayells',
       toEmail: client.email,
       subject: emailSubject,
       bodyHtml: html,

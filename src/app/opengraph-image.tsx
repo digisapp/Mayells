@@ -42,7 +42,7 @@ export default async function OGImage() {
             marginBottom: 16,
           }}
         >
-          MAYELL
+          MAYELLS
         </div>
 
         {/* Tagline */}

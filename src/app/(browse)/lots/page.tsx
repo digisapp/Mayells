@@ -7,7 +7,7 @@ import { LotGrid } from '@/components/lots/LotGrid';
 
 export const metadata = {
   title: 'Browse Lots',
-  description: 'Browse auction lots at Mayell. Paintings, sculptures, antique furniture, jewelry, watches, designer fashion, and collectibles with expert cataloging.',
+  description: 'Browse auction lots at Mayells. Paintings, sculptures, antique furniture, jewelry, watches, designer fashion, and collectibles with expert cataloging.',
   openGraph: {
     title: 'Browse Lots | Mayells',
     description: 'Browse auction lots — paintings, sculptures, antique furniture, jewelry, watches, and collectibles.',

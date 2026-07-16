@@ -42,9 +42,9 @@ const AUTO_SEND_MIN_CONFIDENCE = 0.85;
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
-const EMAIL_SYSTEM_PROMPT = `You are the AI email assistant for Mayell, a luxury auction house in Palm Beach County, Florida specializing in fine art, antiques, jewelry, watches, fashion, and design.
+const EMAIL_SYSTEM_PROMPT = `You are the AI email assistant for Mayells, a luxury auction house in Palm Beach County, Florida specializing in fine art, antiques, jewelry, watches, fashion, and design.
 
-Your role: Classify incoming emails AND draft professional, warm replies on behalf of Mayell.
+Your role: Classify incoming emails AND draft professional, warm replies on behalf of Mayells.
 
 Key business info:
 - We offer FREE appraisals and estate evaluations
@@ -65,12 +65,12 @@ You MUST respond with valid JSON in this exact format:
 
 Category definitions:
 - appraisal_request: Wants an item appraised or valued
-- consignment_inquiry: Wants to sell or consign items through Mayell
+- consignment_inquiry: Wants to sell or consign items through Mayells
 - purchase_inquiry: Wants to buy an item, asks about availability or pricing
 - auction_question: Questions about upcoming auctions, bidding, results
 - estate_evaluation: Estate liquidation, collection evaluation, large lots
 - scheduling: Wants to book an appointment, visit, or meeting
-- general_inquiry: General questions about Mayell services
+- general_inquiry: General questions about Mayells services
 - feedback: Compliments, complaints, or suggestions
 - partnership: Business partnerships, vendor inquiries, media
 - support: Account issues, billing, technical help
@@ -80,7 +80,7 @@ Category definitions:
 
 Draft reply guidelines:
 - Be professional, warm, and concise (2-5 sentences for simple replies, longer for detailed inquiries)
-- Sign off as "The Mayell Team" unless context suggests a more personal touch
+- Sign off as "The Mayells Team" unless context suggests a more personal touch
 - If someone asks about selling/consigning, encourage a free appraisal
 - If someone asks about buying, point them to the website or upcoming auctions
 - If they're asking about a specific item, say you'll look into it and follow up
@@ -119,7 +119,7 @@ function brandedReplyHtml(draftText: string, originalEmail: {
   return `
     <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #272D35;">
       <div style="border-bottom: 2px solid #D4C5A0; padding-bottom: 16px; margin-bottom: 24px;">
-        <h1 style="margin: 0; font-size: 22px; color: #272D35; letter-spacing: 2px;">MAYELL</h1>
+        <h1 style="margin: 0; font-size: 22px; color: #272D35; letter-spacing: 2px;">MAYELLS</h1>
         <p style="margin: 4px 0 0; font-size: 11px; color: #999; letter-spacing: 1px; text-transform: uppercase;">The Auction House of the Future</p>
       </div>
       <div style="font-size: 15px; line-height: 1.7;">
@@ -130,7 +130,7 @@ function brandedReplyHtml(draftText: string, originalEmail: {
         <div>${quotedContent}</div>
       </div>
       <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e2d9; font-size: 11px; color: #999; text-align: center;">
-        <p style="margin: 0;">Mayell &middot; Palm Beach County, Florida</p>
+        <p style="margin: 0;">Mayells &middot; Palm Beach County, Florida</p>
         <p style="margin: 4px 0 0;">${BUSINESS.phone} &middot; ${BUSINESS.email}</p>
       </div>
     </div>
@@ -305,7 +305,7 @@ export async function processInboundEmail(emailId: string) {
     });
 
     const { data: sent } = await resend.emails.send({
-      from: `Mayell <notifications@mayells.com>`,
+      from: `Mayells <notifications@mayells.com>`,
       to: email.fromEmail,
       subject: replySubject,
       html: brandedHtml,
@@ -318,7 +318,7 @@ export async function processInboundEmail(emailId: string) {
       direction: 'outbound',
       status: 'sent',
       fromEmail: 'notifications@mayells.com',
-      fromName: 'Mayell',
+      fromName: 'Mayells',
       toEmail: email.fromEmail,
       subject: replySubject,
       bodyHtml: brandedHtml,

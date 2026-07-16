@@ -7,7 +7,7 @@ import { AuctionCard } from '@/components/auctions/AuctionCard';
 
 export const metadata = {
   title: 'Auctions',
-  description: 'Browse upcoming and current auctions at Mayell. Fine art, antiques, jewelry, watches, fashion, and collectibles.',
+  description: 'Browse upcoming and current auctions at Mayells. Fine art, antiques, jewelry, watches, fashion, and collectibles.',
   openGraph: {
     title: 'Auctions | Mayells',
     description: 'Browse upcoming, live, and past auctions for fine art, antiques, jewelry, and collectibles.',

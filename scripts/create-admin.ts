@@ -9,7 +9,7 @@ import { users } from '../src/db/schema/users';
 // Usage: ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='...' npm run create-admin
 const EMAIL = process.env.ADMIN_EMAIL;
 const PASSWORD = process.env.ADMIN_PASSWORD;
-const FULL_NAME = process.env.ADMIN_FULL_NAME || 'Mayell Admin';
+const FULL_NAME = process.env.ADMIN_FULL_NAME || 'Mayells Admin';
 
 async function main() {
   if (!EMAIL || !PASSWORD) {

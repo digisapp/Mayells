@@ -165,7 +165,7 @@ export default function AdminClientDetailPage() {
         <Card className="mb-6">
           <CardContent className="pt-6 space-y-3">
             <Input
-              placeholder="Subject (optional — defaults to 'Your Item Summary — Mayell')"
+              placeholder="Subject (optional — defaults to 'Your Item Summary — Mayells')"
               value={emailSubject}
               onChange={(e) => setEmailSubject(e.target.value)}
             />

@@ -158,7 +158,7 @@ export default function ConciergeTab() {
         </CardHeader>
         <CardContent>
           <Input
-            placeholder="Welcome to Mayell! How can we help you today?"
+            placeholder="Welcome to Mayells! How can we help you today?"
             value={settings.greetingMessage}
             onChange={(e) => setSettings((s) => ({ ...s, greetingMessage: e.target.value }))}
           />

@@ -212,23 +212,23 @@ export default function ConsignPage() {
         </div>
       </section>
 
-      {/* Why Mayell vs Big Auction Houses */}
+      {/* Why Mayells vs Big Auction Houses */}
       <section className="bg-ivory">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <h2 className="font-display text-display-sm text-center mb-4">Why Consign With Mayell</h2>
+          <h2 className="font-display text-display-sm text-center mb-4">Why Consign With Mayells</h2>
           <p className="text-center text-muted-foreground text-sm max-w-2xl mx-auto mb-12">
             Traditional auction houses can involve long waiting periods, complex fee structures, and selective consignment policies.
-            At Mayell, we offer a simpler, faster approach designed for modern sellers.
+            At Mayells, we offer a simpler, faster approach designed for modern sellers.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
             {[
               {
                 title: 'No Hidden Fees',
-                desc: 'Many auction houses charge additional fees for photography, catalog production, insurance, and storage. With Mayell, there are no upfront costs \u2014 our commission covers the entire process.',
+                desc: 'Many auction houses charge additional fees for photography, catalog production, insurance, and storage. With Mayells, there are no upfront costs \u2014 our commission covers the entire process.',
               },
               {
                 title: 'We Handle Entire Collections',
-                desc: 'Rather than accepting only select pieces, Mayell specializes in complete estate and collection consignments \u2014 from fine art and antiques to design, jewelry, and collectibles.',
+                desc: 'Rather than accepting only select pieces, Mayells specializes in complete estate and collection consignments \u2014 from fine art and antiques to design, jewelry, and collectibles.',
               },
               {
                 title: 'Faster Payment',

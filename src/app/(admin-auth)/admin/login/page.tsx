@@ -3,7 +3,7 @@ import { AdminLoginForm } from '@/components/auth/AdminLoginForm';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Admin Sign In — Mayell',
+  title: 'Admin Sign In — Mayells',
   robots: { index: false, follow: false },
 };
 

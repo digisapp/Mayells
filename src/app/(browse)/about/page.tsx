@@ -5,7 +5,7 @@ import { BUSINESS } from '@/lib/config';
 
 export const metadata = {
   title: 'About',
-  description: 'Mayell is a full-service auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles on LiveAuctioneers.',
+  description: 'Mayells is a full-service auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles on LiveAuctioneers.',
 };
 
 export default function AboutPage() {
@@ -20,7 +20,7 @@ export default function AboutPage() {
             </span>
             <h1 className="font-display text-display-xl md:text-[4rem] leading-[1.05] tracking-tight mt-4">
               About<br />
-              <span className="text-champagne">Mayell</span>
+              <span className="text-champagne">Mayells</span>
             </h1>
             <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
               A luxury auction house specializing in consignment sales of fine art,
@@ -36,7 +36,7 @@ export default function AboutPage() {
           <h2 className="font-display text-display-md mb-6">Who We Are</h2>
           <div className="space-y-5 text-[15px] text-muted-foreground leading-relaxed">
             <p>
-              Mayell is a full-service auction house that connects sellers with buyers
+              Mayells is a full-service auction house that connects sellers with buyers
               worldwide through the LiveAuctioneers platform. We handle every step of the
               process — from appraisal and cataloging to marketing, auctioning, and payment.
             </p>

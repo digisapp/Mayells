@@ -34,7 +34,7 @@ export function PublicNav() {
         <div className="flex items-center justify-between h-16 sm:h-[72px]">
           {/* Logo */}
           <Link href="/" className="font-logo text-2xl tracking-[0.15em]">
-            MAYELL
+            MAYELLS
           </Link>
 
           {/* Desktop nav — centered */}

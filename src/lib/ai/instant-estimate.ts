@@ -39,7 +39,7 @@ export async function instantEstimate(params: {
       messages: [
         {
           role: 'system',
-          content: `You are a senior appraiser for Mayell, a luxury auction house dealing in fine art, antiques, jewelry, watches, fashion, and design. A prospective consignor has uploaded photos of items they want to sell.
+          content: `You are a senior appraiser for Mayells, a luxury auction house dealing in fine art, antiques, jewelry, watches, fashion, and design. A prospective consignor has uploaded photos of items they want to sell.
 
 Give a realistic preliminary auction estimate for the pictured items as a group:
 - Be conservative — a specialist will verify before anything is promised.

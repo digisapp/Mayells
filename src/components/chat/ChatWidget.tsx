@@ -15,7 +15,7 @@ export function ChatWidget() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [showLabel, setShowLabel] = useState(true);
-  const [greeting, setGreeting] = useState('Welcome to Mayell! How can we help you today?');
+  const [greeting, setGreeting] = useState('Welcome to Mayells! How can we help you today?');
   const [chatEnabled, setChatEnabled] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -112,7 +112,7 @@ export function ChatWidget() {
           {/* Header */}
           <div className="bg-charcoal text-white px-6 py-5 flex items-center justify-between flex-shrink-0">
             <div>
-              <h3 className="font-display text-2xl">Mayell Concierge</h3>
+              <h3 className="font-display text-2xl">Mayells Concierge</h3>
             </div>
             <button
               onClick={() => setOpen(false)}

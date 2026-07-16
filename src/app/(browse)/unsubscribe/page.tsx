@@ -41,14 +41,14 @@ export default function UnsubscribePage() {
           <div>
             <p className="font-medium text-green-900">You&apos;ve been unsubscribed</p>
             <p className="text-sm text-green-700 mt-1">
-              You will no longer receive newsletter emails from Mayell. You can re-subscribe at any time from our website.
+              You will no longer receive newsletter emails from Mayells. You can re-subscribe at any time from our website.
             </p>
           </div>
         </div>
       ) : (
         <>
           <p className="text-muted-foreground mb-6">
-            Enter your email address to unsubscribe from the Mayell newsletter.
+            Enter your email address to unsubscribe from the Mayells newsletter.
           </p>
 
           {status === 'error' && (

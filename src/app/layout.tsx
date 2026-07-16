@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display, Cormorant_Garamond } from 'next/font/google';
+import { Inter, Playfair_Display } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Toaster } from '@/components/ui/sonner';
@@ -16,13 +16,6 @@ const playfair = Playfair_Display({
   variable: '--font-playfair',
   subsets: ['latin'],
   display: 'swap',
-});
-
-const cormorant = Cormorant_Garamond({
-  variable: '--font-cormorant',
-  subsets: ['latin'],
-  display: 'swap',
-  weight: ['400', '600', '700'],
 });
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
@@ -66,7 +59,7 @@ export const metadata: Metadata = {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-status-bar-style': 'black-translucent',
-    'apple-mobile-web-app-title': 'Mayell',
+    'apple-mobile-web-app-title': 'Mayells',
   },
   verification: {
     google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
@@ -80,7 +73,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${playfair.variable} ${cormorant.variable} font-sans`}>
+      <body className={`${inter.variable} ${playfair.variable} font-sans`}>
         <TooltipProvider>
           {children}
         </TooltipProvider>
