@@ -32,7 +32,7 @@ UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1555041
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000001';
 
 -- Untitled (Red Series No. 7)
-UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1549490349-8643362247b5?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000002';
+UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000002';
 
 -- Jardin de Luxembourg, Autumn (impressionist landscape)
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000003';
@@ -54,8 +54,8 @@ UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-150046291
 -- JEWELRY LOT IMAGES
 -- ============================================
 
--- Art Deco Diamond and Platinum Bracelet (Cartier)
-UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000010';
+-- Art Deco Diamond and Platinum Bracelet (Cartier) — diamonds with sapphire accents
+UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000010';
 
 -- Natural Fancy Vivid Yellow Diamond Ring
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000011';
@@ -71,8 +71,8 @@ UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-157340830
 -- ANTIQUES LOT IMAGES
 -- ============================================
 
--- Louis XV Commode (Cressent)
-UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000020';
+-- Louis XV Commode (Cressent) — spotlit period furniture
+UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1549497538-303791108f95?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000020';
 
 -- George III Silver Epergne
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1603974372039-adc49044b6bd?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000021';
