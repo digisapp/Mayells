@@ -27,11 +27,13 @@ export const metadata: Metadata = {
 import { Button } from '@/components/ui/button';
 import { ArrowRight, Phone } from 'lucide-react';
 import { db } from '@/db';
-import { auctions, lots } from '@/db/schema';
-import { inArray, desc, eq, and } from 'drizzle-orm';
+import { auctions, auctionLots, lots } from '@/db/schema';
+import { inArray, desc, eq, and, sql, asc } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { LotCard } from '@/components/lots/LotCard';
 import { HeroAppraisalForm } from '@/components/home/HeroAppraisalForm';
+import { ClosingSoonRail, type ClosingSoonItem } from '@/components/home/ClosingSoonRail';
+import { LiveNowBanner } from '@/components/home/LiveNowBanner';
 import { BUSINESS } from '@/lib/config';
 
 const jsonLd = {
@@ -50,36 +52,87 @@ const jsonLd = {
 
 async function getHomeData() {
   try {
-    const [upcomingAuctions, featuredLots, galleryLots] = await Promise.all([
-      db
-        .select()
-        .from(auctions)
-        .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
-        .orderBy(desc(auctions.createdAt))
-        .limit(6),
-      db
-        .select()
-        .from(lots)
-        // Only surface publicly-visible featured lots — a featured draft or
-        // withdrawn lot would render on the homepage and link to a 404.
-        .where(and(eq(lots.isFeatured, true), inArray(lots.status, ['for_sale', 'in_auction', 'sold'])))
-        .orderBy(desc(lots.createdAt))
-        .limit(8),
-      db
-        .select()
-        .from(lots)
-        .where(and(eq(lots.saleType, 'gallery'), eq(lots.status, 'for_sale')))
-        .orderBy(desc(lots.createdAt))
-        .limit(4),
-    ]);
-    return { upcomingAuctions, featuredLots, galleryLots };
+    // Effective close time: per-lot staggered close when set, else the sale's end.
+    const effectiveClose = sql`coalesce(${auctionLots.closingAt}, ${auctions.biddingEndsAt})`;
+    const [upcomingAuctions, featuredLots, galleryLots, liveAuctions, closingSoonRows, openLotCountRows] =
+      await Promise.all([
+        db
+          .select()
+          .from(auctions)
+          .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
+          .orderBy(desc(auctions.createdAt))
+          .limit(6),
+        db
+          .select()
+          .from(lots)
+          // Only surface publicly-visible featured lots — a featured draft or
+          // withdrawn lot would render on the homepage and link to a 404.
+          .where(and(eq(lots.isFeatured, true), inArray(lots.status, ['for_sale', 'in_auction', 'sold'])))
+          .orderBy(desc(lots.createdAt))
+          .limit(8),
+        db
+          .select()
+          .from(lots)
+          .where(and(eq(lots.saleType, 'gallery'), eq(lots.status, 'for_sale')))
+          .orderBy(desc(lots.createdAt))
+          .limit(4),
+        db
+          .select()
+          .from(auctions)
+          .where(eq(auctions.status, 'live'))
+          .orderBy(desc(auctions.updatedAt))
+          .limit(1),
+        db
+          .select({ lot: lots, auctionSlug: auctions.slug, closingAt: effectiveClose.mapWith(String) })
+          .from(auctionLots)
+          .innerJoin(lots, eq(auctionLots.lotId, lots.id))
+          .innerJoin(auctions, eq(auctionLots.auctionId, auctions.id))
+          .where(
+            and(
+              eq(lots.status, 'in_auction'),
+              inArray(auctions.status, ['open', 'live', 'closing']),
+              sql`${effectiveClose} > now()`,
+            ),
+          )
+          .orderBy(asc(effectiveClose))
+          .limit(8),
+        db
+          .select({ count: sql<number>`count(*)`.mapWith(Number) })
+          .from(lots)
+          .where(eq(lots.status, 'in_auction')),
+      ]);
+
+    const closingSoon: ClosingSoonItem[] = closingSoonRows.map((row) => ({
+      lot: row.lot,
+      auctionSlug: row.auctionSlug,
+      closingAt: new Date(row.closingAt),
+    }));
+
+    return {
+      upcomingAuctions,
+      featuredLots,
+      galleryLots,
+      liveAuction: liveAuctions[0] ?? null,
+      closingSoon,
+      openLotCount: openLotCountRows[0]?.count ?? 0,
+      serverNow: Date.now(),
+    };
   } catch {
-    return { upcomingAuctions: [], featuredLots: [], galleryLots: [] };
+    return {
+      upcomingAuctions: [],
+      featuredLots: [],
+      galleryLots: [],
+      liveAuction: null,
+      closingSoon: [] as ClosingSoonItem[],
+      openLotCount: 0,
+      serverNow: Date.now(),
+    };
   }
 }
 
 export default async function HomePage() {
-  const { upcomingAuctions, featuredLots, galleryLots } = await getHomeData();
+  const { upcomingAuctions, featuredLots, galleryLots, liveAuction, closingSoon, openLotCount, serverNow } =
+    await getHomeData();
 
   return (
     <div>
@@ -87,6 +140,8 @@ export default async function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
+
+      {liveAuction && <LiveNowBanner auction={liveAuction} />}
 
       {/* Hero — Editorial, full-width */}
       <section className="relative bg-charcoal text-white overflow-hidden">
@@ -103,20 +158,20 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-20 items-center">
             <div>
               <p className="text-[11px] uppercase tracking-[0.25em] text-champagne/80 font-semibold mb-6">
-                Boca Raton &middot; New York
+                Boca Raton &middot; New York &middot; Online
               </p>
-              <h1 className="font-display text-[2.25rem] sm:text-[3rem] md:text-[3.75rem] leading-[1.05] tracking-tight">
-                Fine Art. Antiques.
+              <h1 className="font-sans font-semibold text-[2.25rem] sm:text-[3rem] md:text-[3.5rem] leading-[1.05] tracking-tight">
+                The auction house,
                 <br />
-                <span className="text-shimmer">Jewelry. Collectibles.</span>
+                built for right now.
               </h1>
               <p className="mt-6 sm:mt-8 text-[15px] sm:text-[17px] text-white/55 max-w-md leading-relaxed">
-                Luxury auctions and private sales sourced from estates and private collections worldwide. Free appraisals, full-service consignment.
+                Fine art, jewelry, watches, and design from estates and private collections — sold in live-streamed and timed auctions with real-time bidding, anywhere in the world.
               </p>
               <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <Link href="/auctions" className="w-full sm:w-auto">
                   <Button variant="champagne" size="xl" className="shadow-gold w-full sm:w-auto">
-                    View Auctions
+                    Bid Now
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Button>
                 </Link>
@@ -132,7 +187,17 @@ export default async function HomePage() {
                   {BUSINESS.phone}
                 </a>
                 <span className="text-white/20">|</span>
-                <span>Free Appraisals</span>
+                {openLotCount > 0 ? (
+                  <span className="flex items-center gap-2">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-400" />
+                    </span>
+                    {openLotCount} lot{openLotCount !== 1 ? 's' : ''} open for bidding
+                  </span>
+                ) : (
+                  <span>Free Appraisals</span>
+                )}
               </div>
             </div>
             <div className="hidden lg:block">
@@ -142,19 +207,22 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Trust Strip — editorial credentials */}
+      {/* Closing Soon — live marketplace rail */}
+      <ClosingSoonRail items={closingSoon} serverNow={serverNow} />
+
+      {/* Trust Strip — first-party platform proof */}
       <section className="border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-[12px] sm:text-[13px] uppercase tracking-[0.15em] text-muted-foreground/70">
-            <span>Estate Evaluations</span>
+            <span>Real-Time Bidding</span>
             <span className="hidden sm:inline text-border">|</span>
-            <span>Same-Day Pickup</span>
+            <span>Verified Bidders</span>
             <span className="hidden sm:inline text-border">|</span>
-            <span>Global Bidders</span>
+            <span>Secure Payments</span>
             <span className="hidden sm:inline text-border">|</span>
-            <span>White Glove Service</span>
+            <span>Free Appraisals</span>
             <span className="hidden sm:inline text-border">|</span>
-            <span>LiveAuctioneers</span>
+            <span>White Glove Delivery</span>
           </div>
         </div>
       </section>
@@ -249,7 +317,7 @@ export default async function HomePage() {
                 {
                   step: '03',
                   title: 'Live Online Auction',
-                  desc: 'Your items go live to millions of bidders worldwide. We manage the entire auction and send you payment.',
+                  desc: 'Your items go up for bidding in our live-streamed and timed auctions, open to verified bidders worldwide. We manage the entire sale and send you payment.',
                 },
               ].map((s) => (
                 <div key={s.step} className="flex items-start gap-6">

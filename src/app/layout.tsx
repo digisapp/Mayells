@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     template: '%s | Mayells',
   },
   description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
-  keywords: ['auction', 'fine art', 'antiques', 'jewelry', 'watches', 'collectibles', 'consignment', 'estate sale', 'appraisal', 'LiveAuctioneers'],
+  keywords: ['auction', 'fine art', 'antiques', 'jewelry', 'watches', 'collectibles', 'consignment', 'estate sale', 'appraisal', 'live auction', 'online bidding'],
   openGraph: {
     type: 'website',
     siteName: 'Mayells',
