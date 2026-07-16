@@ -282,6 +282,40 @@ export async function sendPaymentConfirmation(params: {
   });
 }
 
+export async function sendSellerStatementNotification(params: {
+  email: string;
+  sellerName: string;
+  lotTitle: string;
+  hammerPrice: number;
+  commissionPercent: number;
+  commissionAmount: number;
+  netAmount: number;
+}) {
+  await sendAndLog({
+    to: params.email,
+    subject: `Your item sold — settlement statement for "${params.lotTitle}"`,
+    html: emailLayout(`
+        <p>Dear ${escapeHtml(params.sellerName)},</p>
+        <p>Great news — <strong>${escapeHtml(params.lotTitle)}</strong> has sold and the buyer's payment has been received. Here is your settlement statement:</p>
+        <table style="margin: 20px 0; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Hammer price:</td>
+            <td style="padding: 8px 16px; font-weight: bold;">${formatCurrency(params.hammerPrice)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Seller's commission (${params.commissionPercent}%):</td>
+            <td style="padding: 8px 16px;">−${formatCurrency(params.commissionAmount)}</td>
+          </tr>
+          <tr style="border-top: 1px solid #ddd;">
+            <td style="padding: 8px 16px; color: #666;">Net proceeds to you:</td>
+            <td style="padding: 8px 16px; font-weight: bold; font-size: 20px;">${formatCurrency(params.netAmount)}</td>
+          </tr>
+        </table>
+        <p>Your proceeds will be remitted per your consignment agreement. If your payment details or mailing address have changed, please reply to this email.</p>
+    `, 'Your Item Has Sold'),
+  });
+}
+
 export async function sendAppraisalRequestNotification(
   params: {
     name: string;

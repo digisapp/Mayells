@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { uploadItems, sellerProspects, users, lots, lotImages, categories, auctionLots, auctions, uploadLinks } from '@/db/schema';
 import { eq, and, inArray, ilike, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { ensureProspectSellerUser } from '@/lib/sellers/shadow';
 
 const categoryMap: Record<string, string> = {
   art: 'art',
@@ -103,6 +104,10 @@ export async function POST(
     // must commit together — a mid-loop failure otherwise orphans lots and
     // drifts the auction's lotCount with no rollback.
     const createdLots = await db.transaction(async (tx) => {
+    // Every lot needs a seller-of-record so shipping and payouts can settle.
+    // Prospects usually have no account — mint (or link) one here.
+    const sellerId = await ensureProspectSellerUser(tx, prospect);
+
     const created: { lotId: string; itemId: string }[] = [];
 
     for (const item of acceptedItems) {
@@ -162,7 +167,7 @@ export async function POST(
           estimateHigh: item.finalEstimateHigh ?? item.aiEstimateHigh,
           reservePrice: item.finalReserve ?? item.aiRecommendedReserve,
           startingBid: item.aiSuggestedStartingBid,
-          sellerId: prospect.userId,
+          sellerId,
           primaryImageUrl: item.images?.[0] ?? null,
           imageCount: item.images?.length ?? 0,
           slug,

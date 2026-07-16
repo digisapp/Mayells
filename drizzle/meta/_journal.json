@@ -92,6 +92,20 @@
       "when": 1784155810277,
       "tag": "0012_saved_searches",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784207449047,
+      "tag": "0013_payouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784208395816,
+      "tag": "0014_shipment_invoice_unique",
+      "breakpoints": true
     }
   ]
 }
