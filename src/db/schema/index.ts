@@ -8,6 +8,7 @@ export * from './invoices';
 export * from './payments';
 export * from './consignments';
 export * from './watchlist';
+export * from './saved-searches';
 export * from './bid-increments';
 export * from './outreach';
 export * from './estate-visits';

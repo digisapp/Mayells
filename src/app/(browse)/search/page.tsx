@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Sparkles, SlidersHorizontal, X } from 'lucide-react';
 import { LotGrid } from '@/components/lots/LotGrid';
+import { SaveSearchButton } from '@/components/search/SaveSearchButton';
 import { formatCurrency } from '@/types';
 import type { Lot } from '@/db/schema/lots';
 import type { Category } from '@/db/schema/categories';
@@ -299,10 +300,17 @@ function SearchContent() {
         </div>
       ) : query.trim() || hasActiveFilters ? (
         <>
-          <p className="text-sm text-muted-foreground mb-6">
-            {total} result{total !== 1 ? 's' : ''}
-            {query.trim() ? <> for &ldquo;{query}&rdquo;</> : ''}
-          </p>
+          <div className="flex items-center justify-between gap-4 mb-6">
+            <p className="text-sm text-muted-foreground">
+              {total} result{total !== 1 ? 's' : ''}
+              {query.trim() ? <> for &ldquo;{query}&rdquo;</> : ''}
+            </p>
+            <SaveSearchButton
+              key={`${query.trim().toLowerCase()}|${categoryFilter}`}
+              query={query}
+              categoryId={categoryFilter && categoryFilter !== 'all' ? categoryFilter : undefined}
+            />
+          </div>
           <LotGrid lots={results} />
           {results.length === 0 && (
             <div className="text-center py-12">

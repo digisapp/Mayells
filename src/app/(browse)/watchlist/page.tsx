@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server';
 import { formatCurrency } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
+import { SavedSearchList } from '@/components/search/SavedSearchList';
 import { Heart } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -54,6 +55,8 @@ export default async function WatchlistPage() {
         <Heart className="h-6 w-6 text-red-500 fill-current" />
         <h1 className="font-display text-display-lg">My Watchlist</h1>
       </div>
+
+      <SavedSearchList />
 
       {rows.length === 0 ? (
         <div className="text-center py-20">
