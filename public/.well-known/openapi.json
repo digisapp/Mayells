@@ -1,11 +1,11 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Mayell Auctions API",
-    "description": "Public API for browsing auctions, catalog items, and lot details at Mayell Auctions. Specializes in fine art, antiques, jewelry, watches, fashion, and collectibles.",
+    "title": "Mayells Auctions API",
+    "description": "Public API for browsing auctions, catalog items, and lot details at Mayells Auctions. Specializes in fine art, antiques, jewelry, watches, fashion, and collectibles.",
     "version": "1.0.0",
     "contact": {
-      "name": "Mayell Auctions",
+      "name": "Mayells Auctions",
       "url": "https://mayells.com",
       "email": "info@mayells.com"
     }

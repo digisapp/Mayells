@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
       direction: 'outbound',
       status: 'sent',
       fromEmail: 'notifications@mayells.com',
-      fromName: 'Mayell',
+      fromName: 'Mayells',
       toEmail: to,
       subject,
       bodyHtml: html || null,

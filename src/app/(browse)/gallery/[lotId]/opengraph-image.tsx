@@ -77,7 +77,7 @@ export default async function OGImage({ params }: { params: Promise<{ lotId: str
               textTransform: 'uppercase',
             }}
           >
-            MAYELL GALLERY
+            MAYELLS GALLERY
           </div>
           <div
             style={{

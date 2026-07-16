@@ -24,11 +24,12 @@ function formatDate(date: Date | null) {
 function getStatusLabel(status: string) {
   switch (status) {
     case 'open': return { label: 'Bidding Open', variant: 'default' as const, className: 'bg-emerald-600 text-white border-0' };
-    case 'preview': return { label: 'Preview', variant: 'secondary' as const, className: '' };
-    case 'scheduled': return { label: 'Upcoming', variant: 'outline' as const, className: '' };
+    // Badges sit on top of lot imagery — every variant needs a solid backdrop to stay legible.
+    case 'preview': return { label: 'Preview', variant: 'secondary' as const, className: 'bg-black/60 text-white border-0 backdrop-blur-sm' };
+    case 'scheduled': return { label: 'Upcoming', variant: 'outline' as const, className: 'bg-black/60 text-white border-white/25 backdrop-blur-sm' };
     case 'live': return { label: 'LIVE', variant: 'destructive' as const, className: 'bg-red-600 text-white border-0 animate-urgency' };
-    case 'closed': return { label: 'Closed', variant: 'secondary' as const, className: 'opacity-70' };
-    default: return { label: status, variant: 'outline' as const, className: '' };
+    case 'closed': return { label: 'Closed', variant: 'secondary' as const, className: 'bg-black/50 text-white/70 border-0 backdrop-blur-sm' };
+    default: return { label: status, variant: 'outline' as const, className: 'bg-black/60 text-white border-white/25 backdrop-blur-sm' };
   }
 }
 
@@ -50,7 +51,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-charcoal via-charcoal/95 to-graphite flex items-center justify-center">
-              <span className="font-logo text-3xl text-white/20">MAYELL</span>
+              <span className="font-logo text-3xl text-white/20">MAYELLS</span>
             </div>
           )}
 

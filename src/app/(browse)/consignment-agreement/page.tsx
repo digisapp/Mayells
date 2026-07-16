@@ -25,7 +25,7 @@ export default function ConsignmentAgreementPage() {
               <span className="text-champagne">Agreement</span>
             </h1>
             <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
-              Our standard terms for consigning items for auction through Mayell.
+              Our standard terms for consigning items for auction through Mayells.
             </p>
           </div>
         </div>
@@ -38,7 +38,7 @@ export default function ConsignmentAgreementPage() {
             <h2 className="font-display text-xl mb-4">Commission</h2>
             <div className="border border-border/60 rounded-xl p-6 space-y-3 text-[15px] text-muted-foreground leading-relaxed">
               <p>
-                Mayell charges a seller&apos;s commission of <strong className="text-foreground">35%</strong> of
+                Mayells charges a seller&apos;s commission of <strong className="text-foreground">35%</strong> of
                 the hammer price. This covers cataloging, photography, marketing, platform
                 listing fees, and auction management.
               </p>
@@ -67,12 +67,12 @@ export default function ConsignmentAgreementPage() {
             <div className="border border-border/60 rounded-xl p-6 space-y-3 text-[15px] text-muted-foreground leading-relaxed">
               <p>
                 Items are consigned for a minimum period of <strong className="text-foreground">90 days</strong>.
-                During this period, Mayell will assign items to appropriate auctions for
+                During this period, Mayells will assign items to appropriate auctions for
                 maximum exposure and value.
               </p>
               <p>
                 If an item does not sell at its first auction, it may be re-offered in a
-                subsequent sale with adjusted estimates, at Mayell&apos;s discretion.
+                subsequent sale with adjusted estimates, at Mayells&apos; discretion.
               </p>
             </div>
           </div>
@@ -93,8 +93,8 @@ export default function ConsignmentAgreementPage() {
             <h2 className="font-display text-xl mb-4">Reserves</h2>
             <div className="border border-border/60 rounded-xl p-6 space-y-3 text-[15px] text-muted-foreground leading-relaxed">
               <p>
-                Reserve prices may be set in consultation with Mayell. Reserves are
-                typically set at or below the low estimate. Mayell reserves the right to
+                Reserve prices may be set in consultation with Mayells. Reserves are
+                typically set at or below the low estimate. Mayells reserves the right to
                 sell items below the reserve at its discretion in order to complete a sale.
               </p>
             </div>
@@ -104,12 +104,12 @@ export default function ConsignmentAgreementPage() {
             <h2 className="font-display text-xl mb-4">Insurance &amp; Liability</h2>
             <div className="border border-border/60 rounded-xl p-6 space-y-3 text-[15px] text-muted-foreground leading-relaxed">
               <p>
-                Items in Mayell&apos;s possession are covered by our insurance policy up to
+                Items in Mayells&apos; possession are covered by our insurance policy up to
                 the agreed estimate value. Consignors are responsible for insuring items
                 during transit to our facility.
               </p>
               <p>
-                Mayell exercises reasonable care in handling all consigned property but is
+                Mayells exercises reasonable care in handling all consigned property but is
                 not liable for damage beyond the insured value.
               </p>
             </div>
@@ -119,9 +119,9 @@ export default function ConsignmentAgreementPage() {
             <h2 className="font-display text-xl mb-4">Shipping &amp; Logistics</h2>
             <div className="border border-border/60 rounded-xl p-6 space-y-3 text-[15px] text-muted-foreground leading-relaxed">
               <p>
-                Consignors are responsible for delivering items to Mayell or arranging
+                Consignors are responsible for delivering items to Mayells or arranging
                 shipping at their expense. For estate cleanouts and large consignments,
-                Mayell may arrange pickup — contact us for details.
+                Mayells may arrange pickup — contact us for details.
               </p>
             </div>
           </div>

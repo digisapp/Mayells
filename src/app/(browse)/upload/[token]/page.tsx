@@ -200,7 +200,7 @@ export default function UploadPage() {
           </div>
           <h1 className="font-serif text-2xl text-[#272D35] mb-3">Link Unavailable</h1>
           <p className="text-[#272D35]/60 leading-relaxed">
-            This upload link is invalid or has expired. Please contact Mayell for a new link.
+            This upload link is invalid or has expired. Please contact Mayells for a new link.
           </p>
         </div>
       </div>
@@ -285,7 +285,7 @@ export default function UploadPage() {
       <header className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-[#272D35]/10 z-40">
         <div className="flex items-center justify-between px-4 py-3">
           <p className="text-xs tracking-[0.35em] uppercase text-[#D4C5A0] font-medium">
-            MAYELL
+            MAYELLS
           </p>
           <div className="flex items-center gap-3">
             {totalMediaCount > 0 && (

@@ -6,7 +6,7 @@ import { db } from '@/db';
 import { emails } from '@/db/schema';
 import { logger } from '@/lib/logger';
 
-const FROM = 'Mayell <notifications@mayells.com>';
+const FROM = 'Mayells <notifications@mayells.com>';
 const FROM_EMAIL = 'notifications@mayells.com';
 const ADMIN_EMAIL = [...BUSINESS.notifyEmails];
 
@@ -32,7 +32,7 @@ async function sendAndLog(params: { to: string | string[]; subject: string; html
       resendId: null,
       direction: 'outbound',
       fromEmail: FROM_EMAIL,
-      fromName: 'Mayell',
+      fromName: 'Mayells',
       toEmail: toLabel,
       subject: params.subject,
       bodyHtml: params.html,
@@ -45,7 +45,7 @@ async function sendAndLog(params: { to: string | string[]; subject: string; html
     resendId: sent?.id || null,
     direction: 'outbound',
     fromEmail: FROM_EMAIL,
-    fromName: 'Mayell',
+    fromName: 'Mayells',
     toEmail: toLabel,
     subject: params.subject,
     bodyHtml: params.html,
@@ -59,7 +59,7 @@ function emailLayout(content: string, title?: string): string {
         ${title ? `<h1 style="color: #272D35; font-size: 24px;">${title}</h1>` : ''}
         ${content}
         <p style="margin-top: 30px; font-size: 12px; color: #999;">
-          Mayell — The Auction House of the Future
+          Mayells — The Auction House of the Future
         </p>
       </div>
     `;
@@ -223,12 +223,12 @@ export async function sendSavedSearchAlert(params: {
     to: params.email,
     subject: `New arrivals for "${params.searchLabel}"`,
     html: emailLayout(`
-        <p>New items matching a search you follow just arrived at Mayell.</p>
+        <p>New items matching a search you follow just arrived at Mayells.</p>
         <p style="font-size: 16px; font-weight: bold; margin: 16px 0 8px;">&ldquo;${escapeHtml(params.searchLabel)}&rdquo;</p>
         <table style="margin: 8px 0 20px; border-collapse: collapse; width: 100%;">${lotRows}</table>
         ${ctaButton(params.searchUrl, 'View All Matches')}
         <p style="margin-top: 20px; font-size: 12px; color: #999;">
-          You follow this search on Mayell. <a href="${params.baseUrl}/watchlist" style="color: #999;">Manage followed searches</a>.
+          You follow this search on Mayells. <a href="${params.baseUrl}/watchlist" style="color: #999;">Manage followed searches</a>.
         </p>
     `, 'New Arrivals'),
   });
@@ -403,7 +403,7 @@ export async function sendConsignmentNotification(params: {
     to: params.sellerEmail,
     subject: `We've received your consignment: ${params.title}`,
     html: emailLayout(`
-        <p>Thank you for submitting <strong>${escapeHtml(params.title)}</strong> for consignment with Mayell.</p>
+        <p>Thank you for submitting <strong>${escapeHtml(params.title)}</strong> for consignment with Mayells.</p>
         <p>Our team will review your submission and contact you within 1-2 business days to discuss next steps.</p>
         ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/consignments`, 'Track Your Consignment')}
     `, 'Consignment Received'),

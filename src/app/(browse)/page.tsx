@@ -39,7 +39,7 @@ import { BUSINESS } from '@/lib/config';
 const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
-  name: 'Mayell',
+  name: 'Mayells',
   description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.',
   url: process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com',
   sameAs: [],
@@ -160,7 +160,7 @@ export default async function HomePage() {
               <p className="text-[11px] uppercase tracking-[0.25em] text-champagne/80 font-semibold mb-6">
                 Boca Raton &middot; New York &middot; Online
               </p>
-              <h1 className="font-sans font-semibold text-[2.25rem] sm:text-[3rem] md:text-[3.5rem] leading-[1.05] tracking-tight">
+              <h1 className="font-display font-semibold text-[2.25rem] sm:text-[3rem] md:text-[3.5rem] leading-[1.1]">
                 The auction house,
                 <br />
                 built for right now.
@@ -300,7 +300,7 @@ export default async function HomePage() {
           <div>
             <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">How It Works</span>
             <h2 className="font-display text-display-md sm:text-display-lg mt-2 mb-10">
-              Sell With <span className="text-champagne">Mayell</span>
+              Sell With <span className="text-champagne">Mayells</span>
             </h2>
             <div className="space-y-8">
               {[

@@ -33,7 +33,7 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-muted to-muted/60 flex items-center justify-center">
-              <span className="font-logo text-lg text-muted-foreground/40">MAYELL</span>
+              <span className="font-logo text-lg text-muted-foreground/40">MAYELLS</span>
             </div>
           )}
 

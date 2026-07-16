@@ -470,7 +470,7 @@ export default function AdminEmailsPage() {
                       <span className="text-sm font-medium">
                         {email.direction === 'inbound'
                           ? email.fromName || email.fromEmail
-                          : `Mayell → ${email.toEmail}`}
+                          : `Mayells → ${email.toEmail}`}
                       </span>
                       <StatusBadge status={email.status} />
                       {email.aiAutoSent && (

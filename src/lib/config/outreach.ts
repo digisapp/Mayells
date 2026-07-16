@@ -53,38 +53,38 @@ export const statusOptions = [
 export const EMAIL_TEMPLATES = [
   {
     name: 'Initial Outreach',
-    subject: 'Partnership Opportunity with Mayell Auction House',
+    subject: 'Partnership Opportunity with Mayells Auction House',
     body: `Dear {contactName},
 
-I'm reaching out from Mayell, a luxury auction house specializing in art, antiques, jewelry, and fine collectibles.
+I'm reaching out from Mayells, a luxury auction house specializing in art, antiques, jewelry, and fine collectibles.
 
 We frequently work with professionals in your field and would love to explore how we might be a resource for your clients — whether they're looking to sell estate items, get professional appraisals, or find unique pieces.
 
 Would you be open to a brief call to discuss how we might work together?
 
 Best regards,
-Mayell Team`,
+Mayells Team`,
   },
   {
     name: 'Follow-Up',
-    subject: 'Following up — Mayell Partnership',
+    subject: 'Following up — Mayells Partnership',
     body: `Dear {contactName},
 
-I wanted to follow up on my previous message about a potential partnership between your firm and Mayell.
+I wanted to follow up on my previous message about a potential partnership between your firm and Mayells.
 
 We offer complimentary appraisals and can handle the entire process of selling estate items — from cataloging to marketing to auction. This can be a valuable service for your clients going through estate transitions.
 
 I'd welcome the chance to meet briefly and share more. What does your schedule look like this week?
 
 Best regards,
-Mayell Team`,
+Mayells Team`,
   },
   {
     name: 'Services Overview',
-    subject: 'How Mayell Can Help Your Clients',
+    subject: 'How Mayells Can Help Your Clients',
     body: `Dear {contactName},
 
-I wanted to share a quick overview of the services Mayell offers that may benefit your clients:
+I wanted to share a quick overview of the services Mayells offers that may benefit your clients:
 
 • Free Appraisals — Expert valuations for estate planning, insurance, or sale purposes
 • Estate Liquidation — Full-service handling of estate collections
@@ -96,6 +96,6 @@ We handle everything from pickup to payment, and our team has decades of experie
 Would you like to schedule a brief meeting to discuss referral opportunities?
 
 Best regards,
-Mayell Team`,
+Mayells Team`,
   },
 ];

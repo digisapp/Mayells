@@ -10,7 +10,7 @@ import { serializeJsonLd } from '@/lib/seo/structured-data';
 
 export const metadata = {
   title: 'How to Buy',
-  description: 'Three ways to bid at Mayell auctions: online through LiveAuctioneers, by phone, or via absentee bid. Free to register, 25% buyer premium.',
+  description: 'Three ways to bid at Mayells auctions: online through LiveAuctioneers, by phone, or via absentee bid. Free to register, 25% buyer premium.',
 };
 
 const faqData = [
@@ -56,7 +56,7 @@ export default async function HowToBuyPage() {
             </span>
             <h1 className="font-display text-display-xl md:text-[4rem] leading-[1.05] tracking-tight mt-4">
               How to Buy<br />
-              <span className="text-champagne">at Mayell</span>
+              <span className="text-champagne">at Mayells</span>
             </h1>
             <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
               Bidding is easy. Our auctions are hosted on LiveAuctioneers, giving you
@@ -122,7 +122,7 @@ export default async function HowToBuyPage() {
             </div>
             <h3 className="font-display text-xl mb-3">Bid by Phone</h3>
             <p className="text-[15px] text-muted-foreground leading-relaxed mb-5">
-              Prefer a personal touch? Arrange for a Mayell representative to call
+              Prefer a personal touch? Arrange for a Mayells representative to call
               you during the auction so you can bid live over the phone.
             </p>
             <div className="space-y-3 text-sm text-muted-foreground">

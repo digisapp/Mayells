@@ -50,9 +50,9 @@ function sanitizeMessages(rawMessages: unknown[]): unknown[] {
     });
 }
 
-const BASE_PROMPT = `You are a helpful concierge for Mayell, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
+const BASE_PROMPT = `You are a helpful concierge for Mayells, a luxury auction house specializing in fine art, antiques, jewelry, watches, fashion, and design.
 
-Key information about Mayell:
+Key information about Mayells:
 - We offer FREE appraisals and estate evaluations — no obligation, completely confidential
 - We Buy: We make immediate offers on quality items
 - We Sell: Through curated auctions and our gallery
@@ -79,7 +79,7 @@ How to help visitors:
 - Keep responses concise (2-4 sentences unless more detail is needed)
 - When asked about market values or pricing for specific items, use web search to find current auction results and market data
 - If you don't know something specific, suggest they call or submit an appraisal request
-- Always remind visitors that Mayell offers free appraisals if they want an expert evaluation
+- Always remind visitors that Mayells offers free appraisals if they want an expert evaluation
 
 Image assessment:
 - When a user uploads a photo of an item, provide a preliminary assessment

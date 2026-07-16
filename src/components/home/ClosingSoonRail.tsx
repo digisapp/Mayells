@@ -59,7 +59,7 @@ export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <span className="font-logo text-lg text-white/20">MAYELL</span>
+                      <span className="font-logo text-lg text-white/20">MAYELLS</span>
                     </div>
                   )}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent pt-10 pb-2.5 px-3">

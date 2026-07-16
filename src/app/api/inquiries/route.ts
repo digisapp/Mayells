@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
           </div>
         `;
       const { data: sent } = await resend.emails.send({
-        from: `Mayell <notifications@mayells.com>`,
+        from: `Mayells <notifications@mayells.com>`,
         to: BUSINESS.email,
         subject: emailSubject,
         html: emailHtml,
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
         resendId: sent?.id || null,
         direction: 'outbound',
         fromEmail: 'notifications@mayells.com',
-        fromName: 'Mayell',
+        fromName: 'Mayells',
         toEmail: BUSINESS.email,
         subject: emailSubject,
         bodyHtml: emailHtml,

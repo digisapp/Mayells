@@ -9,7 +9,7 @@ export default function TermsPage() {
       <h1 className="font-display text-display-lg mb-8">Terms of Service</h1>
       <div className="prose prose-sm text-muted-foreground space-y-6">
         <p>
-          These Terms of Service govern your use of the Mayell platform. By accessing or using our services,
+          These Terms of Service govern your use of the Mayells platform. By accessing or using our services,
           you agree to be bound by these terms.
         </p>
         <h2 className="font-display text-lg text-foreground">1. Use of Services</h2>
@@ -25,11 +25,11 @@ export default function TermsPage() {
         <h2 className="font-display text-lg text-foreground">3. Consignment</h2>
         <p>
           Consigned items are subject to review and approval. Commission rates are agreed upon
-          prior to listing. Mayell reserves the right to decline any consignment.
+          prior to listing. Mayells reserves the right to decline any consignment.
         </p>
         <h2 className="font-display text-lg text-foreground">4. Limitation of Liability</h2>
         <p>
-          Mayell provides descriptions and estimates in good faith but does not guarantee
+          Mayells provides descriptions and estimates in good faith but does not guarantee
           the accuracy of any lot description, authenticity attribution, or condition report.
         </p>
         <h2 className="font-display text-lg text-foreground">5. Contact</h2>
