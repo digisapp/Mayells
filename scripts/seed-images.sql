@@ -5,16 +5,16 @@
 -- AUCTION COVER IMAGES
 -- ============================================
 
--- Modern & Contemporary Art: Spring 2025
+-- Modern & Contemporary Art: The Inaugural Evening Sale
 UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000001';
 
--- Important Jewels: Palm Beach
-UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1515562141589-67f0d569b6f5?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000002';
+-- Important Jewels: The Palm Beach Sale
+UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1601121141461-9d6647bca1ed?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000002';
 
 -- Fine Antiques & European Decorative Arts
-UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000003';
+UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1490312278390-ab64016e0aa9?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000003';
 
--- Luxury Watches: Summer Edition
+-- Luxury Watches & Accessories
 UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1587836374828-4dbafa94cf0e?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000004';
 
 -- Haute Couture & Vintage Fashion
@@ -22,15 +22,6 @@ UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1558171
 
 -- 20th Century Design: Icons of Modernism
 UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000006';
-
--- Impressionist & Modern Art: Spring 2026
-UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000007';
-
--- Boca Raton Fine Jewelry
-UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1573408301185-9146fe634ad0?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000008';
-
--- Contemporary Art: New Voices
-UPDATE auctions SET cover_image_url = 'https://images.unsplash.com/photo-1536924940846-227afb31e2a5?w=1200&h=675&fit=crop' WHERE id = 'a0000001-0000-0000-0000-000000000009';
 
 
 -- ============================================
@@ -70,7 +61,7 @@ UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-159964347
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000011';
 
 -- Van Cleef & Arpels Alhambra Necklace
-UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1515562141589-67f0d569b6f5?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000012';
+UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1531995811006-35cb42e1a022?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000012';
 
 -- Colombian Emerald and Diamond Pendant
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1573408301185-9146fe634ad0?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000013';
@@ -84,7 +75,7 @@ UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-157340830
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000020';
 
 -- George III Silver Epergne
-UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1558618666-fcd25c85f82e?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000021';
+UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1603974372039-adc49044b6bd?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000021';
 
 -- Meissen Swan Service Tureen
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1490312278390-ab64016e0aa9?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000022';
@@ -132,7 +123,7 @@ UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-153237257
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000051';
 
 -- Poul Henningsen PH Artichoke
-UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1507473885765-e6ed057ab6fe?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000052';
+UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1540932239986-30128078f3c5?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000052';
 
 -- Ettore Sottsass Carlton
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '10000001-0000-0000-0000-000000000053';
@@ -163,8 +154,8 @@ UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-152231234
 -- Vintage Chanel Classic Flap
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1600857062241-98e5dba7f214?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '20000001-0000-0000-0000-000000000007';
 
--- Japanese Edo Period Bronze Vase
-UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1528396518501-b53b689eb4e3?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '20000001-0000-0000-0000-000000000008';
+-- The Scholar in His Study (Continental School)
+UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1584727638096-042c45049ebe?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '20000001-0000-0000-0000-000000000008';
 
 -- Vintage Hermès Silk Scarf
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '20000001-0000-0000-0000-000000000009';
@@ -186,13 +177,13 @@ UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-149031227
 -- PRIVATE SALE LOT IMAGES
 -- ============================================
 
--- Important Blue Period Watercolor
+-- Continental School: Figure Study in Blue
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '30000001-0000-0000-0000-000000000001';
 
--- Kashmir Sapphire and Diamond Ring
+-- Ceylon Sapphire and Diamond Ring
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '30000001-0000-0000-0000-000000000002';
 
--- 1967 Ferrari 275 GTB/4
+-- 2017 Ferrari 488 GTB
 UPDATE lots SET primary_image_url = 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=800&h=1000&fit=crop', image_count = 1 WHERE id = '30000001-0000-0000-0000-000000000003';
 
 

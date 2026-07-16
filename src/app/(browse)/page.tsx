@@ -96,10 +96,20 @@ async function getHomeData() {
           )
           .orderBy(asc(effectiveClose))
           .limit(8),
+        // Count only lots whose sale is actually open for bidding — lots in
+        // preview/scheduled sales are catalogued but not yet biddable.
         db
           .select({ count: sql<number>`count(*)`.mapWith(Number) })
-          .from(lots)
-          .where(eq(lots.status, 'in_auction')),
+          .from(auctionLots)
+          .innerJoin(lots, eq(auctionLots.lotId, lots.id))
+          .innerJoin(auctions, eq(auctionLots.auctionId, auctions.id))
+          .where(
+            and(
+              eq(lots.status, 'in_auction'),
+              inArray(auctions.status, ['open', 'live', 'closing']),
+              sql`${effectiveClose} > now()`,
+            ),
+          ),
       ]);
 
     const closingSoon: ClosingSoonItem[] = closingSoonRows.map((row) => ({
