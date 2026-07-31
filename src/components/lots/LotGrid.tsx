@@ -9,10 +9,12 @@ interface LotGridProps {
 }
 
 export function LotGrid({ lots, auctionSlug, columns = 4, isGallery }: LotGridProps) {
+  // 2-up on phones — the card typography already has compact mobile sizes, and
+  // one full-screen card per lot makes browsing 48 lots a 48-scroll slog.
   const gridCols = {
-    2: 'grid-cols-1 sm:grid-cols-2',
-    3: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
-    4: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    2: 'grid-cols-2',
+    3: 'grid-cols-2 lg:grid-cols-3',
+    4: 'grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
   };
 
   if (lots.length === 0) {
@@ -24,7 +26,7 @@ export function LotGrid({ lots, auctionSlug, columns = 4, isGallery }: LotGridPr
   }
 
   return (
-    <div className={`grid ${gridCols[columns]} gap-6`}>
+    <div className={`grid ${gridCols[columns]} gap-3 sm:gap-6`}>
       {lots.map((lot) => (
         <LotCard key={lot.id} lot={lot} auctionSlug={auctionSlug} isGallery={isGallery} />
       ))}

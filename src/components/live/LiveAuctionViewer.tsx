@@ -68,21 +68,21 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
   }, [router]);
 
   return (
-    <div className="min-h-screen dark bg-background text-foreground">
+    <div className="h-dvh dark bg-background text-foreground flex flex-col">
       {/* Top bar */}
-      <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="font-logo text-lg text-champagne">MAYELLS</span>
-          <Badge className="bg-red-600 text-white">LIVE</Badge>
-          <span className="text-white/60 text-sm">{auction.title}</span>
+      <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between gap-3 flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="font-logo text-lg text-champagne flex-shrink-0">MAYELLS</span>
+          <Badge className="bg-red-600 text-white flex-shrink-0">LIVE</Badge>
+          <span className="text-white/60 text-sm min-w-0 truncate">{auction.title}</span>
         </div>
-        <span className="text-white/40 text-sm">{lots.length} lots</span>
+        <span className="text-white/40 text-sm flex-shrink-0">{lots.length} lots</span>
       </div>
 
       {/* Main layout */}
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-57px)]">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
         {/* Video + Current Lot */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <LiveVideoPlayer auctionId={auction.id} className="flex-shrink-0" />
 
           {/* Current lot info */}
@@ -91,7 +91,7 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
               <div className="flex items-start gap-4">
                 {activeLot.lot.primaryImageUrl && (
                   <div className="relative w-20 h-20 rounded overflow-hidden flex-shrink-0">
-                    <Image src={activeLot.lot.primaryImageUrl} alt={activeLot.lot.title} fill className="object-cover" />
+                    <Image src={activeLot.lot.primaryImageUrl} alt={activeLot.lot.title} fill sizes="80px" className="object-cover" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
@@ -127,7 +127,7 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
                   )}
                 >
                   {aLot.lot.primaryImageUrl ? (
-                    <Image src={aLot.lot.primaryImageUrl} alt={aLot.lot.title} fill className="object-cover" />
+                    <Image src={aLot.lot.primaryImageUrl} alt={aLot.lot.title} fill sizes="(min-width: 768px) 12vw, (min-width: 640px) 16vw, 25vw" className="object-cover" />
                   ) : (
                     <div className="w-full h-full bg-white/5 flex items-center justify-center text-white/30 text-xs">
                       {aLot.lotNumber}
@@ -143,7 +143,7 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
         </div>
 
         {/* Chat sidebar */}
-        <div className="w-full lg:w-80 xl:w-96 border-l border-white/10 flex-shrink-0">
+        <div className="w-full lg:w-80 xl:w-96 h-[40dvh] lg:h-auto border-t lg:border-t-0 lg:border-l border-white/10 flex-shrink-0">
           <LiveChat auctionId={auction.id} className="h-full rounded-none border-0" />
         </div>
       </div>

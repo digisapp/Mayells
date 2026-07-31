@@ -75,7 +75,7 @@ export default async function GalleryPage({
       </div>
 
       {/* Sort controls */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 mb-8">
         <p className="text-sm text-muted-foreground">
           {galleryLots.length} item{galleryLots.length !== 1 ? 's' : ''}
         </p>
@@ -90,7 +90,7 @@ export default async function GalleryPage({
               <a
                 key={opt.value}
                 href={`/gallery?sort=${opt.value}${search ? `&q=${encodeURIComponent(search)}` : ''}${categorySlug ? `&category=${encodeURIComponent(categorySlug)}` : ''}`}
-                className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
+                className={`text-xs px-3 py-2 rounded-full transition-colors ${
                   sort === opt.value
                     ? 'bg-champagne text-charcoal font-semibold'
                     : 'bg-muted text-muted-foreground hover:bg-muted/80'

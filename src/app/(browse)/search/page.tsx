@@ -149,12 +149,11 @@ function SearchContent() {
           className="pl-12 h-12 text-lg"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          autoFocus
         />
       </div>
 
       {/* Toggle row */}
-      <div className="flex items-center justify-center gap-2 mb-6">
+      <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
         <Button
           variant={useAI ? 'default' : 'outline'}
           size="sm"
@@ -194,7 +193,7 @@ function SearchContent() {
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Department</label>
               <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue placeholder="All Departments" />
                 </SelectTrigger>
                 <SelectContent>
@@ -209,7 +208,7 @@ function SearchContent() {
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Sale Type</label>
               <Select value={saleType || 'all'} onValueChange={(v) => setSaleType(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
@@ -224,7 +223,7 @@ function SearchContent() {
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Price Range</label>
               <Select value={String(priceRange)} onValueChange={(v) => setPriceRange(parseInt(v))}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -238,7 +237,7 @@ function SearchContent() {
             <div>
               <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Sort By</label>
               <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -256,22 +255,28 @@ function SearchContent() {
               {categoryFilter && categoryFilter !== 'all' && (
                 <Badge variant="secondary" className="text-xs gap-1">
                   {categories.find((c) => c.id === categoryFilter)?.name || 'Department'}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => setCategoryFilter('')} />
+                  <button type="button" aria-label="Remove filter" className="-m-1 p-2 inline-flex items-center justify-center cursor-pointer" onClick={() => setCategoryFilter('')}>
+                    <X className="h-3 w-3" />
+                  </button>
                 </Badge>
               )}
               {saleType && saleType !== 'all' && (
                 <Badge variant="secondary" className="text-xs gap-1 capitalize">
                   {saleType}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => setSaleType('')} />
+                  <button type="button" aria-label="Remove filter" className="-m-1 p-2 inline-flex items-center justify-center cursor-pointer" onClick={() => setSaleType('')}>
+                    <X className="h-3 w-3" />
+                  </button>
                 </Badge>
               )}
               {priceRange > 0 && (
                 <Badge variant="secondary" className="text-xs gap-1">
                   {PRICE_RANGES[priceRange].label}
-                  <X className="h-3 w-3 cursor-pointer" onClick={() => setPriceRange(0)} />
+                  <button type="button" aria-label="Remove filter" className="-m-1 p-2 inline-flex items-center justify-center cursor-pointer" onClick={() => setPriceRange(0)}>
+                    <X className="h-3 w-3" />
+                  </button>
                 </Badge>
               )}
-              <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={clearFilters}>
+              <Button variant="ghost" size="sm" className="text-xs h-9 px-3" onClick={clearFilters}>
                 Clear all
               </Button>
             </div>

@@ -18,7 +18,7 @@ export function BuyNowPanel({ lotId, title, buyNowPrice, estimateLow, estimateHi
   const [showContact, setShowContact] = useState(false);
 
   return (
-    <div className="bg-card border border-border/50 rounded-xl p-6 space-y-6 shadow-luxury sticky top-24">
+    <div className="bg-card border border-border/50 rounded-xl p-6 space-y-6 shadow-luxury lg:sticky lg:top-24">
       {/* Price */}
       <div>
         <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Price</p>

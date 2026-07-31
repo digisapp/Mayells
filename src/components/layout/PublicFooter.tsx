@@ -15,9 +15,9 @@ export function PublicFooter() {
             <p className="text-sm text-white/60 leading-relaxed mb-6 max-w-xs">
               Luxury auctions and private sales sourced from estates and private collections. Palm Beach and New York.
             </p>
-            <div className="space-y-2 text-sm text-white/60 mb-6">
-              <a href={BUSINESS.phoneHref} className="block hover:text-champagne transition-colors">{BUSINESS.phone}</a>
-              <a href={`mailto:${BUSINESS.email}`} className="block hover:text-champagne transition-colors">{BUSINESS.email}</a>
+            <div className="text-sm text-white/60 mb-6">
+              <a href={BUSINESS.phoneHref} className="block py-1 hover:text-champagne transition-colors">{BUSINESS.phone}</a>
+              <a href={`mailto:${BUSINESS.email}`} className="block py-1 hover:text-champagne transition-colors">{BUSINESS.email}</a>
             </div>
             <NewsletterSignup />
           </div>
@@ -25,33 +25,33 @@ export function PublicFooter() {
           {/* Auctions */}
           <div>
             <h4 className="text-[11px] uppercase tracking-[0.15em] font-semibold text-white/50 mb-5">Auctions</h4>
-            <ul className="space-y-3 text-sm text-white/70">
-              <li><Link href="/auctions" className="hover:text-champagne transition-colors duration-300">Current Sales</Link></li>
-              <li><Link href="/lots" className="hover:text-champagne transition-colors duration-300">Browse Lots</Link></li>
-              <li><Link href="/gallery" className="hover:text-champagne transition-colors duration-300">Gallery Shop</Link></li>
-              <li><Link href="/search" className="hover:text-champagne transition-colors duration-300">Search</Link></li>
-              <li><Link href="/how-to-buy" className="hover:text-champagne transition-colors duration-300">How to Buy</Link></li>
+            <ul className="space-y-1 text-sm text-white/70">
+              <li><Link href="/auctions" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Current Sales</Link></li>
+              <li><Link href="/lots" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Browse Lots</Link></li>
+              <li><Link href="/gallery" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Gallery Shop</Link></li>
+              <li><Link href="/search" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Search</Link></li>
+              <li><Link href="/how-to-buy" className="inline-block py-1 hover:text-champagne transition-colors duration-300">How to Buy</Link></li>
             </ul>
           </div>
 
           {/* Selling */}
           <div>
             <h4 className="text-[11px] uppercase tracking-[0.15em] font-semibold text-white/50 mb-5">Selling</h4>
-            <ul className="space-y-3 text-sm text-white/70">
-              <li><Link href="/consign" className="hover:text-champagne transition-colors duration-300">Consign With Us</Link></li>
-              <li><Link href="/consign" className="hover:text-champagne transition-colors duration-300">Free Appraisal</Link></li>
-              <li><Link href="/consignment-agreement" className="hover:text-champagne transition-colors duration-300">Consignment Agreement</Link></li>
-              <li><Link href="/about" className="hover:text-champagne transition-colors duration-300">About Us</Link></li>
+            <ul className="space-y-1 text-sm text-white/70">
+              <li><Link href="/consign" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Consign With Us</Link></li>
+              <li><Link href="/consign" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Free Appraisal</Link></li>
+              <li><Link href="/consignment-agreement" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Consignment Agreement</Link></li>
+              <li><Link href="/about" className="inline-block py-1 hover:text-champagne transition-colors duration-300">About Us</Link></li>
             </ul>
           </div>
 
           {/* Company */}
           <div>
             <h4 className="text-[11px] uppercase tracking-[0.15em] font-semibold text-white/50 mb-5">Company</h4>
-            <ul className="space-y-3 text-sm text-white/70">
-              <li><Link href="/about" className="hover:text-champagne transition-colors duration-300">About</Link></li>
-              <li><Link href="/terms" className="hover:text-champagne transition-colors duration-300">Terms of Service</Link></li>
-              <li><Link href="/privacy" className="hover:text-champagne transition-colors duration-300">Privacy Policy</Link></li>
+            <ul className="space-y-1 text-sm text-white/70">
+              <li><Link href="/about" className="inline-block py-1 hover:text-champagne transition-colors duration-300">About</Link></li>
+              <li><Link href="/terms" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Terms of Service</Link></li>
+              <li><Link href="/privacy" className="inline-block py-1 hover:text-champagne transition-colors duration-300">Privacy Policy</Link></li>
             </ul>
           </div>
         </div>
@@ -62,8 +62,8 @@ export function PublicFooter() {
             &copy; {new Date().getFullYear()} Mayells. All rights reserved.
           </p>
           <div className="flex gap-6 text-[12px] text-white/40">
-            <Link href="/terms" className="hover:text-white/60 transition-colors duration-300">Terms</Link>
-            <Link href="/privacy" className="hover:text-white/60 transition-colors duration-300">Privacy</Link>
+            <Link href="/terms" className="inline-block py-1 hover:text-white/60 transition-colors duration-300">Terms</Link>
+            <Link href="/privacy" className="inline-block py-1 hover:text-white/60 transition-colors duration-300">Privacy</Link>
           </div>
         </div>
       </div>

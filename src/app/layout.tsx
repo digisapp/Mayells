@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter, Playfair_Display } from 'next/font/google';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
@@ -19,6 +19,16 @@ const playfair = Playfair_Display({
 });
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
+// viewportFit: 'cover' makes env(safe-area-inset-*) resolve on notched iPhones
+// (the upload capture bar and chat FAB depend on it); themeColor tints Safari's
+// chrome to match the charcoal brand.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#272D35',
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
@@ -58,7 +68,7 @@ export const metadata: Metadata = {
   other: {
     'mobile-web-app-capable': 'yes',
     'apple-mobile-web-app-capable': 'yes',
-    'apple-mobile-web-app-status-bar-style': 'black-translucent',
+    'apple-mobile-web-app-status-bar-style': 'default',
     'apple-mobile-web-app-title': 'Mayells',
   },
   verification: {
@@ -77,7 +87,7 @@ export default function RootLayout({
         <TooltipProvider>
           {children}
         </TooltipProvider>
-        <Toaster position="top-right" />
+        <Toaster position="bottom-right" theme="light" />
         <Analytics />
         <SpeedInsights />
       </body>

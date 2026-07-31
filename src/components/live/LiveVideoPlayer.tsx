@@ -5,6 +5,7 @@ import {
   LiveKitRoom,
   VideoTrack,
   RoomAudioRenderer,
+  StartAudio,
   useConnectionState,
   useTracks,
 } from '@livekit/components-react';
@@ -64,11 +65,16 @@ export function LiveVideoPlayer({ auctionId, className }: LiveVideoPlayerProps) 
     <LiveKitRoom
       token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL}
-      className={cn('bg-background rounded-lg overflow-hidden', className)}
+      className={cn('relative bg-background rounded-lg overflow-hidden', className)}
       connect={true}
     >
       <LiveVideoContent />
       <RoomAudioRenderer />
+      {/* Only visible while the browser (e.g. iOS Safari) blocks audio autoplay */}
+      <StartAudio
+        label="Tap for sound"
+        className="absolute bottom-3 right-3 z-10 bg-black/60 text-white text-xs font-medium rounded-full px-3 py-1.5 hover:bg-black/80 transition-colors"
+      />
     </LiveKitRoom>
   );
 }

@@ -133,7 +133,12 @@ export default async function AuctionDetailPage({
           {auction.biddingEndsAt && auction.status === 'open' && (
             <span className="flex items-center gap-1.5">
               <Clock className="h-4 w-4" />
-              Closes in: <AuctionCountdown endsAt={new Date(auction.biddingEndsAt)} className="font-medium text-foreground" />
+              Closes in: <AuctionCountdown
+                endsAt={new Date(auction.biddingEndsAt)}
+                // eslint-disable-next-line react-hooks/purity
+                serverNow={Date.now()}
+                className="font-medium text-foreground"
+              />
             </span>
           )}
         </div>

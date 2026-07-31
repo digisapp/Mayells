@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { MessageCircle, X, Send, Loader2, Camera, ImageIcon } from 'lucide-react';
+import { toast } from 'sonner';
 
 const transport = new DefaultChatTransport({
   api: '/api/ai/chat',
@@ -17,6 +18,9 @@ export function ChatWidget() {
   const [showLabel, setShowLabel] = useState(true);
   const [greeting, setGreeting] = useState('Welcome to Mayells! How can we help you today?');
   const [chatEnabled, setChatEnabled] = useState(true);
+  // When the on-screen keyboard is open (mobile), how far the visual viewport's
+  // bottom edge sits above the layout viewport's, plus a max-height that fits.
+  const [keyboard, setKeyboard] = useState<{ inset: number; maxHeight: number } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openChatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,6 +68,20 @@ export function ChatWidget() {
     };
   }, []);
 
+  // Keep the composer visible above the on-screen keyboard (iOS Safari keeps
+  // fixed elements pinned to the layout viewport, which the keyboard covers).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      const inset = window.innerHeight - vv.height - vv.offsetTop;
+      // Only treat large shrinks as a keyboard; ignore browser chrome changes.
+      setKeyboard(inset > 100 ? { inset, maxHeight: Math.max(vv.height - 96, 220) } : null);
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
+
   if (!chatEnabled) return null;
 
   const isLoading = status === 'submitted' || status === 'streaming';
@@ -95,8 +113,14 @@ export function ChatWidget() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) return;
-    if (file.size > 20 * 1024 * 1024) return; // 20MB limit
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file (JPEG, PNG, or WebP)');
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('Please choose an image under 20MB');
+      return;
+    }
 
     setImageFile(file);
     const reader = new FileReader();
@@ -108,7 +132,14 @@ export function ChatWidget() {
     <>
       {/* Chat Dialog */}
       {open && (
-        <div className="fixed bottom-20 right-4 sm:right-6 z-50 w-[370px] sm:w-[440px] max-h-[580px] bg-white rounded-2xl shadow-2xl border border-black/10 flex flex-col overflow-hidden">
+        <div
+          className="fixed bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)] right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-[370px] sm:w-[440px] sm:max-w-none max-h-[min(580px,calc(100dvh-7rem))] bg-white rounded-2xl shadow-2xl border border-black/10 flex flex-col overflow-hidden"
+          style={
+            keyboard
+              ? { transform: `translateY(-${keyboard.inset}px)`, maxHeight: `${keyboard.maxHeight}px` }
+              : undefined
+          }
+        >
           {/* Header */}
           <div className="bg-charcoal text-white px-6 py-5 flex items-center justify-between flex-shrink-0">
             <div>
@@ -123,7 +154,7 @@ export function ChatWidget() {
           </div>
 
           {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-5 py-5 space-y-4 min-h-[220px] max-h-[380px]">
+              <div className={`flex-1 overflow-y-auto px-5 py-5 space-y-4 ${keyboard ? 'min-h-0' : 'min-h-[220px]'} max-h-[380px]`}>
                 {messages.length === 0 && (
                   <div className="text-center py-8">
                     <p className="text-base text-gray-500">
@@ -247,7 +278,7 @@ export function ChatWidget() {
           setOpen(!open);
           setShowLabel(false);
         }}
-        className={`fixed bottom-4 right-4 sm:right-6 z-50 bg-champagne text-charcoal shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 ${
+        className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 sm:right-6 z-50 bg-champagne text-charcoal shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 ${
           open ? 'rounded-full p-4' : 'rounded-full py-4 px-5'
         } ${!open && showLabel ? 'animate-bounce-gentle' : ''}`}
         aria-label="Chat with us"

@@ -43,14 +43,18 @@ export function NewsletterSignup() {
         type="email"
         required
         placeholder="Email for updates"
+        autoComplete="email"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        className="flex-1 min-w-0 bg-white/[0.06] border border-white/15 rounded-md px-3 py-1.5 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+        className="flex-1 min-w-0 h-11 sm:h-auto bg-white/[0.06] border border-white/15 rounded-md px-3 py-1.5 text-base sm:text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
       />
       <button
         type="submit"
         disabled={loading}
-        className="shrink-0 bg-champagne text-charcoal text-xs font-medium px-3 py-1.5 rounded-md hover:bg-champagne/90 transition-colors disabled:opacity-50"
+        className="shrink-0 h-11 sm:h-auto bg-champagne text-charcoal text-xs font-medium px-3 py-1.5 rounded-md hover:bg-champagne/90 transition-colors disabled:opacity-50"
       >
         {loading ? '...' : 'Subscribe'}
       </button>

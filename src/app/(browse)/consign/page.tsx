@@ -74,6 +74,7 @@ function formatUsd(cents: number): string {
 export default function ConsignPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [processingPhotos, setProcessingPhotos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [estimate, setEstimate] = useState<ConsignEstimate | null>(null);
@@ -88,17 +89,28 @@ export default function ConsignPage() {
       toast.error(`Maximum ${MAX_PHOTOS} photos allowed`);
       return;
     }
-    const compressed = await Promise.all(imageFiles.map((f) => compressImage(f)));
-    const sized = compressed.filter((f) => f.size <= MAX_FILE_SIZE);
-    if (sized.length < compressed.length) {
-      toast.error('Some photos were over 15MB and were skipped.');
+    setProcessingPhotos(true);
+    try {
+      // Compress a few at a time — decoding 50 photos at once can exhaust
+      // memory on mobile Safari.
+      const compressed: File[] = [];
+      for (let i = 0; i < imageFiles.length; i += 4) {
+        const chunk = await Promise.all(imageFiles.slice(i, i + 4).map((f) => compressImage(f)));
+        compressed.push(...chunk);
+      }
+      const sized = compressed.filter((f) => f.size <= MAX_FILE_SIZE);
+      if (sized.length < compressed.length) {
+        toast.error('Some photos were over 15MB and were skipped.');
+      }
+      // Build each preview alongside its file so the two can never get out of order
+      const newPhotos = await Promise.all(
+        sized.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
+      );
+      setPhotos((prev) => [...prev, ...newPhotos]);
+    } finally {
+      setProcessingPhotos(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
-    // Build each preview alongside its file so the two can never get out of order
-    const newPhotos = await Promise.all(
-      sized.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
-    );
-    setPhotos((prev) => [...prev, ...newPhotos]);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removePhoto = (index: number) => {
@@ -341,32 +353,41 @@ export default function ConsignPage() {
                     type="text"
                     placeholder="Your Name *"
                     required
+                    autoComplete="name"
+                    enterKeyHint="next"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
                   />
                   <input
                     type="tel"
                     placeholder="Phone Number *"
                     required
+                    autoComplete="tel"
+                    enterKeyHint="next"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
                   />
                 </div>
                 <input
                   type="email"
                   placeholder="Email Address"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  enterKeyHint="next"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
                 />
                 <textarea
                   placeholder="Describe your item(s): what it is, condition, provenance, dimensions, any known history..."
                   rows={4}
                   value={form.items}
                   onChange={(e) => setForm({ ...form, items: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
                 />
 
                 {/* Photo Upload */}
@@ -396,9 +417,10 @@ export default function ConsignPage() {
                           <button
                             type="button"
                             onClick={() => removePhoto(i)}
-                            className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label="Remove photo"
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-4 w-4" />
                           </button>
                         </div>
                       ))}
@@ -407,10 +429,15 @@ export default function ConsignPage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full flex items-center justify-center gap-2 bg-gray-50 border border-dashed border-gray-300 hover:border-champagne/60 rounded-lg px-4 py-3 text-sm text-gray-500 hover:text-charcoal transition-colors"
+                    disabled={processingPhotos}
+                    className="w-full flex items-center justify-center gap-2 bg-gray-50 border border-dashed border-gray-300 hover:border-champagne/60 rounded-lg px-4 py-3 text-sm text-gray-500 hover:text-charcoal transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Camera className="h-4 w-4" />
-                    {photos.length > 0 ? `${photos.length} photo${photos.length !== 1 ? 's' : ''} — add more` : 'Upload photos (recommended)'}
+                    {processingPhotos
+                      ? 'Processing photos…'
+                      : photos.length > 0
+                        ? `${photos.length} photo${photos.length !== 1 ? 's' : ''} — add more`
+                        : 'Upload photos (recommended)'}
                   </button>
                 </div>
 

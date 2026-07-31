@@ -22,12 +22,25 @@ export function PublicNav() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Lock page scroll while the mobile menu is open so the sheet doesn't float
+  // over a scrolling page.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileOpen]);
+
   return (
     <header
       className={`sticky top-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? 'glass border-b border-border/30 shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
-          : 'bg-background/80 backdrop-blur-sm'
+        mobileOpen
+          ? 'bg-background border-b border-border/30'
+          : scrolled
+            ? 'glass border-b border-border/30 shadow-[0_1px_3px_rgba(0,0,0,0.04)]'
+            : 'bg-background/80 backdrop-blur-sm'
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -53,19 +66,19 @@ export function PublicNav() {
           {/* Right actions */}
           <div className="flex items-center gap-1 sm:gap-2">
             <Link href="/search" aria-label="Search">
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-10 w-10">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-11 w-11">
                 <Search className="h-[18px] w-[18px]" />
               </Button>
             </Link>
 
             <Link href="/my-bids" aria-label="My bids" className="hidden sm:block">
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-10 w-10">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-11 w-11">
                 <Gavel className="h-[18px] w-[18px]" />
               </Button>
             </Link>
 
             <Link href="/watchlist" aria-label="My watchlist">
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-10 w-10">
+              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground h-11 w-11">
                 <Heart className="h-[18px] w-[18px]" />
               </Button>
             </Link>
@@ -81,7 +94,7 @@ export function PublicNav() {
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden h-10 w-10"
+              className="md:hidden h-11 w-11"
               onClick={() => setMobileOpen(!mobileOpen)}
               aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={mobileOpen}
@@ -93,7 +106,7 @@ export function PublicNav() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <nav aria-label="Mobile navigation" className="md:hidden pb-6 pt-4 border-t border-border/30 animate-fade-in">
+          <nav aria-label="Mobile navigation" className="md:hidden pb-6 pt-4 border-t border-border/30 animate-fade-in max-h-[calc(100dvh-5rem)] overflow-y-auto overscroll-contain">
             <div className="space-y-1">
               {navLinks.map((link) => (
                 <Link
@@ -118,6 +131,13 @@ export function PublicNav() {
                 onClick={() => setMobileOpen(false)}
               >
                 My Watchlist
+              </Link>
+              <Link
+                href="/login"
+                className="block py-3 px-3 text-[15px] text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                onClick={() => setMobileOpen(false)}
+              >
+                Sign In
               </Link>
               <Link
                 href="/consign"

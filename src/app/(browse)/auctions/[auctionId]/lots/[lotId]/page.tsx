@@ -2,11 +2,11 @@ export const dynamic = 'force-dynamic';
 
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Image from 'next/image';
 import { db } from '@/db';
 import { lots, lotImages, auctionLots, auctions, bids } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { ShareButtons } from '@/components/lots/ShareButtons';
+import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { LiveLotPanel } from '@/components/lots/LiveLotPanel';
 import { WatchButton } from '@/components/lots/WatchButton';
 import { createClient } from '@/lib/supabase/server';
@@ -156,41 +156,30 @@ export default async function LotDetailPage({
     { name: lot.title, url: `/auctions/${auctionId}/lots/${lot.slug || lot.id}` },
   ]);
 
+  const galleryImages = images.length
+    ? images.map((img) => ({ url: img.url, alt: img.altText || lot.title }))
+    : lot.primaryImageUrl
+      ? [{ url: lot.primaryImageUrl, alt: lot.title }]
+      : [];
+
   return (
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(lotJsonLd) }} />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        {/* Left: Images + Details */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
+        {/* Images + title — first on mobile so the bid panel lands right after */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Image Gallery */}
-          <div className="space-y-4">
+          {/* Image Gallery — swipeable on touch, tap to open the lightbox */}
+          {galleryImages.length > 0 ? (
+            <LotImageGallery images={galleryImages} heroClassName="rounded-lg" />
+          ) : (
             <div className="relative aspect-[4/3] bg-muted rounded-lg overflow-hidden">
-              {lot.primaryImageUrl ? (
-                <Image
-                  src={lot.primaryImageUrl}
-                  alt={lot.title}
-                  fill
-                  className="object-contain"
-                  priority
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                  No Image Available
-                </div>
-              )}
-            </div>
-            {images.length > 1 && (
-              <div className="grid grid-cols-6 gap-2">
-                {images.map((img) => (
-                  <div key={img.id} className="relative aspect-square bg-muted rounded overflow-hidden cursor-pointer hover:ring-2 ring-champagne">
-                    <Image src={img.url} alt={img.altText || ''} fill className="object-cover" sizes="100px" />
-                  </div>
-                ))}
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                No Image Available
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Lot info */}
           <div>
@@ -216,7 +205,78 @@ export default async function LotDetailPage({
               <ShareButtons title={lot.title} url={`${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`} />
             </div>
           </div>
+        </div>
 
+        {/* Auction Info + Bid CTA — right column on desktop; on mobile it sits
+            directly under the title so bidding never requires scrolling past
+            the full catalog entry */}
+        <div className="lg:row-span-2">
+          <div className="space-y-4 lg:sticky lg:top-24">
+          <div className="bg-card border border-border/50 rounded-xl p-6 space-y-5 shadow-luxury">
+            {/* Live-updating estimate / current bid + countdown + on-site bidding */}
+            <LiveLotPanel
+              lotRef={lot.slug || lot.id}
+              initialCurrentBidAmount={lot.currentBidAmount}
+              initialBidCount={lot.bidCount}
+              startingBid={lot.startingBid ?? 0}
+              estimateLow={lot.estimateLow ?? null}
+              estimateHigh={lot.estimateHigh ?? null}
+              closingAt={
+                (auctionLot?.closingAt ?? auction?.biddingEndsAt)?.toISOString() ?? null
+              }
+              serverNow={renderNow}
+              initialIsBiddable={isBiddableOnSite}
+              initialIsHighBidder={!!viewer && lot.currentBidderId === viewer.id}
+            />
+
+            {/* When the lot is biddable on-site, the bid form (inside LiveLotPanel
+                above) is the primary CTA. Otherwise fall back to LiveAuctioneers
+                or an informational message. */}
+            {!isBiddableOnSite && (
+              auction?.liveauctioneersUrl ? (
+                <a href={auction.liveauctioneersUrl} target="_blank" rel="noopener noreferrer">
+                  <Button variant="champagne" size="xl" className="w-full gap-2">
+                    <ExternalLink className="h-5 w-5" />
+                    Bid on LiveAuctioneers
+                  </Button>
+                </a>
+              ) : auction ? (
+                <p className="text-sm text-muted-foreground">This lot is not open for bidding right now.</p>
+              ) : (
+                <p className="text-sm text-muted-foreground">This lot is not currently in an active auction.</p>
+              )
+            )}
+            {/* Secondary link to LiveAuctioneers even while biddable on-site */}
+            {isBiddableOnSite && auction?.liveauctioneersUrl && (
+              <a
+                href={auction.liveauctioneersUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Also available on LiveAuctioneers
+              </a>
+            )}
+
+            {/* Alternative bidding */}
+            <div className="border-t border-border/30 pt-4 space-y-3">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Or bid by phone / absentee</p>
+              <a href={BUSINESS.phoneHref} className="flex items-center gap-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Phone className="h-4 w-4" />
+                {BUSINESS.phone}
+              </a>
+              <a href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(`Bid Inquiry: ${lot.title}`)}`} className="flex items-center gap-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Mail className="h-4 w-4" />
+                {BUSINESS.email}
+              </a>
+            </div>
+          </div>
+          </div>
+        </div>
+
+        {/* Catalog details */}
+        <div className="lg:col-span-2 space-y-8">
           {/* Details table */}
           <div className="space-y-3">
             {[
@@ -228,8 +288,8 @@ export default async function LotDetailPage({
               { label: 'Dimensions', value: lot.dimensions },
               { label: 'Weight', value: lot.weight },
             ].filter(({ value }) => value).map(({ label, value }) => (
-              <div key={label} className="flex">
-                <span className="w-36 text-sm text-muted-foreground shrink-0">{label}</span>
+              <div key={label} className="flex flex-col gap-0.5 sm:flex-row">
+                <span className="sm:w-36 text-sm text-muted-foreground shrink-0">{label}</span>
                 <span className="text-sm">{value}</span>
               </div>
             ))}
@@ -284,70 +344,6 @@ export default async function LotDetailPage({
               </div>
             </>
           )}
-        </div>
-
-        {/* Right: Auction Info + Bid CTA */}
-        <div className="space-y-4 sticky top-24">
-          <div className="bg-card border border-border/50 rounded-xl p-6 space-y-5 shadow-luxury">
-            {/* Live-updating estimate / current bid + countdown + on-site bidding */}
-            <LiveLotPanel
-              lotRef={lot.slug || lot.id}
-              initialCurrentBidAmount={lot.currentBidAmount}
-              initialBidCount={lot.bidCount}
-              startingBid={lot.startingBid ?? 0}
-              estimateLow={lot.estimateLow ?? null}
-              estimateHigh={lot.estimateHigh ?? null}
-              closingAt={
-                (auctionLot?.closingAt ?? auction?.biddingEndsAt)?.toISOString() ?? null
-              }
-              serverNow={renderNow}
-              initialIsBiddable={isBiddableOnSite}
-              initialIsHighBidder={!!viewer && lot.currentBidderId === viewer.id}
-            />
-
-            {/* When the lot is biddable on-site, the bid form (inside LiveLotPanel
-                above) is the primary CTA. Otherwise fall back to LiveAuctioneers
-                or an informational message. */}
-            {!isBiddableOnSite && (
-              auction?.liveauctioneersUrl ? (
-                <a href={auction.liveauctioneersUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="champagne" size="xl" className="w-full gap-2">
-                    <ExternalLink className="h-5 w-5" />
-                    Bid on LiveAuctioneers
-                  </Button>
-                </a>
-              ) : auction ? (
-                <p className="text-sm text-muted-foreground">This lot is not open for bidding right now.</p>
-              ) : (
-                <p className="text-sm text-muted-foreground">This lot is not currently in an active auction.</p>
-              )
-            )}
-            {/* Secondary link to LiveAuctioneers even while biddable on-site */}
-            {isBiddableOnSite && auction?.liveauctioneersUrl && (
-              <a
-                href={auction.liveauctioneersUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Also available on LiveAuctioneers
-              </a>
-            )}
-
-            {/* Alternative bidding */}
-            <div className="border-t border-border/30 pt-4 space-y-3">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Or bid by phone / absentee</p>
-              <a href={BUSINESS.phoneHref} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <Phone className="h-4 w-4" />
-                {BUSINESS.phone}
-              </a>
-              <a href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(`Bid Inquiry: ${lot.title}`)}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <Mail className="h-4 w-4" />
-                {BUSINESS.email}
-              </a>
-            </div>
-          </div>
         </div>
       </div>
     </div>

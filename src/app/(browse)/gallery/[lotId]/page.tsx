@@ -2,12 +2,12 @@ export const dynamic = 'force-dynamic';
 
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import Image from 'next/image';
 import { db } from '@/db';
 import { lots, lotImages } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
 import { BuyNowPanel } from '@/components/gallery/BuyNowPanel';
+import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
@@ -87,41 +87,30 @@ export default async function GalleryDetailPage({
     { name: lot.title, url: `/gallery/${lot.slug || lot.id}` },
   ]);
 
+  const galleryImages = images.length
+    ? images.map((img) => ({ url: img.url, alt: img.altText || lot.title }))
+    : lot.primaryImageUrl
+      ? [{ url: lot.primaryImageUrl, alt: lot.title }]
+      : [];
+
   return (
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        {/* Left: Images + Details */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
+        {/* Images + title — first on mobile so the purchase panel lands right after */}
         <div className="lg:col-span-2 space-y-8">
-          {/* Image Gallery */}
-          <div className="space-y-4">
+          {/* Image Gallery — swipeable on touch, tap to open the lightbox */}
+          {galleryImages.length > 0 ? (
+            <LotImageGallery images={galleryImages} heroClassName="rounded-xl" />
+          ) : (
             <div className="relative aspect-[4/3] bg-muted rounded-xl overflow-hidden">
-              {lot.primaryImageUrl ? (
-                <Image
-                  src={lot.primaryImageUrl}
-                  alt={lot.title}
-                  fill
-                  className="object-contain"
-                  priority
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                  <span className="font-logo text-lg text-muted-foreground/40">MAYELLS</span>
-                </div>
-              )}
-            </div>
-            {images.length > 1 && (
-              <div className="grid grid-cols-6 gap-2">
-                {images.map((img) => (
-                  <div key={img.id} className="relative aspect-square bg-muted rounded overflow-hidden cursor-pointer hover:ring-2 ring-champagne">
-                    <Image src={img.url} alt={img.altText || ''} fill className="object-cover" sizes="100px" />
-                  </div>
-                ))}
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                <span className="font-logo text-lg text-muted-foreground/40">MAYELLS</span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Lot info */}
           <div>
@@ -138,7 +127,36 @@ export default async function GalleryDetailPage({
               <p className="text-lg text-muted-foreground">{lot.subtitle}</p>
             )}
           </div>
+        </div>
 
+        {/* Buy Now Panel — right column on desktop; on mobile it sits directly
+            under the title so the purchase CTA never requires scrolling past
+            the full catalog entry */}
+        <div className="lg:row-span-2">
+          {lot.status === 'for_sale' && lot.buyNowPrice ? (
+            <BuyNowPanel
+              lotId={lot.id}
+              title={lot.title}
+              buyNowPrice={lot.buyNowPrice}
+              estimateLow={lot.estimateLow}
+              estimateHigh={lot.estimateHigh}
+            />
+          ) : (
+            <div className="bg-card border border-border/50 rounded-xl p-6 shadow-luxury">
+              <p className="font-display text-lg mb-1">
+                {lot.status === 'sold' ? 'Sold' : 'Not Available'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {lot.status === 'sold'
+                  ? 'This item has been sold.'
+                  : 'This item is not currently available for purchase.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Catalog details */}
+        <div className="lg:col-span-2 space-y-8">
           {/* Details table */}
           <div className="space-y-3">
             {[
@@ -150,8 +168,8 @@ export default async function GalleryDetailPage({
               { label: 'Dimensions', value: lot.dimensions },
               { label: 'Weight', value: lot.weight },
             ].filter(({ value }) => value).map(({ label, value }) => (
-              <div key={label} className="flex">
-                <span className="w-36 text-sm text-muted-foreground shrink-0">{label}</span>
+              <div key={label} className="flex flex-col gap-0.5 sm:flex-row">
+                <span className="sm:w-36 text-sm text-muted-foreground shrink-0">{label}</span>
                 <span className="text-sm">{value}</span>
               </div>
             ))}
@@ -185,30 +203,6 @@ export default async function GalleryDetailPage({
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap">{lot.conditionNotes}</p>
               </div>
             </>
-          )}
-        </div>
-
-        {/* Right: Buy Now Panel */}
-        <div>
-          {lot.status === 'for_sale' && lot.buyNowPrice ? (
-            <BuyNowPanel
-              lotId={lot.id}
-              title={lot.title}
-              buyNowPrice={lot.buyNowPrice}
-              estimateLow={lot.estimateLow}
-              estimateHigh={lot.estimateHigh}
-            />
-          ) : (
-            <div className="bg-card border border-border/50 rounded-xl p-6 shadow-luxury">
-              <p className="font-display text-lg mb-1">
-                {lot.status === 'sold' ? 'Sold' : 'Not Available'}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {lot.status === 'sold'
-                  ? 'This item has been sold.'
-                  : 'This item is not currently available for purchase.'}
-              </p>
-            </div>
           )}
         </div>
       </div>

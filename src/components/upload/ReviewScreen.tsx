@@ -165,7 +165,7 @@ export function ReviewScreen({
                   onChange={(e) => onNotesChange(idx, e.target.value)}
                   placeholder="Add details: history, condition, provenance, dimensions..."
                   rows={2}
-                  className="mt-3 w-full px-3 py-2.5 text-sm border border-[#272D35]/10 rounded-xl bg-[#FAFAF8] text-[#272D35] placeholder:text-[#272D35]/30 focus:outline-none focus:ring-2 focus:ring-[#D4C5A0]/50 focus:border-[#D4C5A0] transition-colors resize-none"
+                  className="mt-3 w-full px-3 py-2.5 text-base sm:text-sm border border-[#272D35]/10 rounded-xl bg-[#FAFAF8] text-[#272D35] placeholder:text-[#272D35]/30 focus:outline-none focus:ring-2 focus:ring-[#D4C5A0]/50 focus:border-[#D4C5A0] transition-colors resize-none"
                 />
               </div>
             );

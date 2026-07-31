@@ -255,9 +255,9 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
             variant="outline"
             disabled={submitting}
             onClick={() => submitBid(opt, showMax && parsedMax !== undefined ? parsedMax : undefined)}
-            className="flex-col h-auto py-2"
+            className="flex-col h-auto min-h-11 py-2 px-1"
           >
-            <span className="text-sm font-semibold">{formatCurrency(opt)}</span>
+            <span className="text-[13px] sm:text-sm font-semibold tracking-tight tabular-nums">{formatCurrency(opt)}</span>
           </Button>
         ))}
       </div>
@@ -274,7 +274,7 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
             placeholder={`${Math.ceil(minNextBid / 100)}+`}
             value={customAmount}
             onChange={(e) => setCustomAmount(e.target.value)}
-            className="pl-7"
+            className="pl-7 h-11 md:h-9"
             disabled={submitting}
           />
         </div>
@@ -282,7 +282,7 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
           variant="champagne"
           disabled={submitting || !customAmount}
           onClick={() => submitBid(parsedCustom, showMax ? parsedMax : undefined)}
-          className="gap-2 shrink-0"
+          className="gap-2 shrink-0 h-11 md:h-9"
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gavel className="h-4 w-4" />}
           Bid
@@ -300,7 +300,7 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
             placeholder="Maximum (proxy) bid"
             value={maxAmount}
             onChange={(e) => setMaxAmount(e.target.value)}
-            className="pl-7"
+            className="pl-7 h-11 md:h-9"
             disabled={submitting}
           />
           <p className="text-xs text-muted-foreground mt-1">
@@ -311,7 +311,7 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
         <button
           type="button"
           onClick={() => setShowMax(true)}
-          className="text-xs text-champagne hover:underline"
+          className="text-[13px] text-champagne hover:underline py-2 -my-1"
         >
           + Set a maximum (proxy) bid
         </button>

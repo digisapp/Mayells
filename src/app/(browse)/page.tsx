@@ -204,8 +204,8 @@ export default async function HomePage() {
                   </Button>
                 </Link>
               </div>
-              <div className="mt-6 flex items-center gap-6 text-[13px] text-white/65">
-                <a href={BUSINESS.phoneHref} className="flex items-center gap-1.5 hover:text-white/90 transition-colors">
+              <div className="mt-6 flex flex-wrap items-center gap-6 gap-y-2 text-[13px] text-white/65">
+                <a href={BUSINESS.phoneHref} className="flex items-center gap-1.5 py-2 hover:text-white/90 transition-colors">
                   <Phone className="h-3.5 w-3.5" />
                   {BUSINESS.phone}
                 </a>
@@ -263,7 +263,7 @@ export default async function HomePage() {
       {/* Trust Strip — first-party platform proof */}
       <section className="border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3 text-[12px] sm:text-[13px] uppercase tracking-[0.15em] text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-10 gap-y-1 sm:gap-y-3 text-[12px] sm:text-[13px] uppercase tracking-[0.15em] text-muted-foreground">
             <span>Real-Time Bidding</span>
             <span className="hidden sm:inline text-border">|</span>
             <span>Verified Bidders</span>
@@ -334,7 +334,7 @@ export default async function HomePage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent transition-opacity duration-500 group-hover:from-black/80" />
                 <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
                   <h3 className="font-display text-white text-sm sm:text-lg">{cat.name}</h3>
-                  <p className="text-[11px] sm:text-[13px] text-white/70 mt-1 opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                  <p className="text-[11px] sm:text-[13px] text-white/70 mt-1 opacity-100 translate-y-0 lg:opacity-0 lg:translate-y-2 lg:group-hover:opacity-100 lg:group-hover:translate-y-0 transition-all duration-300">
                     Browse collection
                   </p>
                 </div>

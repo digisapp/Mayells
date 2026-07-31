@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { Share2, Check, Link2 } from 'lucide-react';
 
@@ -9,8 +9,15 @@ interface ShareButtonsProps {
   url: string;
 }
 
+const emptySubscribe = () => () => {};
+const getCanNativeShare = () => typeof navigator !== 'undefined' && 'share' in navigator;
+const getServerCanNativeShare = () => false;
+
 export function ShareButtons({ title, url }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
+  // Server snapshot is false so the first client render matches SSR;
+  // the button appears after hydration where navigator.share exists.
+  const canNativeShare = useSyncExternalStore(emptySubscribe, getCanNativeShare, getServerCanNativeShare);
   const encoded = encodeURIComponent(url);
   const encodedTitle = encodeURIComponent(title);
 
@@ -20,13 +27,36 @@ export function ShareButtons({ title, url }: ShareButtonsProps) {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  async function nativeShare() {
+    try {
+      await navigator.share({ title, url });
+    } catch {
+      // User dismissed the share sheet (AbortError) — nothing to do
+    }
+  }
+
+  // On mobile with native share, show just the share sheet + copy link;
+  // per-network buttons stay available from sm up.
+  const networkButtonClass = canNativeShare ? 'h-10 w-10 hidden sm:inline-flex' : 'h-10 w-10';
+
   return (
     <div className="flex items-center gap-2">
       <span className="text-sm text-muted-foreground mr-1">Share:</span>
+      {canNativeShare && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-10 w-10"
+          onClick={nativeShare}
+          aria-label="Share"
+        >
+          <Share2 className="h-4 w-4" />
+        </Button>
+      )}
       <Button
         variant="outline"
         size="icon"
-        className="h-8 w-8"
+        className={networkButtonClass}
         onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encoded}`, '_blank', 'width=600,height=400')}
         aria-label="Share on Facebook"
       >
@@ -35,7 +65,7 @@ export function ShareButtons({ title, url }: ShareButtonsProps) {
       <Button
         variant="outline"
         size="icon"
-        className="h-8 w-8"
+        className={networkButtonClass}
         onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encoded}`, '_blank', 'width=600,height=400')}
         aria-label="Share on X"
       >
@@ -44,7 +74,7 @@ export function ShareButtons({ title, url }: ShareButtonsProps) {
       <Button
         variant="outline"
         size="icon"
-        className="h-8 w-8"
+        className={networkButtonClass}
         onClick={() => window.open(`https://api.whatsapp.com/send?text=${encodedTitle}%20${encoded}`, '_blank')}
         aria-label="Share on WhatsApp"
       >
@@ -53,7 +83,7 @@ export function ShareButtons({ title, url }: ShareButtonsProps) {
       <Button
         variant="outline"
         size="icon"
-        className="h-8 w-8"
+        className="h-10 w-10"
         onClick={copyLink}
         aria-label="Copy link"
       >

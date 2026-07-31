@@ -174,25 +174,34 @@ export function HeroAppraisalForm() {
               type="text"
               placeholder="Your Name"
               required
+              autoComplete="name"
+              enterKeyHint="next"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+              className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
                 type="email"
                 placeholder="Email"
+                autoComplete="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                enterKeyHint="next"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+                className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
               />
               <input
                 type="tel"
                 placeholder="Phone"
                 required
+                autoComplete="tel"
+                enterKeyHint="next"
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
+                className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors"
               />
             </div>
             <textarea
@@ -200,7 +209,7 @@ export function HeroAppraisalForm() {
               rows={2}
               value={form.items}
               onChange={(e) => setForm({ ...form, items: e.target.value })}
-              className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
+              className="w-full bg-white/[0.06] border border-white/10 rounded-lg px-4 py-2.5 text-base sm:text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
             />
 
             <div>
@@ -229,9 +238,10 @@ export function HeroAppraisalForm() {
                       <button
                         type="button"
                         onClick={() => removePhoto(i)}
-                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remove photo"
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
                       >
-                        <X className="h-2.5 w-2.5" />
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
                   ))}

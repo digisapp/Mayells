@@ -9,7 +9,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter);
   --font-display: var(--font-playfair);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --color-champagne: var(--champagne);
   --color-ivory: var(--ivory);
   --color-charcoal: var(--charcoal);
@@ -145,6 +145,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    /* The public site is light-only (no ThemeProvider is mounted); without
+       this, iPhones in system dark mode render dark native controls — date
+       pickers, number steppers, autofill chips — on the warm-white page. */
+    color-scheme: light;
+  }
   body {
     @apply bg-background text-foreground antialiased;
   }
@@ -161,20 +167,23 @@
     letter-spacing: 0.1em;
     font-weight: 700;
   }
+  /* Fluid display sizes: the max values match the original fixed sizes, so
+     desktop is unchanged; phones scale down instead of wrapping/overflowing
+     (auction titles, estimate ranges in phone-width cards). */
   .text-display-xl {
-    font-size: 3.5rem;
+    font-size: clamp(2.25rem, 1rem + 5.5vw, 3.5rem);
     line-height: 1.1;
   }
   .text-display-lg {
-    font-size: 2.5rem;
+    font-size: clamp(1.75rem, 1rem + 3.5vw, 2.5rem);
     line-height: 1.15;
   }
   .text-display-md {
-    font-size: 2rem;
+    font-size: clamp(1.5rem, 1rem + 2.25vw, 2rem);
     line-height: 1.2;
   }
   .text-display-sm {
-    font-size: 1.5rem;
+    font-size: clamp(1.25rem, 1rem + 1.25vw, 1.5rem);
     line-height: 1.3;
   }
   /* The single tracked-caps label style — section kickers, hero eyebrow, etc. */
@@ -266,12 +275,16 @@
       0 4px 16px rgba(0,0,0,0.04),
       inset 0 1px 0 rgba(255,255,255,0.5);
   }
-  .glass-card:hover {
-    background: rgba(255, 255, 255, 0.8);
-    box-shadow:
-      0 2px 4px rgba(0,0,0,0.06),
-      0 8px 32px rgba(0,0,0,0.08),
-      inset 0 1px 0 rgba(255,255,255,0.6);
+  /* Hover effects only on devices with real hover — prevents iOS "sticky
+     hover" where a tapped card stays lit until the next tap elsewhere. */
+  @media (hover: hover) {
+    .glass-card:hover {
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow:
+        0 2px 4px rgba(0,0,0,0.06),
+        0 8px 32px rgba(0,0,0,0.08),
+        inset 0 1px 0 rgba(255,255,255,0.6);
+    }
   }
   .border-glow {
     border: 1px solid oklch(0.82 0.06 80 / 0.2);
@@ -279,11 +292,13 @@
       0 0 0 1px oklch(0.82 0.06 80 / 0.05),
       0 0 20px -5px oklch(0.82 0.06 80 / 0.1);
   }
-  .border-glow-hover:hover {
-    border-color: oklch(0.82 0.06 80 / 0.35);
-    box-shadow:
-      0 0 0 1px oklch(0.82 0.06 80 / 0.1),
-      0 0 30px -5px oklch(0.82 0.06 80 / 0.15);
+  @media (hover: hover) {
+    .border-glow-hover:hover {
+      border-color: oklch(0.82 0.06 80 / 0.35);
+      box-shadow:
+        0 0 0 1px oklch(0.82 0.06 80 / 0.1),
+        0 0 30px -5px oklch(0.82 0.06 80 / 0.15);
+    }
   }
   .gradient-line {
     height: 1px;
@@ -329,4 +344,26 @@
 }
 .animate-bounce-gentle {
   animation: bounceGentle 2s ease-in-out 3;
+}
+
+/* Hide scrollbars on touch carousels (momentum scrolling still works). */
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Respect the OS Reduce Motion setting; the infinite ambient animations are
+   also a continuous GPU/battery cost on phones. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-glow-pulse,
+  .animate-urgency,
+  .animate-float,
+  .animate-bounce-gentle,
+  .text-shimmer {
+    animation: none;
+  }
 }
