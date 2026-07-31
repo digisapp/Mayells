@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import { z } from 'zod';
 import { db } from '@/db';
@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
 import { instantEstimate } from '@/lib/ai/instant-estimate';
+import { stripImageMetadata, sanitizeStoredImages } from '@/lib/images/sanitize';
 
 // Photo uploads plus a vision-model estimate can exceed the default timeout.
 export const maxDuration = 60;
@@ -82,9 +83,13 @@ export async function POST(req: NextRequest) {
           .map(async (photo) => {
             const ext = photo.name.split('.').pop()?.toLowerCase() || 'jpg';
             const path = `submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+            const stripped = await stripImageMetadata(await photo.arrayBuffer());
             const { data, error } = await admin.storage
               .from(BUCKET)
-              .upload(path, photo, { contentType: photo.type || 'image/jpeg', upsert: false });
+              .upload(path, stripped?.buffer ?? photo, {
+                contentType: stripped?.contentType ?? photo.type ?? 'image/jpeg',
+                upsert: false,
+              });
             if (error) {
               logger.error('Photo upload error', error);
               return null;
@@ -124,6 +129,10 @@ export async function POST(req: NextRequest) {
           const verified = candidates.filter((p) => existingNames.has(p));
           photoUrls = verified.map(publicUrl);
           aiImageUrls = verified.map(aiRenditionUrl);
+          // Direct-to-storage uploads bypass the server, so EXIF (incl. GPS)
+          // is scrubbed after the response — the paths, and thus URLs, stay
+          // the same.
+          after(() => sanitizeStoredImages(verified));
         }
       }
     }
