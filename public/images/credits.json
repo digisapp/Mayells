@@ -1,0 +1,355 @@
+{
+ "_note": "Image attribution for placeholder catalog imagery. CC0 items require no attribution; CC BY / CC BY-SA items are credited here as required by their licenses. Images were resized/converted to webp.",
+ "images": {
+  "abstract-landscape-pacific": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "The Calm Sea",
+   "artist": "Gustave Courbet",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ep/original/DT1973.jpg"
+  },
+  "ap-royal-oak": {
+   "source": "Flickr via Openverse",
+   "title": "Audemars Piguet Royal Oak Jumbo 15202",
+   "artist": "section215",
+   "license": "by-2.0",
+   "url": "https://www.flickr.com/photos/25646902@N00/15635567284"
+  },
+  "birkin-himalaya": {
+   "source": "Wikimedia Commons",
+   "title": "Croc Birkin bag.jpg",
+   "artist": "Ohconfucius",
+   "license": "CC BY 3.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Croc_Birkin_bag.jpg"
+  },
+  "brass-lamps": {
+   "source": "Wikimedia Commons",
+   "title": "Mid-Century Modern Tripod Lamp at Intterno Showroom in Warsa",
+   "artist": "Siarhei Besarab",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Mid-Century_Modern_Tripod_Lamp_at_Intterno_Showroom_in_Warsaw.jpg"
+  },
+  "bronze-dancer": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "The Little Fourteen-Year-Old Dancer",
+   "artist": "Edgar Degas",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/es/original/DP-14939-001.jpg"
+  },
+  "cartier-tank": {
+   "source": "Flickr via Openverse",
+   "title": "Les Must de Cartier Tank",
+   "artist": "GuySie",
+   "license": "by-sa-2.0",
+   "url": "https://www.flickr.com/photos/76491533@N00/8726195627"
+  },
+  "chanel-flap": {
+   "source": "Wikimedia Commons",
+   "title": "Chanel CLASSIC Double Flap 2.55 .jpg",
+   "artist": "Stylehouseofbonadeaseo",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Chanel_CLASSIC_Double_Flap_2.55_.jpg"
+  },
+  "chanel-gown": {
+   "source": "Wikimedia Commons",
+   "title": "1971 evening dress by Yves Saint Laurent for Marie-Hélène de",
+   "artist": "dalbera",
+   "license": "CC BY 2.0",
+   "url": "https://commons.wikimedia.org/wiki/File:1971_evening_dress_by_Yves_Saint_Laurent_for_Marie-H%C3%A9l%C3%A8ne_de_Rothschild_with_Le_Smoking_suit_from_1988_(mus%C3%A9e_d%27Orsay,_Paris).jpg"
+  },
+  "coastal-morning-tide": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "New Jersey Beach",
+   "artist": "William Trost Richards",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ad/original/ap32.73.1.jpg"
+  },
+  "cocktail-shaker": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Bell-shaped salt",
+   "artist": "T. S., London",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/es/original/DP105177.jpg"
+  },
+  "composition-blue-gold": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Nocturne (Nocturne: The Thames at Battersea)",
+   "artist": "James McNeill Whistler",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/dp/original/DP813769.jpg"
+  },
+  "continental-figure-study": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Portrait of Nicolas Trigault in Chinese Costume",
+   "artist": "Peter Paul Rubens",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/dp/original/DP820062.jpg"
+  },
+  "deco-platinum-bracelet": {
+   "source": "Wikimedia Commons",
+   "title": "Asymmetrical bracelet - Oscar Heyman and Bros (38866307855).",
+   "artist": "Tim Evanson from Cleveland Heights, Ohio, USA",
+   "license": "CC BY-SA 2.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Asymmetrical_bracelet_-_Oscar_Heyman_and_Bros_(38866307855).jpg"
+  },
+  "emerald-pendant": {
+   "source": "Flickr via Openverse",
+   "title": "2009 04 19 - 4702 - Washington DC - Natural History Museum -",
+   "artist": "thisisbossi",
+   "license": "by-sa-2.0",
+   "url": "https://www.flickr.com/photos/25622716@N02/3527518904"
+  },
+  "femme-au-chapeau-rouge": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Portrait of a Woman with a Man at a Casement",
+   "artist": "Fra Filippo Lippi",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ep/original/DP159891.jpg"
+  },
+  "george-iii-epergne": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Epergne",
+   "artist": "Thomas Heming",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/es/original/SF52_1_1a-x.jpg"
+  },
+  "hermes-scarf": {
+   "source": "Wikimedia Commons",
+   "title": "Hermes Ostrich Birkin Bag.jpg",
+   "artist": "Wen-Cheng Liu",
+   "license": "CC BY-SA 2.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Hermes_Ostrich_Birkin_Bag.jpg"
+  },
+  "jardin-luxembourg": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Garden Gathering",
+   "artist": "",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/is/original/DP235233.jpg"
+  },
+  "kelly-ostrich": {
+   "source": "Wikimedia Commons",
+   "title": "Kelly Bag.jpg",
+   "artist": "Wen-Cheng Liu",
+   "license": "CC BY-SA 2.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Kelly_Bag.jpg"
+  },
+  "lalique-bowl": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Glass ribbed bowl",
+   "artist": "",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/gr/original/29C_R30R3.jpg"
+  },
+  "library-set": {
+   "source": "Wikimedia Commons",
+   "title": "Detail Knih Frantiskanska Knihovna PMS.jpg",
+   "artist": "Mojmir Churavy",
+   "license": "CC0",
+   "url": "https://commons.wikimedia.org/wiki/File:Detail_Knih_Frantiskanska_Knihovna_PMS.jpg"
+  },
+  "louis-xv-commode": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Commode à vantaux",
+   "artist": "David Roentgen",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/es/original/DT8910.jpg"
+  },
+  "meissen-tureen": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Tureen with cover",
+   "artist": "Meissen Manufactory",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/es/original/ES7913.jpg"
+  },
+  "nakashima-bench": {
+   "source": "Wikimedia Commons",
+   "title": "George nakashima, sedia conoide, new hope PA 1988.jpg",
+   "artist": "Sailko",
+   "license": "CC BY 3.0",
+   "url": "https://commons.wikimedia.org/wiki/File:George_nakashima,_sedia_conoide,_new_hope_PA_1988.jpg"
+  },
+  "neon-miami": {
+   "source": "Flickr via Openverse",
+   "title": "Skyline Lights of Miami",
+   "artist": "wyntuition",
+   "license": "by-sa-2.0",
+   "url": "https://www.flickr.com/photos/15926096@N00/2820233012"
+  },
+  "patek-nautilus": {
+   "source": "Wikimedia Commons",
+   "title": "Patek-Philippe-Nautilus-5711-1A-010-1.jpg",
+   "artist": "Patek Philippe SA",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Patek-Philippe-Nautilus-5711-1A-010-1.jpg"
+  },
+  "perriand-bookcase": {
+   "source": "Flickr via Openverse",
+   "title": "München :: Shelf by Charlotte Perriand, Jean Prouve and Soni",
+   "artist": "tomislavmedak",
+   "license": "by-2.0",
+   "url": "https://www.flickr.com/photos/11932978@N00/4958840098"
+  },
+  "ph-artichoke": {
+   "source": "Wikimedia Commons",
+   "title": "Kotte Poul Henningsen.JPG",
+   "artist": "Bengt Oberger",
+   "license": "CC BY-SA 3.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Kotte_Poul_Henningsen.JPG"
+  },
+  "rolex-daytona": {
+   "source": "Flickr via Openverse",
+   "title": "Alpha Daytona Paul Newman",
+   "artist": "GuySie",
+   "license": "by-sa-2.0",
+   "url": "https://www.flickr.com/photos/76491533@N00/2192509049"
+  },
+  "sale-antiques": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "The Louis XV Room",
+   "artist": "Jean-François Roumier",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/es/original/DP158819.jpg"
+  },
+  "sale-couture": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Ball gown",
+   "artist": "House of Worth",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ci/original/61.219.7a-b_front_CP4.jpg"
+  },
+  "sale-design": {
+   "source": "Flickr via Openverse",
+   "title": "Living Room @ Horizon Reach",
+   "artist": "Peter Alfred Hess",
+   "license": "by-2.0",
+   "url": "https://www.flickr.com/photos/22799676@N03/8733780516"
+  },
+  "sale-jewels": {
+   "source": "Flickr via Openverse",
+   "title": "2009 04 19 - 4703 - Washington DC - Natural History Museum -",
+   "artist": "thisisbossi",
+   "license": "by-sa-2.0",
+   "url": "https://www.flickr.com/photos/25622716@N02/3526707735"
+  },
+  "sale-modern-art": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Irises",
+   "artist": "Vincent van Gogh",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ep/original/DP346474.jpg"
+  },
+  "sapphire-ring": {
+   "source": "Flickr via Openverse",
+   "title": "Ceylon Sapphire",
+   "artist": "gemteck1",
+   "license": "by-2.0",
+   "url": "https://www.flickr.com/photos/65303620@N00/374123816"
+  },
+  "schlumberger-bracelet": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Jeweled Bracelet (one of pair)",
+   "artist": "",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/md/original/DP30633.jpg"
+  },
+  "scholar-in-study": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Saint Jerome as Scholar",
+   "artist": "El Greco (Domenikos Theotokopoulos)",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/rl/original/DT3103.jpg"
+  },
+  "serpenti": {
+   "source": "Flickr via Openverse",
+   "title": "Bulgari Serpenti Jewellery Watches",
+   "artist": "Johnson Watch Co",
+   "license": "pdm-1.0",
+   "url": "https://www.flickr.com/photos/150219019@N03/32318972684"
+  },
+  "signed-lithograph": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "The Englishman (William Tom Warrener, 1861–1934) at the Moul",
+   "artist": "Henri de Toulouse-Lautrec",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ep/original/DT1500.jpg"
+  },
+  "sottsass-carlton": {
+   "source": "Flickr via Openverse",
+   "title": "Bukowskis Contemporary, Oktober 2018.",
+   "artist": "Per Olof Forsberg",
+   "license": "by-2.0",
+   "url": "https://www.flickr.com/photos/55907694@N04/45411054251"
+  },
+  "still-life-anemones": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Still Life with Flowers and Fruit",
+   "artist": "Henri Fantin-Latour",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ep/original/DT1980.jpg"
+  },
+  "tennis-bracelet": {
+   "source": "The Cleveland Museum of Art, Open Access (CC0)",
+   "title": "Bracelet",
+   "artist": "",
+   "license": "CC0",
+   "url": "https://www.clevelandart.org/art/1966.516"
+  },
+  "tile-collectibles": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Armor (<i>Gusoku</i>) with Box",
+   "artist": "Neo Masanobu 根尾正信",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/aa/original/LC-TR_360_4a_l_2022-020-2-Edit.jpg"
+  },
+  "tile-fine-art": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Self-Portrait",
+   "artist": "Rembrandt (Rembrandt van Rijn)",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ep/original/DP-16323-001.jpg"
+  },
+  "untitled-red-series": {
+   "source": "Wikimedia Commons",
+   "title": "ColorExp 6.jpg",
+   "artist": "Wawilkes",
+   "license": "CC BY-SA 3.0",
+   "url": "https://commons.wikimedia.org/wiki/File:ColorExp_6.jpg"
+  },
+  "vca-alhambra": {
+   "source": "Wikimedia Commons",
+   "title": "HK 金鐘 Admiralty 太古廣場 Pacific Place shopping mall shop Van Cl",
+   "artist": "SUAXINGPWOO Kaliu",
+   "license": "CC BY-SA 4.0",
+   "url": "https://commons.wikimedia.org/wiki/File:HK_%E9%87%91%E9%90%98_Admiralty_%E5%A4%AA%E5%8F%A4%E5%BB%A3%E5%A0%B4_Pacific_Place_shopping_mall_shop_Van_Cleef_%26_Arpels_jewellery_November_2022_Px3_jade_necklace.jpg"
+  },
+  "venetian-chandelier": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Chandelier",
+   "artist": "",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/es/original/DP-18556-034.jpg"
+  },
+  "water-lilies-study": {
+   "source": "The Metropolitan Museum of Art, Open Access (CC0)",
+   "title": "Study of Water and Plants",
+   "artist": "Thomas Fearnley",
+   "license": "CC0",
+   "url": "https://images.metmuseum.org/CRDImages/ep/original/DP-19486-001.jpg"
+  },
+  "yellow-diamond-ring": {
+   "source": "Flickr via Openverse",
+   "title": "Fancy yellow diamond ring",
+   "artist": "Mauro Cateb",
+   "license": "by-2.0",
+   "url": "https://www.flickr.com/photos/69102917@N06/6679656157"
+  },
+  "ysl-tuxedo": {
+   "source": "Wikimedia Commons",
+   "title": "Saint Laurent Rive Gauche smoking evening suit.jpg",
+   "artist": "Museum at FIT",
+   "license": "CC BY-SA 2.0",
+   "url": "https://commons.wikimedia.org/wiki/File:Saint_Laurent_Rive_Gauche_smoking_evening_suit.jpg"
+  }
+ }
+}
