@@ -5,7 +5,7 @@ import { BUSINESS } from '@/lib/config';
 
 export const metadata = {
   title: 'About',
-  description: 'Mayells is a full-service auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles on LiveAuctioneers.',
+  description: 'Mayells is a full-service auction house in Palm Beach, Florida and New York specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles.',
 };
 
 export default function AboutPage() {
@@ -23,8 +23,9 @@ export default function AboutPage() {
               <span className="text-champagne">Mayells</span>
             </h1>
             <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
-              A luxury auction house specializing in consignment sales of fine art,
-              antiques, jewelry, watches, fashion, design, and collectibles.
+              A luxury auction house in Palm Beach, Florida and New York, specializing
+              in consignment sales of fine art, antiques, jewelry, watches, fashion,
+              design, and collectibles.
             </p>
           </div>
         </div>

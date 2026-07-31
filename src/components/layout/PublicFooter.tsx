@@ -13,7 +13,7 @@ export function PublicFooter() {
             <h3 className="font-logo text-2xl tracking-[0.15em] mb-2">MAYELLS</h3>
             <p className="text-eyebrow text-white/60 font-normal mb-4">Fine Art &middot; Antiques &middot; Jewelry &middot; Collectibles</p>
             <p className="text-sm text-white/60 leading-relaxed mb-6 max-w-xs">
-              Luxury auctions and private sales sourced from estates and private collections. Boca Raton and New York.
+              Luxury auctions and private sales sourced from estates and private collections. Palm Beach and New York.
             </p>
             <div className="space-y-2 text-sm text-white/60 mb-6">
               <a href={BUSINESS.phoneHref} className="block hover:text-champagne transition-colors">{BUSINESS.phone}</a>

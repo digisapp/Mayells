@@ -15,7 +15,7 @@ export const metadata = {
 
 const faqData = [
   { q: 'Is there a buyer\'s premium?', a: 'Yes, a 25% buyer\'s premium is added to the hammer price. This is standard practice in the auction industry.' },
-  { q: 'Can I preview items in person?', a: 'Yes — preview dates are listed on each auction page. Contact us to schedule a private viewing at our Boca Raton gallery.' },
+  { q: 'Can I preview items in person?', a: 'Yes — preview dates are listed on each auction page. Contact us to schedule a private viewing at our Palm Beach gallery.' },
   { q: 'Do you ship internationally?', a: 'We ship worldwide through trusted fine art and antique shipping partners. Shipping costs are calculated after the sale. Local pickup is also available by appointment.' },
   { q: 'Can I request a condition report?', a: 'Absolutely. Contact us for detailed condition reports and additional photographs on any lot. We\'re happy to provide as much information as you need.' },
   { q: 'What if I can\'t bid live?', a: 'You can leave an absentee bid on LiveAuctioneers, or contact us directly to arrange phone bidding or submit an absentee bid form.' },

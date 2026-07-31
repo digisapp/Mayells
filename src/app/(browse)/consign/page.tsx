@@ -165,7 +165,7 @@ export default function ConsignPage() {
           <span className="text-eyebrow text-champagne">Sell With Us</span>
           <h1 className="font-display text-display-lg mt-3 mb-5">Consign Your Pieces</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto leading-relaxed">
-            Whether it&apos;s a single heirloom or an entire estate, our team in Boca Raton and Tribeca, NYC
+            Whether it&apos;s a single heirloom or an entire estate, our team in Palm Beach and New York City
             will come to you for free appraisals, item pickup, and same-day estate cleanouts.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">

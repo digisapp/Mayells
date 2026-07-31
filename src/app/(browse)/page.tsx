@@ -7,20 +7,23 @@ import { serializeJsonLd } from '@/lib/seo/structured-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
+const HOME_TITLE = 'Mayells | Auction House in Palm Beach & New York — Fine Art, Antiques, Jewelry';
+const HOME_DESCRIPTION = 'Mayells is a luxury auction house in Palm Beach, Florida and New York. Live and online auctions for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.';
+
 export const metadata: Metadata = {
-  title: 'Mayells | Fine Art Antiques Design Fashion Collectibles',
-  description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
+  title: { absolute: HOME_TITLE },
+  description: HOME_DESCRIPTION,
   openGraph: {
-    title: 'Mayells | Fine Art Antiques Design Fashion Collectibles',
-    description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     type: 'website',
     url: BASE_URL,
     images: [{ url: `${BASE_URL}/opengraph-image`, width: 1200, height: 630, alt: 'Mayells' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Mayells | Fine Art Antiques Design Fashion Collectibles',
-    description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.',
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     images: [`${BASE_URL}/opengraph-image`],
   },
 };
@@ -40,7 +43,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: 'Mayells',
-  description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design.',
+  description: 'Luxury auction house in Palm Beach, Florida and New York. Auctions and private sales for fine art, antiques, jewelry, watches, and design.',
   url: process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com',
   sameAs: [],
   contactPoint: {
@@ -178,7 +181,7 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-20 items-center">
             <div>
               <p className="text-eyebrow text-champagne/90 mb-6">
-                Boca Raton &middot; New York &middot; Online
+                Palm Beach &middot; New York &middot; Online
               </p>
               <h1 className="font-display font-semibold text-[2.25rem] sm:text-[3rem] md:text-[3.5rem] leading-[1.1]">
                 The auction house,
@@ -354,7 +357,7 @@ export default async function HomePage() {
                 {
                   step: '01',
                   title: 'Free In-Person or Online Appraisal',
-                  desc: 'Send us photos or schedule a free house call. Our team in Boca Raton and New York can come to you for appraisals and pickup.',
+                  desc: 'Send us photos or schedule a free house call. Our team in Palm Beach and New York can come to you for appraisals and pickup.',
                 },
                 {
                   step: '02',

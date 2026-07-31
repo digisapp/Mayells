@@ -99,7 +99,7 @@ export default function ConciergeTab() {
         <CardContent>
           <Textarea
             rows={3}
-            placeholder="e.g. Be warm and professional, like a knowledgeable gallery specialist. Use a conversational tone. Mention our Boca Raton showroom when relevant."
+            placeholder="e.g. Be warm and professional, like a knowledgeable gallery specialist. Use a conversational tone. Mention our Palm Beach showroom when relevant."
             value={settings.personality}
             onChange={(e) => setSettings((s) => ({ ...s, personality: e.target.value }))}
           />
@@ -129,7 +129,7 @@ export default function ConciergeTab() {
         <CardContent>
           <Textarea
             rows={3}
-            placeholder="e.g. Promote our upcoming Spring 2026 Impressionist auction. Mention our free in-home appraisal service in South Florida. Highlight the Boca Raton Fine Jewelry sale."
+            placeholder="e.g. Promote our upcoming Spring 2026 Impressionist auction. Mention our free in-home appraisal service in South Florida. Highlight the Palm Beach Fine Jewelry sale."
             value={settings.upsellItems}
             onChange={(e) => setSettings((s) => ({ ...s, upsellItems: e.target.value }))}
           />

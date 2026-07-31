@@ -27,15 +27,34 @@ const businessJsonLd = {
   logo: `${BASE_URL}/icon.svg`,
   telephone: '+15612204622',
   email: 'info@mayells.com',
-  description: 'Luxury auction house specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles.',
+  description: 'Luxury auction house in Palm Beach, Florida and New York specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles.',
   priceRange: '$$$$',
-  areaServed: 'US',
+  areaServed: [
+    { '@type': 'City', name: 'Palm Beach' },
+    { '@type': 'City', name: 'West Palm Beach' },
+    { '@type': 'City', name: 'Delray Beach' },
+    { '@type': 'City', name: 'Boca Raton' },
+    { '@type': 'City', name: 'New York' },
+    { '@type': 'Country', name: 'US' },
+  ],
   address: {
     '@type': 'PostalAddress',
-    addressLocality: 'Boca Raton',
+    addressLocality: 'Palm Beach',
     addressRegion: 'FL',
     addressCountry: 'US',
   },
+  location: [
+    {
+      '@type': 'Place',
+      name: 'Mayells Palm Beach',
+      address: { '@type': 'PostalAddress', addressLocality: 'Palm Beach', addressRegion: 'FL', addressCountry: 'US' },
+    },
+    {
+      '@type': 'Place',
+      name: 'Mayells New York',
+      address: { '@type': 'PostalAddress', addressLocality: 'New York', addressRegion: 'NY', addressCountry: 'US' },
+    },
+  ],
 };
 
 export default function BrowseLayout({ children }: { children: React.ReactNode }) {

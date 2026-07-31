@@ -23,11 +23,11 @@ const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: {
-    default: 'Mayells | Fine Art Antiques Design Fashion Collectibles',
+    default: 'Mayells | Auction House in Palm Beach & New York — Fine Art, Antiques, Jewelry',
     template: '%s | Mayells',
   },
-  description: 'Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
-  keywords: ['auction', 'fine art', 'antiques', 'jewelry', 'watches', 'collectibles', 'consignment', 'estate sale', 'appraisal', 'live auction', 'online bidding'],
+  description: 'Mayells is a luxury auction house in Palm Beach, Florida and New York. Live and online auctions for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
+  keywords: ['auction', 'auction house', 'Palm Beach auction house', 'New York auction house', 'Delray Beach auctions', 'South Florida auctions', 'fine art', 'antiques', 'jewelry', 'watches', 'collectibles', 'consignment', 'estate sale', 'appraisal', 'live auction', 'online bidding'],
   openGraph: {
     type: 'website',
     siteName: 'Mayells',
