@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Camera } from 'lucide-react';
+import { LensButton } from '@/components/admin/LensButton';
 
 interface SubmissionImage {
   name: string;
@@ -87,6 +88,10 @@ export default function AdminSubmissionsPage() {
                 src={selected}
                 alt="Full size"
                 className="max-w-full max-h-full object-contain rounded-lg"
+              />
+              <LensButton
+                imageUrl={selected}
+                className="absolute bottom-6 right-6 h-9 px-3 text-sm bg-background/90"
               />
             </div>
           )}

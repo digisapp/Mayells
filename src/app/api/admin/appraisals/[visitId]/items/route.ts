@@ -24,6 +24,7 @@ const itemPatchSchema = z.object({
   confidence: z.number().min(0).max(1).transform(v => String(v)).optional(),
   reasoning: z.string().max(5000).optional(),
   marketTrend: z.string().max(1000).optional(),
+  adminNotes: z.string().max(5000).optional(),
   errorMessage: z.string().max(2000).optional(),
 });
 

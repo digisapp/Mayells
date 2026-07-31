@@ -1,0 +1,1 @@
+ALTER TABLE "estate_visit_items" ADD COLUMN "admin_notes" text;

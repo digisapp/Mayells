@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { DollarSign, Loader2 } from 'lucide-react';
+import { LensButton } from '@/components/admin/LensButton';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
 
@@ -17,6 +18,11 @@ export default function AppraiseTab() {
   const [artist, setArtist] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+
+  const enteredUrls = imageUrls
+    .split('\n')
+    .map((u) => u.trim())
+    .filter((u) => /^https?:\/\//.test(u));
 
   async function handleAppraise() {
     const urls = imageUrls.split('\n').map((u) => u.trim()).filter(Boolean);
@@ -47,6 +53,16 @@ export default function AppraiseTab() {
           <div className="space-y-2">
             <Label>Image URLs (one per line)</Label>
             <Textarea rows={3} placeholder="https://example.com/image.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
+            {enteredUrls.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {enteredUrls.map((url, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                    Photo {i + 1}
+                    <LensButton imageUrl={url} />
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Title</Label><Input placeholder="Item title" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
