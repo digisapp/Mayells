@@ -11,7 +11,7 @@ export function PublicFooter() {
           {/* Brand column */}
           <div className="col-span-2 lg:col-span-2">
             <h3 className="font-logo text-2xl tracking-[0.15em] mb-2">MAYELLS</h3>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/50 mb-4">Fine Art &middot; Antiques &middot; Jewelry &middot; Collectibles</p>
+            <p className="text-eyebrow text-white/60 font-normal mb-4">Fine Art &middot; Antiques &middot; Jewelry &middot; Collectibles</p>
             <p className="text-sm text-white/60 leading-relaxed mb-6 max-w-xs">
               Luxury auctions and private sales sourced from estates and private collections. Boca Raton and New York.
             </p>

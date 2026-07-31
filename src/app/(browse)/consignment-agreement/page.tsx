@@ -17,7 +17,7 @@ export default function ConsignmentAgreementPage() {
       <section className="bg-charcoal text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
           <div className="max-w-2xl">
-            <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">
+            <span className="text-eyebrow text-champagne">
               Terms
             </span>
             <h1 className="font-display text-display-xl md:text-[4rem] leading-[1.05] tracking-tight mt-4">

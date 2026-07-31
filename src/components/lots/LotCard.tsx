@@ -21,7 +21,7 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
 
   return (
     <Link href={href} className="group block">
-      <div className="rounded-xl overflow-hidden glass-card border-glow-hover transition-all duration-500 hover:-translate-y-1">
+      <div className="rounded-xl overflow-hidden bg-card border border-border/70 transition-all duration-300 hover:border-champagne/40 hover:shadow-luxury">
         <div className="relative aspect-[3/4] bg-muted overflow-hidden">
           {lot.primaryImageUrl ? (
             <Image
@@ -36,8 +36,6 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
               <span className="font-logo text-lg text-muted-foreground/40">MAYELLS</span>
             </div>
           )}
-
-          <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
 
           {lot.isFeatured && (
             <Badge className="absolute top-3 left-3 bg-champagne text-charcoal text-[10px] uppercase tracking-wider font-semibold border-0 shadow-sm">

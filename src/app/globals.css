@@ -177,6 +177,13 @@
     font-size: 1.5rem;
     line-height: 1.3;
   }
+  /* The single tracked-caps label style — section kickers, hero eyebrow, etc. */
+  .text-eyebrow {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-weight: 600;
+  }
 }
 
 /* Luxury Shadows */

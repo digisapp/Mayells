@@ -1,4 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180">
   <rect width="180" height="180" rx="22" fill="#272D35"/>
-  <text x="90" y="135" text-anchor="middle" font-family="'Didot','Playfair Display','Bodoni MT','Georgia',serif" font-size="140" font-weight="400" fill="white" letter-spacing="-4">M</text>
+  <!-- Playfair Display 700 "M", outlined so it renders identically on every platform -->
+  <path transform="translate(24.5 140) scale(0.1412 -0.1412)" fill="#FFFFFF" d="M893.8 708V688Q862.2 687 845.9 680.5Q829.6 674 824.2 656.5Q818.8 639 818.8 602V106Q818.8 70 824.5 52Q830.2 34 846.2 28Q862.2 22 893.8 20V0Q866 2 823.4 2.5Q780.8 3 736.8 3Q688.8 3 646.7 2.5Q604.6 2 578.8 0V20Q612.8 22 630.3 28Q647.8 34 653.8 52Q659.8 70 659.8 106V647L667.4 647L418.8 -1.4H402.8L132.8 643.4V164Q132.8 109.4 138.7 79.9Q144.6 50.4 165.3 37.7Q186 25 229.8 20V0Q210.6 2 179.8 2.5Q149 3 121.8 3Q98.6 3 74.6 2.5Q50.6 2 34.8 0V20Q67 25 83 37.1Q99 49.2 104.4 76.6Q109.8 104 109.8 152V602Q109.8 639 104.4 656.5Q99 674 82.7 680.5Q66.4 687 34.8 688V708Q50.6 707 74.6 706Q98.6 705 121.8 705Q165.4 705 206.6 706Q247.8 707 280 708L489.6 201.2L464.8 178.2L665.8 705Q682.6 705 701 705Q719.4 705 736.8 705Q780.8 705 823.4 706Q866 707 893.8 708Z"/>
 </svg>

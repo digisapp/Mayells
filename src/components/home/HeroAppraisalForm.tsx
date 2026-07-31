@@ -135,7 +135,7 @@ export function HeroAppraisalForm() {
           <div className="py-2">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="h-4 w-4 text-champagne" />
-              <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">
+              <span className="text-eyebrow text-champagne">
                 Preliminary Estimate
               </span>
             </div>

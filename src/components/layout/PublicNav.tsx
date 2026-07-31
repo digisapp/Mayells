@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 const navLinks = [
   { label: 'Auctions', href: '/auctions' },
   { label: 'Gallery', href: '/gallery' },
-  { label: 'Consign', href: '/consign' },
+  { label: 'How to Buy', href: '/how-to-buy' },
   { label: 'About', href: '/about' },
 ];
 
@@ -74,8 +74,8 @@ export function PublicNav() {
               <Button variant="ghost" size="sm" className="text-[13px] text-muted-foreground hover:text-foreground">Sign In</Button>
             </Link>
 
-            <Link href="/how-to-buy" className="hidden sm:block">
-              <Button variant="champagne" size="sm" className="text-[13px]">How to Buy</Button>
+            <Link href="/consign" className="hidden sm:block">
+              <Button variant="champagne" size="sm" className="text-[13px]">Sell With Us</Button>
             </Link>
 
             <Button
@@ -120,11 +120,11 @@ export function PublicNav() {
                 My Watchlist
               </Link>
               <Link
-                href="/how-to-buy"
-                className="block py-3 px-3 text-[15px] text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg transition-colors"
+                href="/consign"
+                className="block py-3 px-3 text-[15px] font-semibold text-charcoal bg-champagne hover:bg-champagne/90 rounded-lg transition-colors mt-2"
                 onClick={() => setMobileOpen(false)}
               >
-                How to Buy
+                Sell With Us
               </Link>
             </div>
           </nav>

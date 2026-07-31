@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
-import { eq, and, desc, asc, ilike, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, ilike, inArray } from 'drizzle-orm';
 import { LotGrid } from '@/components/lots/LotGrid';
 import type { Lot } from '@/db/schema/lots';
 import { logger } from '@/lib/logger';
@@ -41,7 +41,9 @@ export default async function GalleryPage({
     conditions.push(ilike(lots.title, `%${search}%`));
   }
   if (categorySlug) {
-    conditions.push(eq(lots.categoryId, categorySlug));
+    conditions.push(
+      inArray(lots.categoryId, db.select({ id: categories.id }).from(categories).where(eq(categories.slug, categorySlug))),
+    );
   }
 
   const orderBy = sort === 'price_asc'
@@ -87,7 +89,7 @@ export default async function GalleryPage({
             ].map((opt) => (
               <a
                 key={opt.value}
-                href={`/gallery?sort=${opt.value}${search ? `&q=${search}` : ''}`}
+                href={`/gallery?sort=${opt.value}${search ? `&q=${encodeURIComponent(search)}` : ''}${categorySlug ? `&category=${encodeURIComponent(categorySlug)}` : ''}`}
                 className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
                   sort === opt.value
                     ? 'bg-champagne text-charcoal font-semibold'

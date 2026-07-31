@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Clock } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import type { Auction } from '@/db/schema/auctions';
 
 interface AuctionCardProps {
@@ -38,7 +38,7 @@ export function AuctionCard({ auction }: AuctionCardProps) {
 
   return (
     <Link href={`/auctions/${auction.slug}`} className="group block">
-      <div className="rounded-xl overflow-hidden glass-card border-glow-hover transition-all duration-500 hover:-translate-y-1">
+      <div className="rounded-xl overflow-hidden bg-card border border-border/70 transition-all duration-300 hover:border-champagne/40 hover:shadow-luxury">
         {/* Cover Image */}
         <div className="relative aspect-[16/9] bg-muted overflow-hidden">
           {auction.coverImageUrl ? (

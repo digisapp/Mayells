@@ -162,7 +162,7 @@ export default function ConsignPage() {
       {/* Hero */}
       <section className="bg-charcoal text-white py-16 md:py-24">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">Sell With Us</span>
+          <span className="text-eyebrow text-champagne">Sell With Us</span>
           <h1 className="font-display text-display-lg mt-3 mb-5">Consign Your Pieces</h1>
           <p className="text-lg text-white/70 max-w-2xl mx-auto leading-relaxed">
             Whether it&apos;s a single heirloom or an entire estate, our team in Boca Raton and Tribeca, NYC
@@ -277,7 +277,7 @@ export default function ConsignPage() {
                 <div className="bg-charcoal text-white rounded-xl p-6 mb-8 text-left">
                   <div className="flex items-center gap-2 mb-3">
                     <Sparkles className="h-4 w-4 text-champagne" />
-                    <span className="text-[11px] uppercase tracking-[0.2em] text-champagne font-semibold">
+                    <span className="text-eyebrow text-champagne">
                       Preliminary Estimate
                     </span>
                   </div>
