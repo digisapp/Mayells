@@ -184,12 +184,15 @@ export default async function HomePage() {
                 Palm Beach &middot; New York &middot; Online
               </p>
               <h1 className="font-display font-semibold text-[2.25rem] sm:text-[3rem] md:text-[3.5rem] leading-[1.1]">
-                The auction house,
+                The Modern
                 <br />
-                built for right now.
+                Auction House
               </h1>
+              <p className="mt-4 font-display text-xl sm:text-2xl text-champagne tracking-wide">
+                Buy. Sell. Collect.
+              </p>
               <p className="mt-6 sm:mt-8 text-[15px] sm:text-[17px] text-white/70 max-w-md leading-relaxed">
-                Fine art, jewelry, watches, and design from estates and private collections — sold in live-streamed and timed auctions with real-time bidding, anywhere in the world.
+                Discover exceptional fine art, jewelry, watches, and design from estates and private collections through expertly curated live and timed auctions with real-time bidding worldwide.
               </p>
               <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <Link href="/auctions" className="w-full sm:w-auto">
