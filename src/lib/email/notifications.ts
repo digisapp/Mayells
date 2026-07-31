@@ -282,6 +282,32 @@ export async function sendPaymentConfirmation(params: {
   });
 }
 
+/**
+ * Send a consignor their no-login portal link once their items become lots.
+ * This is the consignor's window into status, bids, results, and payouts.
+ */
+export async function sendConsignorPortalEmail(params: {
+  email: string;
+  name: string;
+  lotCount: number;
+  portalUrl: string;
+}) {
+  await sendAndLog({
+    to: params.email,
+    subject: `${BUSINESS.name} — Track Your Consignment`,
+    html: emailLayout(`
+      <p>Dear ${escapeHtml(params.name)},</p>
+      <p>Your <strong>${params.lotCount} item${params.lotCount !== 1 ? 's have' : ' has'}</strong> been cataloged and ${params.lotCount !== 1 ? 'are' : 'is'} being prepared for sale.</p>
+      <p>You can follow everything from here on — auction placement, live bidding, sale results, and your payouts — on your private consignor page. No account or password needed; just keep this link:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        ${ctaButton(params.portalUrl, 'View Your Consignments')}
+      </div>
+      <p style="font-size: 13px; color: #888;">This link is unique to you — please don't share it.</p>
+      <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
+    `, 'Your Items Are Headed to Market'),
+  });
+}
+
 export async function sendSellerStatementNotification(params: {
   email: string;
   sellerName: string;
@@ -290,6 +316,7 @@ export async function sendSellerStatementNotification(params: {
   commissionPercent: number;
   commissionAmount: number;
   netAmount: number;
+  portalUrl?: string;
 }) {
   await sendAndLog({
     to: params.email,
@@ -312,6 +339,7 @@ export async function sendSellerStatementNotification(params: {
           </tr>
         </table>
         <p>Your proceeds will be remitted per your consignment agreement. If your payment details or mailing address have changed, please reply to this email.</p>
+        ${params.portalUrl ? `<p>You can track this payout and the rest of your consignment anytime:</p><div style="text-align: center; margin: 24px 0;">${ctaButton(params.portalUrl, 'View Your Consignments')}</div>` : ''}
     `, 'Your Item Has Sold'),
   });
 }

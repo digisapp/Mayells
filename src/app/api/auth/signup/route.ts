@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import { createClient } from '@/lib/supabase/server';
-import { db } from '@/db';
-import { users } from '@/db/schema';
 import { signupSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
-import { claimShadowUserByEmail } from '@/lib/sellers/shadow';
+import { ensureUserProfile } from '@/lib/auth/profile';
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,31 +45,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, needsConfirmation: true, role });
     }
 
-    // Create the profile row. db uses the service-role connection so this works
-    // regardless of RLS. onConflictDoNothing tolerates a DB trigger that may
-    // already provision the profile from auth.users.
-    try {
-      await db
-        .insert(users)
-        .values({ id: data.user.id, email, fullName, role })
-        .onConflictDoNothing({ target: users.id });
-    } catch (insertError) {
-      // A unique-email conflict here means a shadow seller row (a prospect
-      // consignor we minted as seller-of-record) already holds this email —
-      // Supabase auth would have rejected the signup if a real account owned
-      // it. Claim the shadow row so their lots/payouts follow them.
-      const claimed = await claimShadowUserByEmail({
-        authUserId: data.user.id,
-        email,
-        fullName,
-        role,
-      }).catch(() => false);
-      if (!claimed) throw insertError;
-    }
-
-    // If email confirmation is required, there's no session yet — tell the
-    // client to prompt the user to confirm; otherwise they're logged in.
+    // If email confirmation is required there's no session yet, and the email
+    // address is UNPROVEN — anyone can type someone else's address here. Defer
+    // profile creation (and especially shadow-seller claiming, which re-points
+    // a consignor's lots/payouts) to the confirmation callback / first login,
+    // where control of the inbox has been demonstrated.
     const needsConfirmation = !data.session;
+    if (!needsConfirmation) {
+      // Confirmation is off (or auto-confirmed): they're logged in now, so
+      // create the profile immediately. db uses the service-role connection
+      // so this works regardless of RLS.
+      await ensureUserProfile({ id: data.user.id, email, fullName, role });
+    }
     return NextResponse.json({ success: true, needsConfirmation, role });
   } catch (error) {
     logger.error('Signup error', error);

@@ -4,7 +4,10 @@ export const signupSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   fullName: z.string().min(1, 'Full name is required'),
-  role: z.enum(['buyer', 'seller'], { message: 'Please select a role' }),
+  // Selling is never self-service (consignment goes through /consign), so
+  // signup no longer asks — everyone starts as a buyer. The field is kept
+  // optional for older clients; shadow-claim preserves seller status anyway.
+  role: z.enum(['buyer', 'seller']).default('buyer'),
 });
 
 export const loginSchema = z.object({

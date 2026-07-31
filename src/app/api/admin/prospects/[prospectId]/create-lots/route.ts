@@ -5,7 +5,9 @@ import { db } from '@/db';
 import { uploadItems, sellerProspects, users, lots, lotImages, categories, auctionLots, auctions, uploadLinks } from '@/db/schema';
 import { eq, and, inArray, ilike, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
-import { ensureProspectSellerUser } from '@/lib/sellers/shadow';
+import { ensureProspectSellerUser, isSentinelEmail } from '@/lib/sellers/shadow';
+import { portalUrl } from '@/lib/sellers/portal';
+import { sendConsignorPortalEmail } from '@/lib/email/notifications';
 
 const categoryMap: Record<string, string> = {
   art: 'art',
@@ -103,7 +105,7 @@ export async function POST(
     // All writes (lots + images + item updates + auction assignment + lot count)
     // must commit together — a mid-loop failure otherwise orphans lots and
     // drifts the auction's lotCount with no rollback.
-    const createdLots = await db.transaction(async (tx) => {
+    const { created: createdLots, sellerId } = await db.transaction(async (tx) => {
     // Every lot needs a seller-of-record so shipping and payouts can settle.
     // Prospects usually have no account — mint (or link) one here.
     const sellerId = await ensureProspectSellerUser(tx, prospect);
@@ -232,8 +234,31 @@ export async function POST(
         .set({ status: 'completed' })
         .where(and(eq(uploadLinks.prospectId, prospectId), eq(uploadLinks.status, 'active')));
 
-    return created;
+    return { created, sellerId };
     });
+
+    // Send the consignor their tracking link. Best-effort: the lots are
+    // committed either way, and phone/walk-in prospects (sentinel email) or a
+    // Resend outage must not fail the admin's request.
+    if (prospect.email && !isSentinelEmail(prospect.email)) {
+      try {
+        const [sellerRow] = await db
+          .select({ portalToken: users.portalToken })
+          .from(users)
+          .where(eq(users.id, sellerId))
+          .limit(1);
+        if (sellerRow) {
+          await sendConsignorPortalEmail({
+            email: prospect.email,
+            name: prospect.fullName,
+            lotCount: createdLots.length,
+            portalUrl: portalUrl(sellerRow.portalToken),
+          });
+        }
+      } catch (emailError) {
+        logger.error('Failed to send consignor portal email', emailError, { prospectId, sellerId });
+      }
+    }
 
     logger.info('Lots created from prospect items', {
       prospectId,

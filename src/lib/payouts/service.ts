@@ -25,6 +25,7 @@ import { resolveCommissionPercent, computePayoutAmounts } from './commission';
 import { createShipmentForInvoice } from '@/lib/shipping/service';
 import { sendSellerStatementNotification, sendPaymentConfirmation } from '@/lib/email/notifications';
 import { isSentinelEmail } from '@/lib/sellers/shadow';
+import { portalUrl } from '@/lib/sellers/portal';
 import { logger } from '@/lib/logger';
 
 export async function processPaidInvoice(
@@ -268,6 +269,7 @@ async function sendStatementIfNeeded(payout: Payout, lotTitle: string, notifySel
       commissionPercent: payout.commissionPercent,
       commissionAmount: payout.commissionAmount,
       netAmount: payout.netAmount,
+      portalUrl: portalUrl(seller.portalToken),
     });
   } catch (err) {
     await db

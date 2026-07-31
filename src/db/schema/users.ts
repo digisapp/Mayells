@@ -34,6 +34,11 @@ export const users = pgTable('users', {
   companyName: text('company_name'),
   bio: text('bio'),
 
+  // Unguessable key for the no-login consignor portal (/consignor/[token]),
+  // same pattern as invoices.access_token. The page 404s unless the user is
+  // actually a seller-of-record, so buyer tokens expose nothing.
+  portalToken: uuid('portal_token').default(sql`gen_random_uuid()`).notNull().unique(),
+
   // Stripe
   stripeCustomerId: text('stripe_customer_id').unique(),
   stripeConnectAccountId: text('stripe_connect_account_id').unique(),

@@ -39,6 +39,16 @@ describe('signupSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('defaults role to buyer when omitted', () => {
+    const result = signupSchema.safeParse({
+      email: 'test@example.com',
+      password: 'password123',
+      fullName: 'John Doe',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.role).toBe('buyer');
+  });
+
   it('rejects invalid role', () => {
     const result = signupSchema.safeParse({
       email: 'test@example.com',

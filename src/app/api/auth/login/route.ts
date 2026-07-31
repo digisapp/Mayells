@@ -5,6 +5,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { loginSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
+import { ensureUserProfile, roleFromMetadata } from '@/lib/auth/profile';
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,6 +42,21 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 401 });
+    }
+
+    // A password sign-in proves control of the account, so it's safe to
+    // (idempotently) create the deferred profile row and claim any shadow
+    // seller row holding this email. Backstop for users who confirmed their
+    // email but never passed through the callback. Never blocks the login.
+    try {
+      await ensureUserProfile({
+        id: data.user.id,
+        email: data.user.email ?? email,
+        fullName: (data.user.user_metadata?.full_name as string | undefined) ?? null,
+        role: roleFromMetadata(data.user.user_metadata?.role),
+      });
+    } catch (profileError) {
+      logger.error('Login: failed to ensure user profile', profileError, { userId: data.user.id });
     }
 
     // Fetch user role to determine redirect (using Supabase admin client, same as middleware)

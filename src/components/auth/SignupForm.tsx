@@ -13,7 +13,6 @@ export function SignupForm({ next }: { next: string }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'buyer' | 'seller'>('buyer');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -27,7 +26,7 @@ export function SignupForm({ next }: { next: string }) {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName, email, password, role }),
+        body: JSON.stringify({ fullName, email, password }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -69,18 +68,6 @@ export function SignupForm({ next }: { next: string }) {
             <Input id="password" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
             <p className="text-xs text-muted-foreground">At least 8 characters.</p>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="role">I want to</Label>
-            <select
-              id="role"
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'buyer' | 'seller')}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-base md:text-sm"
-            >
-              <option value="buyer">Buy at auction</option>
-              <option value="seller">Consign / sell items</option>
-            </select>
-          </div>
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? 'Creating account…' : 'Create Account'}
           </Button>
@@ -89,6 +76,13 @@ export function SignupForm({ next }: { next: string }) {
             <Link href={`/login${next !== '/' ? `?next=${encodeURIComponent(next)}` : ''}`} className="text-champagne hover:underline">
               Sign in
             </Link>
+          </p>
+          <p className="text-sm text-muted-foreground text-center border-t pt-4">
+            Looking to sell or consign?{' '}
+            <Link href="/consign" className="text-champagne hover:underline">
+              Start with a free appraisal
+            </Link>
+            {' '}— no account needed.
           </p>
         </form>
       </CardContent>
