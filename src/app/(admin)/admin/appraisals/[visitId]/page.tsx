@@ -60,6 +60,7 @@ interface EstateVisitItem {
   confidence: string | null;
   reasoning: string | null;
   marketTrend: string | null;
+  adminNotes: string | null;
 }
 
 const statusColors: Record<string, string> = {

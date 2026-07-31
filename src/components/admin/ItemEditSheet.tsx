@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Trash2, RefreshCw, Save, AlertCircle } from 'lucide-react';
+import { LensButton } from '@/components/admin/LensButton';
 import { formatCurrency } from '@/types';
 
 interface EstateVisitItem {
@@ -44,6 +45,7 @@ interface EstateVisitItem {
   confidence: string | null;
   reasoning: string | null;
   marketTrend: string | null;
+  adminNotes: string | null;
 }
 
 interface ItemEditSheetProps {
@@ -66,6 +68,7 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
   const [suggestedCategory, setSuggestedCategory] = useState(item.suggestedCategory || '');
   const [estimateLow, setEstimateLow] = useState(item.estimateLow ? String(item.estimateLow / 100) : '');
   const [estimateHigh, setEstimateHigh] = useState(item.estimateHigh ? String(item.estimateHigh / 100) : '');
+  const [adminNotes, setAdminNotes] = useState(item.adminNotes || '');
 
   const handleSave = () => {
     onSave({
@@ -80,6 +83,7 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
       suggestedCategory: suggestedCategory || null,
       estimateLow: estimateLow ? Math.round(parseFloat(estimateLow) * 100) : null,
       estimateHigh: estimateHigh ? Math.round(parseFloat(estimateHigh) * 100) : null,
+      adminNotes: adminNotes || null,
     });
   };
 
@@ -104,11 +108,15 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
 
         <div className="px-4 space-y-5 pb-4">
           {/* Image */}
-          <div className="rounded-lg overflow-hidden border">
+          <div className="rounded-lg overflow-hidden border relative">
             <img
               src={item.imageUrl}
               alt={item.title || 'Item'}
               className="w-full h-48 object-cover"
+            />
+            <LensButton
+              imageUrl={item.imageUrl}
+              className="absolute bottom-2 right-2 bg-background/90"
             />
           </div>
 
@@ -228,6 +236,21 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
                 placeholder="0"
               />
             </div>
+          </div>
+
+          {/* Verification Notes */}
+          <div className="space-y-1.5">
+            <Label htmlFor="adminNotes">Verification Notes</Label>
+            <Textarea
+              id="adminNotes"
+              value={adminNotes}
+              onChange={(e) => setAdminNotes(e.target.value)}
+              rows={3}
+              placeholder="What Lens/research showed: confirmed maker, comparable listings with prices and links, why the estimate was adjusted…"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Internal only — not shown on the client report.
+            </p>
           </div>
 
           {/* AI Reasoning */}

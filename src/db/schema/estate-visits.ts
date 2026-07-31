@@ -63,6 +63,8 @@ export const estateVisitItems = pgTable('estate_visit_items', {
   confidence: numeric('confidence'),
   reasoning: text('reasoning'),
   marketTrend: text('market_trend'),
+  // Admin's manual verification (Lens findings, confirmed maker, comp links)
+  adminNotes: text('admin_notes'),
   createdAt: timestamp('created_at').default(sql`now()`),
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [

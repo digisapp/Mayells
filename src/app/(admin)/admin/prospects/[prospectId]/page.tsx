@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { LensButton } from '@/components/admin/LensButton';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
 import {
@@ -162,6 +164,7 @@ interface ItemOverrides {
   finalEstimateHigh: string;
   finalReserve: string;
   finalCategory: string;
+  adminNotes: string;
 }
 
 // ── Main Component ──
@@ -352,6 +355,8 @@ export default function AdminProspectDetailPage() {
         if (!isNaN(parsedReserve)) payload.finalReserve = parsedReserve;
         if (itemOverrides.finalCategory.trim())
           payload.finalCategory = itemOverrides.finalCategory.trim();
+        if (itemOverrides.adminNotes.trim())
+          payload.adminNotes = itemOverrides.adminNotes.trim();
       }
 
       const res = await fetch(`/api/admin/prospects/${prospectId}/items`, {
@@ -384,6 +389,9 @@ export default function AdminProspectDetailPage() {
                   }),
                   ...(itemOverrides?.finalCategory.trim() && {
                     finalCategory: itemOverrides.finalCategory.trim(),
+                  }),
+                  ...(itemOverrides?.adminNotes.trim() && {
+                    adminNotes: itemOverrides.adminNotes.trim(),
                   }),
                 }
               : i
@@ -494,6 +502,7 @@ export default function AdminProspectDetailPage() {
               finalEstimateHigh: String(item.finalEstimateHigh ?? item.aiEstimateHigh ?? ''),
               finalReserve: String(item.finalReserve ?? item.aiRecommendedReserve ?? ''),
               finalCategory: item.finalCategory || item.aiCategory || '',
+              adminNotes: item.adminNotes || '',
             },
           }));
         }
@@ -993,6 +1002,7 @@ export default function AdminProspectDetailPage() {
                             {isEditing ? 'Cancel Edit' : 'Override'}
                           </Button>
                         )}
+                        {primaryImage && <LensButton imageUrl={primaryImage} />}
                         <Button
                           size="sm"
                           variant="ghost"
@@ -1074,6 +1084,20 @@ export default function AdminProspectDetailPage() {
                             placeholder="Reserve price"
                           />
                         </div>
+                        <div className="col-span-2">
+                          <label className="text-xs text-muted-foreground">
+                            Verification Notes (internal)
+                          </label>
+                          <Textarea
+                            className="text-sm"
+                            rows={2}
+                            value={itemOv.adminNotes}
+                            onChange={(e) =>
+                              updateOverride(item.id, 'adminNotes', e.target.value)
+                            }
+                            placeholder="What Lens/research showed: confirmed maker, comp listings with prices/links, why the estimate was adjusted"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1089,15 +1113,34 @@ export default function AdminProspectDetailPage() {
                           </p>
                           <div className="flex gap-2 overflow-x-auto pb-2">
                             {item.images.map((img, idx) => (
-                              <img
-                                key={idx}
-                                src={img}
-                                alt={`${title} image ${idx + 1}`}
-                                className="w-20 h-20 object-cover rounded border flex-shrink-0"
-                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                              />
+                              <div key={idx} className="relative flex-shrink-0 group/lens">
+                                <img
+                                  src={img}
+                                  alt={`${title} image ${idx + 1}`}
+                                  className="w-20 h-20 object-cover rounded border"
+                                  onError={(e) => {
+                                    const wrap = e.currentTarget.parentElement;
+                                    if (wrap) wrap.style.display = 'none';
+                                  }}
+                                />
+                                <LensButton
+                                  imageUrl={img}
+                                  variant="overlay"
+                                  className="absolute bottom-1 right-1 opacity-0 group-hover/lens:opacity-100"
+                                />
+                              </div>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Verification Notes */}
+                      {item.adminNotes && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1 uppercase tracking-wide">
+                            Verification Notes
+                          </p>
+                          <p className="text-sm whitespace-pre-wrap">{item.adminNotes}</p>
                         </div>
                       )}
 
