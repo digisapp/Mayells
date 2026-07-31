@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/db';
 import { uploadLinks, uploadItems, sellerProspects } from '@/db/schema';
@@ -6,6 +6,7 @@ import { eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { sendItemsReceivedNotification } from '@/lib/email/notifications';
 import { validateLink } from '@/lib/upload/validate-link';
+import { sanitizeStoredImages, storagePathFromPublicUrl } from '@/lib/images/sanitize';
 
 const uploadItemsSchema = z.object({
   items: z
@@ -122,6 +123,17 @@ export async function POST(
     }));
 
     await db.insert(uploadItems).values(itemsToInsert);
+
+    // Photos went straight to storage via signed URLs, so EXIF (incl. GPS of
+    // the seller's home) is scrubbed here in the background — same paths, so
+    // the stored URLs keep working. Videos/HEIC are skipped by the sanitizer.
+    const storagePaths = items
+      .flatMap((item) => item.images)
+      .map(storagePathFromPublicUrl)
+      .filter((p): p is string => p !== null);
+    if (storagePaths.length > 0) {
+      after(() => sanitizeStoredImages(storagePaths));
+    }
 
     // Update upload link stats
     await db

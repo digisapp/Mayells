@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { stripImageMetadata } from '@/lib/images/sanitize';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'];
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
@@ -43,11 +44,13 @@ export async function POST(request: NextRequest) {
     const ext = file.name.split('.').pop() || 'jpg';
     const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
+    const stripped = await stripImageMetadata(await file.arrayBuffer());
+
     const admin = createAdminClient();
     const { data, error } = await admin.storage
       .from(BUCKET)
-      .upload(fileName, file, {
-        contentType: file.type,
+      .upload(fileName, stripped?.buffer ?? file, {
+        contentType: stripped?.contentType ?? file.type,
         upsert: false,
       });
 
