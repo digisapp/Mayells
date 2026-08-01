@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -74,10 +75,15 @@ export function AdminLoginForm() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="admin-password" className="text-zinc-300">Password</Label>
-            <Input
+            <div className="flex items-center justify-between">
+              <Label htmlFor="admin-password" className="text-zinc-300">Password</Label>
+              <a href="/forgot-password" className="text-xs text-zinc-500 hover:text-zinc-300 hover:underline">
+                Forgot password?
+              </a>
+            </div>
+            <PasswordInput
               id="admin-password"
-              type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

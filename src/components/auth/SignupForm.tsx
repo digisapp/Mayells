@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -65,7 +66,7 @@ export function SignupForm({ next }: { next: string }) {
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput id="password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
             <p className="text-xs text-muted-foreground">At least 8 characters.</p>
           </div>
           <Button type="submit" className="w-full" disabled={isLoading}>

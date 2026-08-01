@@ -2,10 +2,29 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
+import { redis, isRedisConfigured } from '@/lib/redis';
 
 const adminAuthRoutes = ['/admin/login'];
 
-async function getUserProfile(userId: string) {
+type CachedProfile = { role: string | null; is_admin: boolean | null };
+
+// Role changes are rare; a short TTL keeps every admin page load from paying
+// a Supabase REST round trip. Trade-off: revoking admin can take up to this
+// long to bite in the middleware (API routes still check the DB directly).
+const PROFILE_CACHE_SECONDS = 300;
+
+async function getUserProfile(userId: string): Promise<CachedProfile | null> {
+  const cacheKey = `mw:profile:${userId}`;
+
+  if (isRedisConfigured) {
+    try {
+      const cached = await redis.get<CachedProfile>(cacheKey);
+      if (cached) return cached;
+    } catch {
+      // Redis down — fall through to the direct lookup
+    }
+  }
+
   const adminClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -15,6 +34,14 @@ async function getUserProfile(userId: string) {
     .select('role, is_admin')
     .eq('id', userId)
     .single();
+
+  if (profile && isRedisConfigured) {
+    try {
+      await redis.set(cacheKey, profile, { ex: PROFILE_CACHE_SECONDS });
+    } catch {
+      // cache write is best-effort
+    }
+  }
   return profile;
 }
 

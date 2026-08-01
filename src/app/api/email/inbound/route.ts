@@ -197,6 +197,7 @@ export async function POST(req: NextRequest) {
       let bodyHtml: string | null = null;
       let bodyText: string | null = null;
       let inReplyToHeader: string | null = null;
+      let hasAttachments = false;
 
       if (resendEmailId) {
         try {
@@ -206,6 +207,7 @@ export async function POST(req: NextRequest) {
             bodyHtml = fullEmail.html || null;
             bodyText = fullEmail.text || null;
             inReplyToHeader = fullEmail.headers?.['in-reply-to'] || fullEmail.headers?.['In-Reply-To'] || null;
+            hasAttachments = (fullEmail.attachments?.length ?? 0) > 0;
           }
         } catch (fetchErr) {
           logger.error('Failed to fetch inbound email content from Resend', fetchErr);
@@ -246,6 +248,39 @@ export async function POST(req: NextRequest) {
       // platform outages. Best-effort: a forward failure must not fail the
       // webhook (the original is already stored and visible in /admin/emails).
       if (!spam && saved && !isOwnAddress(fromEmail)) {
+        // Attachments matter here — appraisal photos ARE the inquiry. Relay
+        // them as Resend-hosted signed URLs so we never buffer file bytes.
+        // Best-effort: on any failure the forward still goes out body-only.
+        let forwardAttachments: Array<{ filename: string; path: string; contentType?: string }> = [];
+        let skippedAttachments = 0;
+        if (hasAttachments && resendEmailId) {
+          try {
+            const resend = getResend();
+            const { data: attachmentList } = await resend.emails.receiving.attachments.list({
+              emailId: resendEmailId,
+            });
+            // Resend caps outbound emails at 40MB; leave headroom for the
+            // body and base64 overhead.
+            const MAX_FORWARD_BYTES = 30 * 1024 * 1024;
+            let totalBytes = 0;
+            for (const att of attachmentList?.data ?? []) {
+              if (totalBytes + att.size > MAX_FORWARD_BYTES) {
+                skippedAttachments++;
+                continue;
+              }
+              totalBytes += att.size;
+              forwardAttachments.push({
+                filename: att.filename || 'attachment',
+                path: att.download_url,
+                contentType: att.content_type,
+              });
+            }
+          } catch (attErr) {
+            logger.error('Failed to fetch inbound attachments from Resend', attErr, { emailId: saved.id });
+            forwardAttachments = [];
+          }
+        }
+
         try {
           await forwardInboundEmail({
             fromEmail,
@@ -254,9 +289,27 @@ export async function POST(req: NextRequest) {
             subject,
             bodyHtml,
             bodyText,
+            attachments: forwardAttachments,
+            skippedAttachments,
           });
         } catch (err) {
           logger.error('Inbound email forward failed', err, { emailId: saved.id });
+          // If the attachments are what sank it, still get the body through.
+          if (forwardAttachments.length > 0) {
+            try {
+              await forwardInboundEmail({
+                fromEmail,
+                fromName,
+                toEmail,
+                subject,
+                bodyHtml,
+                bodyText,
+                skippedAttachments: forwardAttachments.length + skippedAttachments,
+              });
+            } catch (retryErr) {
+              logger.error('Body-only forward retry failed', retryErr, { emailId: saved.id });
+            }
+          }
         }
       }
 

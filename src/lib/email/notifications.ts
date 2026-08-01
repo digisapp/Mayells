@@ -156,6 +156,13 @@ export async function forwardInboundEmail(params: {
   subject: string;
   bodyHtml: string | null;
   bodyText: string | null;
+  /**
+   * Attachments to relay, as Resend-hosted signed URLs (`path`) — Resend
+   * downloads them at send time, so the webhook never buffers file bytes.
+   */
+  attachments?: Array<{ filename: string; path: string; contentType?: string }>;
+  /** Count of attachments dropped by the size cap, surfaced in the banner. */
+  skippedAttachments?: number;
 }) {
   const resend = getResend();
   const senderLabel = params.fromName
@@ -168,16 +175,21 @@ export async function forwardInboundEmail(params: {
       ? `<pre style="font-family: inherit; white-space: pre-wrap;">${escapeHtml(params.bodyText)}</pre>`
       : '<p style="color: #999;">(no message body)</p>');
 
+  const skippedNote = params.skippedAttachments
+    ? `<br /><strong>Note:</strong> ${params.skippedAttachments} attachment(s) were too large to forward — view them in the admin inbox.`
+    : '';
+
   const { error } = await resend.emails.send({
     from: FROM,
     to: BUSINESS.forwardInboundTo,
     replyTo: params.fromEmail,
     subject: `Fwd: ${params.subject}`,
+    attachments: params.attachments?.length ? params.attachments : undefined,
     html: `
       <div style="font-size: 12px; color: #666; border-bottom: 1px solid #ddd; padding-bottom: 8px; margin-bottom: 12px;">
         Forwarded from the Mayells inbox — reply goes directly to the sender.<br />
         <strong>From:</strong> ${escapeHtml(senderLabel)}<br />
-        <strong>To:</strong> ${escapeHtml(params.toEmail)}
+        <strong>To:</strong> ${escapeHtml(params.toEmail)}${skippedNote}
       </div>
       ${originalBody}
     `,

@@ -15,6 +15,14 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email('Please enter a valid email address'),
+});
+
+export const resetPasswordSchema = z.object({
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
 export const lotSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   description: z.string().min(1, 'Description is required'),

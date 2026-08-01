@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -30,7 +31,9 @@ export function LoginForm({ next }: { next: string }) {
         setError(data.error || 'Login failed');
         return;
       }
-      router.push(next);
+      // Admins landing here without an explicit destination go to the
+      // dashboard, not the homepage.
+      router.push(data.role === 'admin' && next === '/' ? '/admin' : next);
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');
@@ -54,8 +57,13 @@ export function LoginForm({ next }: { next: string }) {
             <Input id="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+                Forgot password?
+              </Link>
+            </div>
+            <PasswordInput id="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? 'Signing in…' : 'Sign In'}

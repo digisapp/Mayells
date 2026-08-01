@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { db } from '@/db';
+import { users } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import { loginSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
@@ -10,10 +12,6 @@ import { ensureUserProfile, roleFromMetadata } from '@/lib/auth/profile';
 export async function POST(req: NextRequest) {
   try {
     const ip = getClientIp(req);
-    const { success: ipOk } = await rateLimit(`auth:login:ip:${ip}`, { maxRequests: 10, windowSeconds: 900, failClosed: true });
-    if (!ipOk) {
-      return NextResponse.json({ error: 'Too many login attempts. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': '900' } });
-    }
 
     const body = await req.json();
     const parsed = loginSchema.safeParse(body);
@@ -27,8 +25,15 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = parsed.data;
 
-    // Per-email rate limit catches distributed attacks across many IPs
-    const { success: emailOk } = await rateLimit(`auth:login:email:${email.toLowerCase()}`, { maxRequests: 10, windowSeconds: 900, failClosed: true });
+    // Per-IP limit plus per-email limit (catches distributed attacks across
+    // many IPs). Checked in parallel — they're independent Redis round trips.
+    const [{ success: ipOk }, { success: emailOk }] = await Promise.all([
+      rateLimit(`auth:login:ip:${ip}`, { maxRequests: 10, windowSeconds: 900, failClosed: true }),
+      rateLimit(`auth:login:email:${email.toLowerCase()}`, { maxRequests: 10, windowSeconds: 900, failClosed: true }),
+    ]);
+    if (!ipOk) {
+      return NextResponse.json({ error: 'Too many login attempts. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': '900' } });
+    }
     if (!emailOk) {
       return NextResponse.json({ error: 'Too many login attempts for this account. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': '900' } });
     }
@@ -59,19 +64,17 @@ export async function POST(req: NextRequest) {
       logger.error('Login: failed to ensure user profile', profileError, { userId: data.user.id });
     }
 
-    // Fetch user role to determine redirect (using Supabase admin client, same as middleware)
+    // Fetch user role to determine redirect. Uses the pooled DB connection
+    // rather than a per-request Supabase REST client — one warm query instead
+    // of a cold HTTP round trip on the login critical path.
     let role = 'buyer';
     try {
-      const adminClient = createAdminClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      );
-      const { data: profile } = await adminClient
-        .from('users')
-        .select('role, is_admin')
-        .eq('id', data.user.id)
-        .single();
-      if (profile?.is_admin) {
+      const [profile] = await db
+        .select({ role: users.role, isAdmin: users.isAdmin })
+        .from(users)
+        .where(eq(users.id, data.user.id))
+        .limit(1);
+      if (profile?.isAdmin) {
         role = 'admin';
       } else if (profile?.role) {
         role = profile.role;
