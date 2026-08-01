@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
       let bodyHtml: string | null = null;
       let bodyText: string | null = null;
       let inReplyToHeader: string | null = null;
-      let hasAttachments = false;
+      let attachmentMeta: Array<{ id: string; filename: string; size: number; contentType: string }> = [];
 
       if (resendEmailId) {
         try {
@@ -207,7 +207,12 @@ export async function POST(req: NextRequest) {
             bodyHtml = fullEmail.html || null;
             bodyText = fullEmail.text || null;
             inReplyToHeader = fullEmail.headers?.['in-reply-to'] || fullEmail.headers?.['In-Reply-To'] || null;
-            hasAttachments = (fullEmail.attachments?.length ?? 0) > 0;
+            attachmentMeta = (fullEmail.attachments ?? []).map((a) => ({
+              id: a.id,
+              filename: a.filename || 'attachment',
+              size: a.size,
+              contentType: a.content_type,
+            }));
           }
         } catch (fetchErr) {
           logger.error('Failed to fetch inbound email content from Resend', fetchErr);
@@ -242,6 +247,7 @@ export async function POST(req: NextRequest) {
         threadId,
         userId,
         isSpam: spam,
+        attachments: attachmentMeta.length > 0 ? attachmentMeta : null,
       }).returning();
 
       // Copy to the owner's external mailbox so inbound mail survives
@@ -253,7 +259,7 @@ export async function POST(req: NextRequest) {
         // Best-effort: on any failure the forward still goes out body-only.
         let forwardAttachments: Array<{ filename: string; path: string; contentType?: string }> = [];
         let skippedAttachments = 0;
-        if (hasAttachments && resendEmailId) {
+        if (attachmentMeta.length > 0 && resendEmailId) {
           try {
             const resend = getResend();
             const { data: attachmentList } = await resend.emails.receiving.attachments.list({

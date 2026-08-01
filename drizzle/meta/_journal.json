@@ -120,6 +120,13 @@
       "when": 1785498653234,
       "tag": "0016_consignor_portal_token",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1785625117583,
+      "tag": "0017_email_attachments",
+      "breakpoints": true
     }
   ]
 }

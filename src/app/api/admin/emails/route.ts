@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
 
     const whereClause = conditions.length ? and(...conditions) : undefined;
 
-    const [data, countResult] = await Promise.all([
+    const [data, countResult, unreadResult] = await Promise.all([
       db
         .select()
         .from(emails)
@@ -106,12 +106,22 @@ export async function GET(req: NextRequest) {
         .select({ count: sql<number>`count(*)::int` })
         .from(emails)
         .where(whereClause),
+      // Global unread (not page-scoped): what the inbox tab badge shows
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(emails)
+        .where(and(
+          eq(emails.direction, 'inbound'),
+          eq(emails.status, 'received'),
+          eq(emails.isSpam, false),
+        )),
     ]);
 
     const total = countResult[0]?.count ?? 0;
 
     return NextResponse.json({
       data,
+      unread: unreadResult[0]?.count ?? 0,
       pagination: {
         page,
         pageSize: PAGE_SIZE,

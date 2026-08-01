@@ -41,6 +41,15 @@ interface EmailRow {
   readAt: string | null;
   repliedAt: string | null;
   createdAt: string;
+  attachments: { id: string; filename: string; size: number; contentType: string }[] | null;
+}
+
+interface AttachmentLink {
+  id: string;
+  filename: string;
+  size: number;
+  contentType: string;
+  downloadUrl: string;
 }
 
 interface Pagination {
@@ -99,6 +108,92 @@ function CategoryBadge({ category, confidence }: { category: string; confidence:
   );
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Attachments of an inbound email. Files live on Resend behind expiring
+ * signed URLs, so this fetches fresh links every time it mounts.
+ */
+function EmailAttachments({ emailId }: { emailId: string }) {
+  const [items, setItems] = useState<AttachmentLink[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/emails/${emailId}/attachments`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => { if (!cancelled) setItems(d.data ?? []); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [emailId]);
+
+  if (failed) {
+    return <p className="text-xs text-red-600 mt-3">Could not load attachments.</p>;
+  }
+  if (items === null) {
+    return (
+      <div className="flex items-center gap-2 mt-3 text-xs text-muted-foreground">
+        <Paperclip className="h-3 w-3 animate-pulse" />
+        Loading attachments…
+      </div>
+    );
+  }
+  if (items.length === 0) return null;
+
+  const images = items.filter((a) => a.contentType.startsWith('image/'));
+  const files = items.filter((a) => !a.contentType.startsWith('image/'));
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+        <Paperclip className="h-3 w-3" />
+        {items.length} attachment{items.length > 1 ? 's' : ''}
+      </p>
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((a) => (
+            <a
+              key={a.id}
+              href={a.downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block group relative"
+              title={`${a.filename} (${formatBytes(a.size)})`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={a.downloadUrl}
+                alt={a.filename}
+                className="h-28 w-28 object-cover rounded-md border border-border group-hover:opacity-90 transition-opacity"
+              />
+              <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-b-md truncate">
+                {a.filename}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+      {files.map((a) => (
+        <a
+          key={a.id}
+          href={a.downloadUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-2 text-sm text-champagne hover:underline w-fit"
+        >
+          <Paperclip className="h-3.5 w-3.5" />
+          {a.filename}
+          <span className="text-xs text-muted-foreground">({formatBytes(a.size)})</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
 function QuotedOriginal({ email }: { email: EmailRow }) {
   const text = email.bodyText || '';
   if (!text) return null;
@@ -123,6 +218,8 @@ export default function AdminEmailsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState('');
+  const [replyAttachments, setReplyAttachments] = useState<{ content: string; filename: string; contentType: string }[]>([]);
+  const [unreadTotal, setUnreadTotal] = useState(0);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -161,6 +258,7 @@ export default function AdminEmailsPage() {
       .then((d) => {
         setEmailList(d.data ?? []);
         if (d.pagination) setPagination(d.pagination);
+        if (typeof d.unread === 'number') setUnreadTotal(d.unread);
       })
       .catch(() => toast.error('Failed to load emails'))
       .finally(() => setLoading(false));
@@ -236,6 +334,8 @@ export default function AdminEmailsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, status: 'read' }),
       });
+      const newlyRead = emailList.filter((e) => selectedIds.has(e.id) && e.direction === 'inbound' && e.status === 'received').length;
+      setUnreadTotal((n) => Math.max(0, n - newlyRead));
       setEmailList((prev) => prev.map((e) => (selectedIds.has(e.id) ? { ...e, status: 'read', readAt: new Date().toISOString() } : e)));
       setSelectedIds(new Set());
       toast.success(`Marked ${ids.length} emails as read`);
@@ -326,6 +426,7 @@ export default function AdminEmailsPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status: 'read' }),
     });
+    setUnreadTotal((n) => Math.max(0, n - 1));
     setEmailList((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'read', readAt: new Date().toISOString() } : e)));
   }
 
@@ -362,12 +463,14 @@ export default function AdminEmailsPage() {
           `,
           text: `${replyBody}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(email.bodyText || '').split('\n').join('\n> ')}`,
           inReplyToId: email.id,
+          ...(replyAttachments.length > 0 && { attachments: replyAttachments }),
         }),
       });
       if (res.ok) {
         toast.success(`Reply sent to ${email.fromEmail}`);
         setReplyingTo(null);
         setReplyBody('');
+        setReplyAttachments([]);
         setEmailList((prev) => prev.map((e) => (e.id === email.id ? { ...e, status: 'replied' } : e)));
       } else {
         const data = await res.json();
@@ -380,14 +483,17 @@ export default function AdminEmailsPage() {
     }
   }
 
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  function readFilesInto(
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: React.Dispatch<React.SetStateAction<{ content: string; filename: string; contentType: string }[]>>,
+  ) {
     const files = e.target.files;
     if (!files) return;
     Array.from(files).forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
         const base64 = (reader.result as string).split(',')[1];
-        setAttachments((prev) => [...prev, {
+        setter((prev) => [...prev, {
           content: base64,
           filename: file.name,
           contentType: file.type || 'application/octet-stream',
@@ -396,6 +502,10 @@ export default function AdminEmailsPage() {
       reader.readAsDataURL(file);
     });
     e.target.value = '';
+  }
+
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    readFilesInto(e, setAttachments);
   }
 
   function removeAttachment(index: number) {
@@ -439,7 +549,7 @@ export default function AdminEmailsPage() {
     }
   }
 
-  const unreadCount = emailList.filter((e) => e.status === 'received' && e.direction === 'inbound').length;
+  const unreadCount = unreadTotal;
 
   // ─── Thread View Render ────────────────────────────────────────────────────
 
@@ -495,6 +605,9 @@ export default function AdminEmailsPage() {
                     <pre className="text-sm whitespace-pre-wrap">{email.bodyText}</pre>
                   ) : (
                     <p className="text-sm text-muted-foreground italic">(no content)</p>
+                  )}
+                  {email.direction === 'inbound' && (email.attachments?.length ?? 0) > 0 && (
+                    <EmailAttachments emailId={email.id} />
                   )}
                 </CardContent>
               </Card>
@@ -800,8 +913,11 @@ export default function AdminEmailsPage() {
                             })}
                           </span>
                         </div>
-                        <p className={`text-sm truncate mt-0.5 ${email.status === 'received' && email.direction === 'inbound' ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {email.subject || '(no subject)'}
+                        <p className={`text-sm truncate mt-0.5 flex items-center gap-1.5 ${email.status === 'received' && email.direction === 'inbound' ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {(email.attachments?.length ?? 0) > 0 && (
+                            <Paperclip className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                          )}
+                          <span className="truncate">{email.subject || '(no subject)'}</span>
                         </p>
                         {/* AI summary or body preview */}
                         {expandedId !== email.id && (
@@ -856,6 +972,11 @@ export default function AdminEmailsPage() {
                       </pre>
                     ) : (
                       <p className="text-sm text-muted-foreground italic p-4">(no content)</p>
+                    )}
+
+                    {/* Inbound attachments (fresh signed URLs fetched on expand) */}
+                    {email.direction === 'inbound' && (email.attachments?.length ?? 0) > 0 && (
+                      <EmailAttachments emailId={email.id} />
                     )}
 
                     {/* AI Draft */}
@@ -920,6 +1041,19 @@ export default function AdminEmailsPage() {
                                 autoFocus
                               />
                               <QuotedOriginal email={email} />
+                              {replyAttachments.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                  {replyAttachments.map((a, i) => (
+                                    <div key={i} className="flex items-center gap-1.5 bg-muted/50 rounded-md px-2.5 py-1.5 text-xs">
+                                      <Paperclip className="h-3 w-3 text-muted-foreground" />
+                                      <span className="max-w-[150px] truncate">{a.filename}</span>
+                                      <button onClick={() => setReplyAttachments((prev) => prev.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-foreground">
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
@@ -930,12 +1064,22 @@ export default function AdminEmailsPage() {
                                   <Send className="h-3.5 w-3.5 mr-2" />
                                   {sendingId === `reply-${email.id}` ? 'Sending...' : 'Send Reply'}
                                 </Button>
+                                <label className="cursor-pointer">
+                                  <input type="file" multiple className="hidden" onChange={(e) => readFilesInto(e, setReplyAttachments)} />
+                                  <Button size="sm" variant="outline" type="button" asChild>
+                                    <span>
+                                      <Paperclip className="h-3.5 w-3.5 mr-1" />
+                                      Attach
+                                    </span>
+                                  </Button>
+                                </label>
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
                                     setReplyingTo(null);
                                     setReplyBody('');
+                                    setReplyAttachments([]);
                                   }}
                                 >
                                   Cancel

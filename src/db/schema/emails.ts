@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, pgEnum, boolean, index, real } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, pgEnum, boolean, index, real, jsonb } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users';
 
@@ -43,6 +43,14 @@ export const emails = pgTable('emails', {
   aiSummary: text('ai_summary'),
   // Spam filtering
   isSpam: boolean('is_spam').default(false).notNull(),
+  // Inbound attachment metadata (files themselves stay on Resend; the admin
+  // UI fetches short-lived signed download URLs on demand)
+  attachments: jsonb('attachments').$type<Array<{
+    id: string;
+    filename: string;
+    size: number;
+    contentType: string;
+  }>>(),
   // Timestamps
   readAt: timestamp('read_at'),
   repliedAt: timestamp('replied_at'),
