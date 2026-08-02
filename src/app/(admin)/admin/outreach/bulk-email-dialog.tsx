@@ -15,8 +15,10 @@ interface BulkEmailDialogProps {
   selectedCount: number;
   contacts: OutreachContact[];
   selectedIds: Set<string>;
-  onComplete: () => void;
+  onComplete: (updatedContacts: OutreachContact[]) => void;
 }
+
+const EXCLUDED_STATUSES: OutreachContact['status'][] = ['do_not_contact', 'not_interested'];
 
 export function BulkEmailDialog({ selectedCount, contacts, selectedIds, onComplete }: BulkEmailDialogProps) {
   const [open, setOpen] = useState(false);
@@ -40,14 +42,20 @@ export function BulkEmailDialog({ selectedCount, contacts, selectedIds, onComple
 
   async function sendBulkEmail() {
     const ids = Array.from(selectedIds);
-    const recipients = contacts.filter((c) => ids.includes(c.id) && c.email);
+    const recipients = contacts.filter(
+      (c) => ids.includes(c.id) && c.email && !EXCLUDED_STATUSES.includes(c.status),
+    );
 
     if (recipients.length === 0) {
-      toast.error('No selected contacts have email addresses');
+      toast.error('No selected contacts are emailable (missing email or opted out)');
       return;
     }
 
+    const skipped = ids.length - recipients.length;
     let sent = 0;
+    const failures: string[] = [];
+    const updatedContacts: OutreachContact[] = [];
+
     for (const contact of recipients) {
       const personalizedBody = body
         .replace(/{contactName}/g, contact.contactName || 'there')
@@ -64,13 +72,30 @@ export function BulkEmailDialog({ selectedCount, contacts, selectedIds, onComple
             contactId: contact.id,
           }),
         });
-        if (res.ok) sent++;
-      } catch { /* skip */ }
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          sent++;
+          if (data.data) updatedContacts.push(data.data as OutreachContact);
+        } else {
+          failures.push(`${contact.companyName}: ${data.error || 'send failed'}`);
+        }
+      } catch {
+        failures.push(`${contact.companyName}: network error`);
+      }
     }
 
-    toast.success(`Sent ${sent} email${sent !== 1 ? 's' : ''}`);
+    if (sent > 0) {
+      toast.success(
+        `Sent ${sent} email${sent !== 1 ? 's' : ''}${skipped > 0 ? ` (${skipped} skipped — no email or opted out)` : ''}`,
+      );
+    }
+    if (failures.length > 0) {
+      toast.error(`Failed to send ${failures.length} email${failures.length !== 1 ? 's' : ''}`, {
+        description: failures.slice(0, 3).join('\n') + (failures.length > 3 ? `\n…and ${failures.length - 3} more` : ''),
+      });
+    }
     setOpen(false);
-    onComplete();
+    onComplete(updatedContacts);
   }
 
   return (

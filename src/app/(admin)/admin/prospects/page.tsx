@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -22,9 +23,16 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
+  QrCode,
+  Download,
+  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { BUSINESS } from '@/lib/config';
+
+// Generic terms page — same base URL config the agreement API uses.
+const TERMS_URL = `${BUSINESS.url}/consignment-agreement`;
 
 type ProspectStatus =
   | 'new'
@@ -72,6 +80,13 @@ interface ProspectRow {
   uploadItemCount: number;
 }
 
+interface ProspectStats {
+  total: number;
+  pendingReview: number;
+  itemsReceived: number;
+  agreementSigned: number;
+}
+
 const statusColors: Record<ProspectStatus, string> = {
   new: 'bg-gray-100 text-gray-700',
   contacted: 'bg-blue-100 text-blue-700',
@@ -112,51 +127,87 @@ export default function AdminProspectsPage() {
   const router = useRouter();
   const [rows, setRows] = useState<ProspectRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [offset, setOffset] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [stats, setStats] = useState<ProspectStats | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [showTermsDialog, setShowTermsDialog] = useState(false);
+  const [termsCopied, setTermsCopied] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [sendingLinkId, setSendingLinkId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchProspects = useCallback(async (pageOffset = 0) => {
+  const fetchProspects = useCallback(async (pageOffset = 0, searchTerm = '') => {
     setLoading(true);
+    setFetchError(false);
     try {
-      const res = await fetch(`/api/admin/prospects?limit=${PAGE_SIZE}&offset=${pageOffset}`);
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(pageOffset),
+      });
+      if (searchTerm) params.set('search', searchTerm);
+      const res = await fetch(`/api/admin/prospects?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to load prospects');
       const data = await res.json();
       setRows(data.data ?? []);
       setTotalCount(data.pagination?.total ?? 0);
+      if (data.stats) setStats(data.stats);
     } catch {
       setRows([]);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // Debounce the search box, then query server-side so all prospects are
+  // covered (not just the loaded page).
   useEffect(() => {
-    fetchProspects(0);
-  }, [fetchProspects]);
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const filtered = rows.filter((row) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    const p = row.prospect;
-    return (
-      p.fullName.toLowerCase().includes(q) ||
-      p.email?.toLowerCase().includes(q) ||
-      p.company?.toLowerCase().includes(q) ||
-      p.phone?.toLowerCase().includes(q)
-    );
-  });
+  useEffect(() => {
+    setOffset(0);
+    fetchProspects(0, debouncedSearch);
+  }, [debouncedSearch, fetchProspects]);
 
-  // Stats — computed from current page; totalCount from API for header
-  const total = totalCount;
-  const pending = rows.filter((r) => r.prospect.status === 'new').length;
-  const itemsReceived = rows.filter((r) => r.prospect.status === 'items_received').length;
-  const signed = rows.filter((r) => r.prospect.status === 'agreement_signed').length;
+  // Stats — global counts from the API, not current-page counts
+  const total = stats?.total ?? totalCount;
+  const pending = stats?.pendingReview ?? 0;
+  const itemsReceived = stats?.itemsReceived ?? 0;
+  const signed = stats?.agreementSigned ?? 0;
+
+  function copyTermsLink() {
+    navigator.clipboard.writeText(TERMS_URL);
+    setTermsCopied(true);
+    toast.success('Terms link copied');
+    setTimeout(() => setTermsCopied(false), 2000);
+  }
+
+  function downloadTermsQR() {
+    const svg = document.getElementById('terms-qr');
+    if (!svg) return;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new window.Image();
+    img.onload = () => {
+      canvas.width = 512;
+      canvas.height = 512;
+      ctx?.drawImage(img, 0, 0, 512, 512);
+      const link = document.createElement('a');
+      link.download = 'mayells-consignment-terms-qr.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+  }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -186,8 +237,8 @@ export default function AdminProspectsPage() {
       toast.success(`Prospect "${form.fullName}" created`);
       setForm(emptyForm);
       setShowDialog(false);
-      setLoading(true);
-      fetchProspects();
+      setOffset(0);
+      fetchProspects(0, debouncedSearch);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create prospect');
     } finally {
@@ -213,7 +264,7 @@ export default function AdminProspectsPage() {
         toast.success('Upload link copied to clipboard');
         setTimeout(() => setCopiedId(null), 2000);
       }
-      fetchProspects();
+      fetchProspects(offset, debouncedSearch);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create upload link');
     } finally {
@@ -250,10 +301,16 @@ export default function AdminProspectsPage() {
             Manage consignment leads and upload links
           </p>
         </div>
-        <Button onClick={() => setShowDialog(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Prospect
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowTermsDialog(true)}>
+            <QrCode className="h-4 w-4 mr-2" />
+            Terms Link / QR
+          </Button>
+          <Button onClick={() => setShowDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Prospect
+          </Button>
+        </div>
       </div>
 
       {/* Stats Bar */}
@@ -314,12 +371,24 @@ export default function AdminProspectsPage() {
             <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : fetchError ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertCircle className="h-10 w-10 text-destructive mx-auto mb-3" />
+            <p className="text-muted-foreground mb-4">
+              Failed to load prospects. Please check your connection and try again.
+            </p>
+            <Button variant="outline" onClick={() => fetchProspects(offset, debouncedSearch)}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      ) : rows.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
             <Users2 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">
-              {search ? 'No prospects match your search.' : 'No prospects yet.'}
+              {debouncedSearch ? 'No prospects match your search.' : 'No prospects yet.'}
             </p>
           </CardContent>
         </Card>
@@ -339,7 +408,7 @@ export default function AdminProspectsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(({ prospect: p, uploadItemCount }) => {
+              {rows.map(({ prospect: p, uploadItemCount }) => {
                 const estLow = p.totalEstimateLow || 0;
                 const estHigh = p.totalEstimateHigh || 0;
                 const hasEstimate = estLow > 0 || estHigh > 0;
@@ -445,7 +514,7 @@ export default function AdminProspectsPage() {
         </div>
       )}
 
-      {totalCount > PAGE_SIZE && !search && (
+      {totalCount > PAGE_SIZE && !fetchError && (
         <div className="flex items-center justify-between mt-4 text-sm">
           <p className="text-muted-foreground">
             {offset + 1}–{Math.min(offset + PAGE_SIZE, totalCount)} of {totalCount}
@@ -458,7 +527,7 @@ export default function AdminProspectsPage() {
               onClick={() => {
                 const next = Math.max(0, offset - PAGE_SIZE);
                 setOffset(next);
-                fetchProspects(next);
+                fetchProspects(next, debouncedSearch);
               }}
               className="gap-1"
             >
@@ -471,12 +540,67 @@ export default function AdminProspectsPage() {
               onClick={() => {
                 const next = offset + PAGE_SIZE;
                 setOffset(next);
-                fetchProspects(next);
+                fetchProspects(next, debouncedSearch);
               }}
               className="gap-1"
             >
               Next <ChevronRight className="h-3.5 w-3.5" />
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Terms Link / QR Dialog (replaces the retired /admin/agreements page) */}
+      {showTermsDialog && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowTermsDialog(false);
+          }}
+        >
+          <div className="bg-background rounded-lg w-full max-w-sm border shadow-lg">
+            <div className="flex items-center justify-between p-6 pb-4 border-b">
+              <h2 className="text-lg font-semibold">Consignment Terms</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setShowTermsDialog(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Share the public consignment terms page. Print or display the QR
+                code — clients can scan it to read the agreement on their phone.
+              </p>
+
+              <div className="bg-white rounded-xl p-6 flex flex-col items-center border">
+                <QRCodeSVG
+                  id="terms-qr"
+                  value={TERMS_URL}
+                  size={180}
+                  level="H"
+                  bgColor="#FFFFFF"
+                  fgColor="#272D35"
+                />
+                <p className="text-xs text-muted-foreground mt-3">Scan to view terms</p>
+              </div>
+
+              <div className="flex gap-2">
+                <Input readOnly value={TERMS_URL} className="text-xs bg-muted" />
+                <Button variant="outline" size="icon" onClick={copyTermsLink} title="Copy link">
+                  {termsCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+
+              <Button variant="outline" className="w-full gap-2" onClick={downloadTermsQR}>
+                <Download className="h-4 w-4" />
+                Download QR Code (PNG)
+              </Button>
+            </div>
           </div>
         </div>
       )}

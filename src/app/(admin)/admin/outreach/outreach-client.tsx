@@ -107,15 +107,16 @@ export function OutreachClient({ initialContacts }: Props) {
       'Address': c.address || '',
       'City': c.city || '',
       'State': c.state || '',
-      'Notes': (c.notes || '').replace(/"/g, '""'),
+      'Notes': c.notes || '',
       'Last Contacted': c.lastContactedAt ? new Date(c.lastContactedAt).toLocaleDateString() : '',
       'Next Follow-Up': c.nextFollowUpAt ? new Date(c.nextFollowUpAt).toLocaleDateString() : '',
     }));
 
+    const quote = (v: string) => `"${v.replace(/"/g, '""')}"`;
     const headers = Object.keys(rows[0] || {});
     const csv = [
-      headers.join(','),
-      ...rows.map((r) => headers.map((h) => `"${(r as Record<string, string>)[h]}"`).join(',')),
+      headers.map(quote).join(','),
+      ...rows.map((r) => headers.map((h) => quote((r as Record<string, string>)[h])).join(',')),
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -217,7 +218,12 @@ export function OutreachClient({ initialContacts }: Props) {
             selectedCount={selected.size}
             contacts={contacts}
             selectedIds={selected}
-            onComplete={() => setSelected(new Set())}
+            onComplete={(updated) => {
+              if (updated.length > 0) {
+                setContacts((prev) => prev.map((c) => updated.find((u) => u.id === c.id) ?? c));
+              }
+              setSelected(new Set());
+            }}
           />
 
           <Button variant="ghost" size="sm" onClick={() => setSelected(new Set())}>

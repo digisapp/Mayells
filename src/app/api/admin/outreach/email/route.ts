@@ -35,6 +35,22 @@ export async function POST(req: NextRequest) {
 
     const { to, subject, body, contactId } = parsed.data;
 
+    // Honor opt-outs server-side regardless of what the client sends
+    const [contact] = await db
+      .select()
+      .from(outreachContacts)
+      .where(eq(outreachContacts.id, contactId))
+      .limit(1);
+    if (!contact) {
+      return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+    }
+    if (contact.status === 'do_not_contact' || contact.status === 'not_interested') {
+      return NextResponse.json(
+        { error: `Contact is marked "${contact.status.replace(/_/g, ' ')}" and cannot be emailed` },
+        { status: 422 },
+      );
+    }
+
     const resend = getResend();
     const emailHtml = `
         <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; white-space: pre-wrap; line-height: 1.6;">
@@ -47,12 +63,19 @@ export async function POST(req: NextRequest) {
           </p>
         </div>
       `;
-    const { data: sent } = await resend.emails.send({
+    const { data: sent, error: sendError } = await resend.emails.send({
       from: 'Mayells <outreach@mayells.com>',
       to,
       subject,
       html: emailHtml,
     });
+
+    if (sendError) {
+      // Don't log the email as sent or touch the contact — report the failure
+      logger.error('Outreach Resend send error', sendError);
+      return NextResponse.json({ error: `Failed to send email to ${to}` }, { status: 500 });
+    }
+
     await db.insert(emails).values({
       resendId: sent?.id || null,
       direction: 'outbound',
@@ -66,16 +89,17 @@ export async function POST(req: NextRequest) {
     });
 
     // Update contact's lastContactedAt and status
-    await db
+    const [updated] = await db
       .update(outreachContacts)
       .set({
         lastContactedAt: sql`now()`,
         status: 'contacted',
         updatedAt: sql`now()`,
       })
-      .where(eq(outreachContacts.id, contactId));
+      .where(eq(outreachContacts.id, contactId))
+      .returning();
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, data: updated });
   } catch (error) {
     logger.error('Outreach email error', error);
     return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });

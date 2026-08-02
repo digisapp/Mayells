@@ -144,11 +144,11 @@ export function AuctionForm({ initialData, onSubmit, isLoading, submitLabel, can
             <Input type="datetime-local" value={form.previewStartsAt} onChange={(e) => update('previewStartsAt', e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>Bidding Opens *</Label>
+            <Label>Bidding Opens</Label>
             <Input type="datetime-local" value={form.biddingStartsAt} onChange={(e) => update('biddingStartsAt', e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>Bidding Closes *</Label>
+            <Label>Bidding Closes</Label>
             <Input type="datetime-local" value={form.biddingEndsAt} onChange={(e) => update('biddingEndsAt', e.target.value)} />
           </div>
         </CardContent>

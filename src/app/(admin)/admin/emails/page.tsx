@@ -215,6 +215,7 @@ export default function AdminEmailsPage() {
   const [emailList, setEmailList] = useState<EmailRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 30, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState('');
@@ -254,13 +255,20 @@ export default function AdminEmailsPage() {
     if (search) params.set('search', search);
 
     fetch(`/api/admin/emails?${params}`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to load emails');
+        return r.json();
+      })
       .then((d) => {
+        setLoadError(false);
         setEmailList(d.data ?? []);
         if (d.pagination) setPagination(d.pagination);
         if (typeof d.unread === 'number') setUnreadTotal(d.unread);
       })
-      .catch(() => toast.error('Failed to load emails'))
+      .catch(() => {
+        setLoadError(true);
+        toast.error('Failed to load emails');
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -292,6 +300,7 @@ export default function AdminEmailsPage() {
     setThreadView(threadId);
     try {
       const res = await fetch(`/api/admin/emails?thread_id=${threadId}`);
+      if (!res.ok) throw new Error('Failed to load thread');
       const d = await res.json();
       setThreadEmails(d.data ?? []);
     } catch {
@@ -329,11 +338,12 @@ export default function AdminEmailsPage() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     try {
-      await fetch('/api/admin/emails', {
+      const res = await fetch('/api/admin/emails', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, status: 'read' }),
       });
+      if (!res.ok) throw new Error('Failed to update emails');
       const newlyRead = emailList.filter((e) => selectedIds.has(e.id) && e.direction === 'inbound' && e.status === 'received').length;
       setUnreadTotal((n) => Math.max(0, n - newlyRead));
       setEmailList((prev) => prev.map((e) => (selectedIds.has(e.id) ? { ...e, status: 'read', readAt: new Date().toISOString() } : e)));
@@ -349,11 +359,12 @@ export default function AdminEmailsPage() {
     if (ids.length === 0) return;
     if (!confirm(`Delete ${ids.length} email${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
     try {
-      await fetch('/api/admin/emails', {
+      const res = await fetch('/api/admin/emails', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids }),
       });
+      if (!res.ok) throw new Error('Failed to delete emails');
       setEmailList((prev) => prev.filter((e) => !selectedIds.has(e.id)));
       setPagination((p) => ({ ...p, total: p.total - ids.length }));
       setSelectedIds(new Set());
@@ -366,11 +377,12 @@ export default function AdminEmailsPage() {
   async function deleteEmail(id: string) {
     if (!confirm('Delete this email? This cannot be undone.')) return;
     try {
-      await fetch('/api/admin/emails', {
+      const res = await fetch('/api/admin/emails', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
+      if (!res.ok) throw new Error('Failed to delete email');
       setEmailList((prev) => prev.filter((e) => e.id !== id));
       setPagination((p) => ({ ...p, total: p.total - 1 }));
       setExpandedId(null);
@@ -421,13 +433,18 @@ export default function AdminEmailsPage() {
   }
 
   async function markAsRead(id: string) {
-    await fetch('/api/admin/emails', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, status: 'read' }),
-    });
-    setUnreadTotal((n) => Math.max(0, n - 1));
-    setEmailList((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'read', readAt: new Date().toISOString() } : e)));
+    try {
+      const res = await fetch('/api/admin/emails', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: 'read' }),
+      });
+      if (!res.ok) throw new Error('Failed to mark as read');
+      setUnreadTotal((n) => Math.max(0, n - 1));
+      setEmailList((prev) => prev.map((e) => (e.id === id ? { ...e, status: 'read', readAt: new Date().toISOString() } : e)));
+    } catch {
+      toast.error('Failed to mark email as read');
+    }
   }
 
   function handleExpand(email: EmailRow) {
@@ -808,6 +825,16 @@ export default function AdminEmailsPage() {
             <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-10 w-10 text-red-500 mx-auto mb-3" />
+            <p className="text-muted-foreground mb-4">Failed to load emails.</p>
+            <Button variant="outline" size="sm" onClick={() => fetchEmails(tab, pagination.page, searchQuery)}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
       ) : emailList.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
@@ -943,7 +970,7 @@ export default function AdminEmailsPage() {
                       <span>To: <strong className="text-foreground">{email.toEmail}</strong></span>
                       {email.userId && (
                         <a
-                          href={`/admin/clients?id=${email.userId}`}
+                          href={`/admin/clients/${email.userId}`}
                           className="flex items-center gap-1 text-purple-600 hover:text-purple-800 transition-colors"
                         >
                           <User className="h-3 w-3" />

@@ -7,26 +7,30 @@ import { estateVisits, estateVisitItems, users } from '@/db/schema';
 import { eq, sql, and, asc, sum } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
+// All fields except status are nullable in the DB — null clears the column.
 const itemPatchSchema = z.object({
   itemId: z.string().uuid('Valid item ID required'),
   status: z.enum(['pending', 'processing', 'completed', 'error']).optional(),
-  title: z.string().max(500).optional(),
-  description: z.string().max(10000).optional(),
-  artist: z.string().max(300).optional(),
-  period: z.string().max(200).optional(),
-  medium: z.string().max(300).optional(),
-  dimensions: z.string().max(300).optional(),
-  condition: z.string().max(200).optional(),
-  conditionNotes: z.string().max(5000).optional(),
-  suggestedCategory: z.string().max(200).optional(),
-  estimateLow: z.number().int().min(0).optional(),
-  estimateHigh: z.number().int().min(0).optional(),
-  confidence: z.number().min(0).max(1).transform(v => String(v)).optional(),
-  reasoning: z.string().max(5000).optional(),
-  marketTrend: z.string().max(1000).optional(),
-  adminNotes: z.string().max(5000).optional(),
-  errorMessage: z.string().max(2000).optional(),
+  title: z.string().max(500).nullable().optional(),
+  description: z.string().max(10000).nullable().optional(),
+  artist: z.string().max(300).nullable().optional(),
+  period: z.string().max(200).nullable().optional(),
+  medium: z.string().max(300).nullable().optional(),
+  dimensions: z.string().max(300).nullable().optional(),
+  condition: z.string().max(200).nullable().optional(),
+  conditionNotes: z.string().max(5000).nullable().optional(),
+  suggestedCategory: z.string().max(200).nullable().optional(),
+  estimateLow: z.number().int().min(0).nullable().optional(),
+  estimateHigh: z.number().int().min(0).nullable().optional(),
+  confidence: z.number().min(0).max(1).transform(v => String(v)).nullable().optional(),
+  reasoning: z.string().max(5000).nullable().optional(),
+  marketTrend: z.string().max(1000).nullable().optional(),
+  adminNotes: z.string().max(5000).nullable().optional(),
+  errorMessage: z.string().max(2000).nullable().optional(),
 });
+
+// Statuses that have been counted in estateVisits.processedCount
+const isProcessedStatus = (status: string) => status === 'completed' || status === 'error';
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -148,6 +152,14 @@ export async function PATCH(
 
     const { itemId, ...updates } = parsed.data;
 
+    const [existing] = await db
+      .select({ status: estateVisitItems.status })
+      .from(estateVisitItems)
+      .where(and(eq(estateVisitItems.id, itemId), eq(estateVisitItems.visitId, visitId)))
+      .limit(1);
+
+    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
     const [updated] = await db
       .update(estateVisitItems)
       .set({ ...updates, updatedAt: sql`now()` })
@@ -155,6 +167,17 @@ export async function PATCH(
       .returning();
 
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+
+    // Keep processedCount in sync when a processed item is reset for re-analysis
+    if (isProcessedStatus(existing.status) && !isProcessedStatus(updated.status)) {
+      await db
+        .update(estateVisits)
+        .set({
+          processedCount: sql`greatest(${estateVisits.processedCount} - 1, 0)`,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(estateVisits.id, visitId));
+    }
 
     await recalcTotals(visitId);
 
@@ -179,14 +202,21 @@ export async function DELETE(
 
     if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });
 
-    await db
+    const [deleted] = await db
       .delete(estateVisitItems)
-      .where(and(eq(estateVisitItems.id, itemId), eq(estateVisitItems.visitId, visitId)));
+      .where(and(eq(estateVisitItems.id, itemId), eq(estateVisitItems.visitId, visitId)))
+      .returning();
+
+    if (!deleted) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     await db
       .update(estateVisits)
       .set({
-        itemCount: sql`${estateVisits.itemCount} - 1`,
+        itemCount: sql`greatest(${estateVisits.itemCount} - 1, 0)`,
+        // Deleting an already-analyzed item must also decrement processedCount
+        ...(isProcessedStatus(deleted.status)
+          ? { processedCount: sql`greatest(${estateVisits.processedCount} - 1, 0)` }
+          : {}),
         updatedAt: sql`now()`,
       })
       .where(eq(estateVisits.id, visitId));

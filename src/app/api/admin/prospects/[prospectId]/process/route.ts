@@ -139,9 +139,12 @@ export async function POST(
     let totalEstimateLow = 0;
     let totalEstimateHigh = 0;
 
+    // Same formula the review endpoint uses: admin override wins over the AI
+    // estimate, declined items don't count.
     for (const item of allItems) {
-      totalEstimateLow += item.aiEstimateLow ?? 0;
-      totalEstimateHigh += item.aiEstimateHigh ?? 0;
+      if (item.status === 'declined') continue;
+      totalEstimateLow += item.finalEstimateLow ?? item.aiEstimateLow ?? 0;
+      totalEstimateHigh += item.finalEstimateHigh ?? item.aiEstimateHigh ?? 0;
     }
 
     const prospectUpdate: Record<string, unknown> = {

@@ -27,35 +27,37 @@ export default function AdminClientsPage() {
   const router = useRouter();
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [search, setSearch] = useState('');
   const [offset, setOffset] = useState(0);
   const [total, setTotal] = useState(0);
 
   const fetchClients = useCallback(async (query: string, pageOffset: number) => {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(pageOffset) });
       if (query) params.set('search', query);
       const res = await fetch(`/api/admin/clients?${params}`);
+      if (!res.ok) throw new Error('Failed to load clients');
       const data = await res.json();
       setClients(data.data ?? []);
       setTotal(data.pagination?.total ?? 0);
     } catch {
       setClients([]);
+      setTotal(0);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchClients('', 0);
-  }, [fetchClients]);
-
+  // Initial load (empty search, no debounce delay) and debounced refetch on search.
   useEffect(() => {
     const timeout = setTimeout(() => {
       setOffset(0);
       fetchClients(search, 0);
-    }, 300);
+    }, search ? 300 : 0);
     return () => clearTimeout(timeout);
   }, [search, fetchClients]);
 
@@ -79,6 +81,21 @@ export default function AdminClientsPage() {
             <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Users2 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">Failed to load clients.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4"
+              onClick={() => fetchClients(search, offset)}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       ) : clients.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">

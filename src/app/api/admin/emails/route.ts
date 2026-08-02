@@ -183,11 +183,18 @@ export async function POST(req: NextRequest) {
       if (parent) {
         threadId = parent.threadId || parent.id;
         parentMessageId = parent.messageId || null;
+        const parentUpdates: Record<string, unknown> = {};
+        // First reply in a conversation: stamp the thread root with its own
+        // threadId so the inbox shows the conversation button on it.
+        if (!parent.threadId) {
+          parentUpdates.threadId = parent.id;
+        }
         if (parent.direction === 'inbound' && parent.status !== 'replied') {
-          await db.update(emails).set({
-            status: 'replied',
-            repliedAt: new Date(),
-          }).where(eq(emails.id, parent.id));
+          parentUpdates.status = 'replied';
+          parentUpdates.repliedAt = new Date();
+        }
+        if (Object.keys(parentUpdates).length > 0) {
+          await db.update(emails).set(parentUpdates).where(eq(emails.id, parent.id));
         }
       }
     }
@@ -226,6 +233,11 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { id, ids, status } = parsedPatch.data;
+
+    // status is the only updatable field — an empty .set({}) would throw
+    if (!status) {
+      return NextResponse.json({ error: 'status is required' }, { status: 400 });
+    }
 
     const buildUpdate = (s?: typeof status) => {
       const u: Record<string, unknown> = {};

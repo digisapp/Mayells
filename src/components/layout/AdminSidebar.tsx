@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -13,12 +13,10 @@ import {
   UserPlus,
   FileText,
   BarChart3,
-  Package,
   Brain,
   Radio,
   Mail,
   Inbox,
-  FileSignature,
   ClipboardCheck,
   MessageSquare,
   Settings,
@@ -35,7 +33,6 @@ const adminLinks = [
   { href: '/admin/auctions', label: 'Auctions', icon: Gavel },
   { href: '/admin/lots', label: 'Lots', icon: Image },
   { href: '/admin/prospects', label: 'Prospects', icon: UserPlus },
-  { href: '/admin/consignments', label: 'Consignments', icon: Package },
   { href: '/admin/inquiries', label: 'Inquiries', icon: MessageSquare },
   { href: '/admin/clients', label: 'Clients', icon: Users2 },
   { href: '/admin/appraisals', label: 'Appraisals', icon: ClipboardCheck },
@@ -47,7 +44,6 @@ const adminLinks = [
   { href: '/admin/shipments', label: 'Shipments', icon: Truck },
   { href: '/admin/outreach', label: 'Outreach', icon: Mail },
   { href: '/admin/emails', label: 'Email', icon: Inbox },
-  { href: '/admin/agreements', label: 'Agreements', icon: FileSignature },
   { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
   { href: '/admin/automation', label: 'Automation', icon: SlidersHorizontal },
   { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook },

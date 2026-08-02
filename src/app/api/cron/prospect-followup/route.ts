@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { db } from '@/db';
-import { sellerProspects, uploadLinks } from '@/db/schema';
+import { automationSettings, sellerProspects, uploadLinks } from '@/db/schema';
 import { eq, and, lte, or, isNull, notLike } from 'drizzle-orm';
 import { sendProspectFollowUpEmail } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
@@ -33,8 +33,23 @@ async function handler(request: NextRequest) {
   };
 
   try {
-    // 1. Prospects with status 'new' created more than 48 hours ago (never contacted)
-    const fortyEightHoursAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    // Honor the automation settings: skip entirely unless auto follow-up is
+    // enabled, and use the configured delays (falling back to the old
+    // hard-coded 48h/72h defaults when unset).
+    const [settings] = await db.select().from(automationSettings).limit(1);
+    if (!settings?.autoFollowUpProspects) {
+      return NextResponse.json({
+        success: true,
+        timestamp: now.toISOString(),
+        skipped: 'autoFollowUpProspects is disabled',
+        ...results,
+      });
+    }
+    const followUpDelayHours = settings.followUpDelayHours ?? 48;
+    const uploadReminderHours = settings.followUpUploadReminderHours ?? 72;
+
+    // 1. Prospects with status 'new' created more than followUpDelayHours ago (never contacted)
+    const followUpCutoff = new Date(now.getTime() - followUpDelayHours * 60 * 60 * 1000);
 
     const newProspects = await db
       .select()
@@ -42,7 +57,7 @@ async function handler(request: NextRequest) {
       .where(
         and(
           eq(sellerProspects.status, 'new'),
-          lte(sellerProspects.createdAt, fortyEightHoursAgo),
+          lte(sellerProspects.createdAt, followUpCutoff),
         ),
       );
 
@@ -57,7 +72,7 @@ async function handler(request: NextRequest) {
 
         // Advance status so this prospect isn't re-emailed every run,
         // and append a follow-up note
-        const followUpNote = `[${now.toISOString()}] Automated follow-up email sent (status: new, no contact after 48h)`;
+        const followUpNote = `[${now.toISOString()}] Automated follow-up email sent (status: new, no contact after ${followUpDelayHours}h)`;
         await db
           .update(sellerProspects)
           .set({
@@ -75,9 +90,10 @@ async function handler(request: NextRequest) {
       }
     }
 
-    // 2. Prospects with status 'upload_sent' where the upload link was sent more than 72 hours ago
-    //    and no items have been uploaded (and we haven't already sent this follow-up)
-    const seventyTwoHoursAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+    // 2. Prospects with status 'upload_sent' where the upload link was sent more than
+    //    followUpUploadReminderHours ago and no items have been uploaded
+    //    (and we haven't already sent this follow-up)
+    const uploadReminderCutoff = new Date(now.getTime() - uploadReminderHours * 60 * 60 * 1000);
 
     const uploadSentProspects = await db
       .select({
@@ -91,7 +107,7 @@ async function handler(request: NextRequest) {
       .where(
         and(
           eq(sellerProspects.status, 'upload_sent'),
-          lte(uploadLinks.createdAt, seventyTwoHoursAgo),
+          lte(uploadLinks.createdAt, uploadReminderCutoff),
           eq(uploadLinks.itemCount, 0),
           or(
             isNull(sellerProspects.notes),
@@ -118,7 +134,7 @@ async function handler(request: NextRequest) {
         });
 
         // Append follow-up note — the marker excludes this prospect from future runs
-        const followUpNote = `[${now.toISOString()}] ${UPLOAD_FOLLOWUP_MARKER}, no uploads after 72h)`;
+        const followUpNote = `[${now.toISOString()}] ${UPLOAD_FOLLOWUP_MARKER}, no uploads after ${uploadReminderHours}h)`;
         await db
           .update(sellerProspects)
           .set({

@@ -25,6 +25,7 @@ export const resetPasswordSchema = z.object({
 
 export const lotSchema = z.object({
   title: z.string().min(1, 'Title is required'),
+  subtitle: z.string().optional(),
   description: z.string().min(1, 'Description is required'),
   categoryId: z.string().uuid(),
   subcategoryId: z.string().uuid().optional(),
@@ -52,6 +53,7 @@ const auctionBaseSchema = z.object({
   subtitle: z.string().optional(),
   description: z.string().optional(),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase with hyphens'),
+  liveauctioneersUrl: z.string().url('LiveAuctioneers URL must be a valid URL').or(z.literal('')).optional(),
   type: z.enum(['timed', 'live']),
   previewStartsAt: z.string().datetime().optional(),
   biddingStartsAt: z.string().datetime().optional(),
@@ -82,37 +84,6 @@ export const bidSchema = z.object({
   { message: 'Max bid must be at least the bid amount', path: ['maxBidAmount'] },
 );
 
-export const consignmentSchema = z.object({
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().optional(),
-  categorySlug: z.string().min(1, 'Category is required'),
-  estimatedValue: z.number().int().positive().optional(),
-  images: z.array(z.string().url()).optional(),
-
-  // Seller's ship-from address
-  pickupStreet: z.string().optional(),
-  pickupStreet2: z.string().optional(),
-  pickupCity: z.string().optional(),
-  pickupState: z.string().optional(),
-  pickupZip: z.string().optional(),
-  pickupCountry: z.string().default('US').optional(),
-  pickupPhone: z.string().optional(),
-
-  // Shipping preferences
-  sellerShipsItem: z.boolean().default(true).optional(),
-  requestPickup: z.boolean().default(false).optional(),
-
-  // Package estimates
-  weightLbs: z.number().int().positive().optional(),
-  lengthIn: z.number().int().positive().optional(),
-  widthIn: z.number().int().positive().optional(),
-  heightIn: z.number().int().positive().optional(),
-  isFragile: z.boolean().default(false).optional(),
-
-  // Agreement
-  agreementAccepted: z.boolean().optional(),
-});
-
 export const lotUpdateSchema = lotSchema.partial().extend({
   status: z.enum(['draft', 'pending_review', 'approved', 'for_sale', 'in_auction', 'sold', 'unsold', 'withdrawn']).optional(),
   isFeatured: z.boolean().optional(),
@@ -139,4 +110,3 @@ export type LotUpdateInput = z.infer<typeof lotUpdateSchema>;
 export type AuctionInput = z.infer<typeof auctionSchema>;
 export type AuctionUpdateInput = z.infer<typeof auctionUpdateSchema>;
 export type BidInput = z.infer<typeof bidSchema>;
-export type ConsignmentInput = z.infer<typeof consignmentSchema>;

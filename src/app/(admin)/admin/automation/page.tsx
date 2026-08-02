@@ -4,25 +4,14 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { SlidersHorizontal, Save, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Settings {
   [key: string]: unknown;
-  autoApproveConsignments: boolean;
-  autoApproveMaxValue: number;
-  autoApproveMinConfidence: number;
-  autoApproveRequireAddress: boolean;
-  aiAutoCatalog: boolean;
-  aiAutoAppraise: boolean;
-  requireCatalogReview: boolean;
-  autoScheduleAuctions: boolean;
-  autoScheduleMinLots: number;
-  autoScheduleDayOfWeek: number;
-  autoScheduleHour: number;
   autoInvoiceOnClose: boolean;
   invoiceDueDays: number;
   autoCreateShipment: boolean;
   autoGenerateLabel: boolean;
-  defaultCarrier: string;
   requireSignature: boolean;
   requireInsurance: boolean;
   whiteGloveThreshold: number;
@@ -33,11 +22,7 @@ interface Settings {
   autoFollowUpProspects: boolean;
   followUpDelayHours: number;
   followUpUploadReminderHours: number;
-  notifySellerOnApproval: boolean;
   notifySellerOnSale: boolean;
-  notifySellerOnShipment: boolean;
-  notifyBuyerOnShipment: boolean;
-  sendDailyDigest: boolean;
 }
 
 export default function AutomationSettingsPage() {
@@ -57,14 +42,24 @@ export default function AutomationSettingsPage() {
     if (!settings) return;
     setSaving(true);
     setSaved(false);
-    await fetch('/api/admin/automation', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
-    });
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      const res = await fetch('/api/admin/automation', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Failed to save settings');
+        return;
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      toast.error('Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function toggle(key: keyof Settings) {
@@ -104,111 +99,8 @@ export default function AutomationSettingsPage() {
         </Button>
       </div>
 
-      {/* AI Cataloging */}
-      <SettingsSection title="AI Cataloging & Appraisal">
-        <Toggle
-          label="Auto-catalog items on consignment"
-          description="AI generates title, description, category, and tags from photos"
-          checked={settings.aiAutoCatalog}
-          onChange={() => toggle('aiAutoCatalog')}
-        />
-        <Toggle
-          label="Auto-appraise items on consignment"
-          description="AI estimates value, suggests reserve price, and finds comparable sales"
-          checked={settings.aiAutoAppraise}
-          onChange={() => toggle('aiAutoAppraise')}
-        />
-        <Toggle
-          label="Require admin review of AI descriptions"
-          description="When ON, AI descriptions must be approved before listing. When OFF, they go live automatically."
-          checked={settings.requireCatalogReview}
-          onChange={() => toggle('requireCatalogReview')}
-        />
-      </SettingsSection>
-
-      <Separator className="my-8" />
-
-      {/* Auto-Approval */}
-      <SettingsSection title="Consignment Auto-Approval">
-        <Toggle
-          label="Auto-approve consignments"
-          description="Automatically approve items below a value threshold when AI confidence is high enough"
-          checked={settings.autoApproveConsignments}
-          onChange={() => toggle('autoApproveConsignments')}
-        />
-        {settings.autoApproveConsignments && (
-          <div className="ml-8 space-y-4 mt-4 p-4 bg-muted/10 rounded-lg border border-border/30">
-            <NumberInput
-              label="Max value for auto-approval"
-              value={settings.autoApproveMaxValue / 100}
-              onChange={v => setNumber('autoApproveMaxValue', String(v * 100))}
-              prefix="$"
-              suffix="items above this require manual review"
-            />
-            <NumberInput
-              label="Min AI confidence"
-              value={settings.autoApproveMinConfidence}
-              onChange={v => setNumber('autoApproveMinConfidence', String(v))}
-              suffix="% — lower confidence items flagged for review"
-            />
-            <Toggle
-              label="Require seller address before auto-approve"
-              description="Ensures shipping can be arranged before listing"
-              checked={settings.autoApproveRequireAddress}
-              onChange={() => toggle('autoApproveRequireAddress')}
-            />
-          </div>
-        )}
-      </SettingsSection>
-
-      <Separator className="my-8" />
-
-      {/* Auction Automation */}
-      <SettingsSection title="Auction Automation">
-        <Toggle
-          label="Auto-schedule auctions"
-          description="Automatically create and schedule auctions when enough approved lots accumulate"
-          checked={settings.autoScheduleAuctions}
-          onChange={() => toggle('autoScheduleAuctions')}
-        />
-        {settings.autoScheduleAuctions && (
-          <div className="ml-8 space-y-4 mt-4 p-4 bg-muted/10 rounded-lg border border-border/30">
-            <NumberInput
-              label="Minimum lots to trigger"
-              value={settings.autoScheduleMinLots}
-              onChange={v => setNumber('autoScheduleMinLots', String(v))}
-              suffix="approved lots"
-            />
-            <div className="flex gap-4">
-              <div>
-                <label className="text-sm font-medium">Day of week</label>
-                <select
-                  value={settings.autoScheduleDayOfWeek}
-                  onChange={e => setNumber('autoScheduleDayOfWeek', e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                >
-                  {['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((day, i) => (
-                    <option key={day} value={i}>{day}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Start hour</label>
-                <select
-                  value={settings.autoScheduleHour}
-                  onChange={e => setNumber('autoScheduleHour', e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                >
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <option key={i} value={i}>
-                      {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Invoicing */}
+      <SettingsSection title="Invoicing">
         <Toggle
           label="Auto-generate invoices when auction closes"
           description="Automatically create invoices for winning bidders"
@@ -334,16 +226,7 @@ export default function AutomationSettingsPage() {
 
       {/* Notifications */}
       <SettingsSection title="Notifications">
-        <Toggle label="Notify seller on consignment approval" checked={settings.notifySellerOnApproval} onChange={() => toggle('notifySellerOnApproval')} />
         <Toggle label="Notify seller when item sells" checked={settings.notifySellerOnSale} onChange={() => toggle('notifySellerOnSale')} />
-        <Toggle label="Notify seller on shipment events" checked={settings.notifySellerOnShipment} onChange={() => toggle('notifySellerOnShipment')} />
-        <Toggle label="Notify buyer on shipment events" checked={settings.notifyBuyerOnShipment} onChange={() => toggle('notifyBuyerOnShipment')} />
-        <Toggle
-          label="Send daily digest to admin"
-          description="Morning email summarizing overnight activity, new consignments, and auction results"
-          checked={settings.sendDailyDigest}
-          onChange={() => toggle('sendDailyDigest')}
-        />
       </SettingsSection>
 
       {/* Bottom save button */}

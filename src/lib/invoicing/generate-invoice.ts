@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { invoices, auctions } from '@/db/schema';
+import { invoices, auctions, automationSettings } from '@/db/schema';
 import { eq, and, ne } from 'drizzle-orm';
 
 // Either the base db or an open transaction — both expose the same query API,
@@ -61,9 +61,11 @@ export async function generateInvoiceForWonLot(
   const buyerPremium = Math.round(hammerPrice * (premiumPercent / 100));
   const totalAmount = hammerPrice + buyerPremium;
 
-  // Due date is 7 days from now
+  // Due date from automation settings (fallback: 7 days)
+  const [settings] = await executor.select().from(automationSettings).limit(1);
+  const dueDays = settings?.invoiceDueDays ?? 7;
   const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 7);
+  dueDate.setDate(dueDate.getDate() + dueDays);
 
   // Retry on invoice-number collision. A 23505 can come from either the
   // invoice-number unique index (retry with a fresh number helps) or the

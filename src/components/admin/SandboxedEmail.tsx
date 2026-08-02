@@ -49,11 +49,14 @@ export function SandboxedEmail({ html, className }: SandboxedEmailProps) {
     `);
     doc.close();
 
-    // Auto-resize iframe to fit content
+    // Auto-resize iframe to fit content; when content exceeds the 600px cap,
+    // let the iframe body scroll internally instead of clipping.
     const resize = () => {
       if (doc.body) {
-        const contentHeight = doc.body.scrollHeight;
-        setHeight(Math.min(contentHeight + 16, 600));
+        const contentHeight = doc.body.scrollHeight + 16;
+        const capped = contentHeight > 600;
+        doc.body.style.overflowY = capped ? 'auto' : 'hidden';
+        setHeight(capped ? 600 : contentHeight);
       }
     };
 

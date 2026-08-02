@@ -16,19 +16,37 @@ const userPatchSchema = z.object({
 async function requireAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) {
+    return { admin: null, response: NextResponse.json({ error: 'Not authenticated' }, { status: 401 }) };
+  }
   const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-  if (!profile || !isAdminProfile(profile)) return null;
-  return profile;
+  if (!profile || !isAdminProfile(profile)) {
+    return { admin: null, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+  return { admin: profile, response: null };
 }
 
 const PAGE_SIZE = 50;
 
+// Only what the admin users page renders — never expose portalToken or Stripe IDs.
+const userListColumns = {
+  id: users.id,
+  email: users.email,
+  fullName: users.fullName,
+  displayName: users.displayName,
+  role: users.role,
+  accountStatus: users.accountStatus,
+  cardVerifiedAt: users.cardVerifiedAt,
+  identityVerifiedAt: users.identityVerifiedAt,
+  paddleNumber: users.paddleNumber,
+  createdAt: users.createdAt,
+};
+
 // GET /api/admin/users?search=...&page=1
 export async function GET(req: NextRequest) {
   try {
-    const admin = await requireAdmin();
-    if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { admin, response } = await requireAdmin();
+    if (!admin) return response;
 
     const search = req.nextUrl.searchParams.get('search')?.trim();
     const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') || '1', 10));
@@ -49,7 +67,7 @@ export async function GET(req: NextRequest) {
     const whereClause = conditions.length ? conditions[0] : undefined;
 
     const [data, countResult] = await Promise.all([
-      db.select().from(users).where(whereClause).orderBy(desc(users.createdAt)).limit(PAGE_SIZE).offset(offset),
+      db.select(userListColumns).from(users).where(whereClause).orderBy(desc(users.createdAt)).limit(PAGE_SIZE).offset(offset),
       db.select({ count: sql<number>`count(*)::int` }).from(users).where(whereClause),
     ]);
 
@@ -71,8 +89,8 @@ export async function GET(req: NextRequest) {
 // PATCH /api/admin/users — update role or account status
 export async function PATCH(req: NextRequest) {
   try {
-    const admin = await requireAdmin();
-    if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { admin, response } = await requireAdmin();
+    if (!admin) return response;
 
     const parsed = userPatchSchema.safeParse(await req.json());
     if (!parsed.success) {
@@ -93,8 +111,10 @@ export async function PATCH(req: NextRequest) {
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
+    updateData.updatedAt = new Date();
 
-    const [updated] = await db.update(users).set(updateData).where(eq(users.id, id)).returning();
+    const [updated] = await db.update(users).set(updateData).where(eq(users.id, id)).returning(userListColumns);
+    if (!updated) return NextResponse.json({ error: 'User not found' }, { status: 404 });
     return NextResponse.json({ data: updated });
   } catch (error) {
     logger.error('Admin user update error', error);

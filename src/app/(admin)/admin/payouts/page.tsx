@@ -37,6 +37,7 @@ function formatCents(cents: number): string {
 export default function AdminPayoutsPage() {
   const [rows, setRows] = useState<PayoutRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [method, setMethod] = useState<(typeof METHODS)[number]>('wire');
   const [reference, setReference] = useState('');
@@ -44,10 +45,14 @@ export default function AdminPayoutsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const load = () => {
+    setLoadError(false);
     fetch('/api/admin/payouts')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load payouts');
+        return res.json();
+      })
       .then(data => { setRows(data.data || []); setLoading(false); })
-      .catch(() => setLoading(false));
+      .catch(() => { setLoadError(true); setLoading(false); });
   };
 
   useEffect(load, []);
@@ -113,7 +118,21 @@ export default function AdminPayoutsPage() {
         </div>
       </div>
 
-      {rows.length === 0 && (
+      {loadError && (
+        <div className="text-center py-16 text-muted-foreground">
+          <CircleDollarSign className="h-12 w-12 mx-auto mb-4 opacity-30" />
+          <p>Failed to load payouts.</p>
+          <button
+            type="button"
+            onClick={() => { setLoading(true); load(); }}
+            className="mt-4 text-xs px-3 py-1.5 rounded-md border border-border/50 hover:bg-accent/10 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loadError && rows.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <CircleDollarSign className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p>No payouts yet. They appear here once a buyer pays an invoice.</p>

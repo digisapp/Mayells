@@ -180,6 +180,9 @@ export function LotForm({ initialData, initialImages, lotId, onSubmit, isLoading
         buyNowPrice: form.buyNowPrice ? Math.round(parseFloat(form.buyNowPrice) * 100) : undefined,
         condition: form.condition || undefined,
         primaryImageUrl: images.find((i) => i.isPrimary)?.url || images[0]?.url || undefined,
+        // On a new lot there is no id to attach uploads to yet; pass the
+        // collected images so the create page can attach them after the POST.
+        ...(lotId ? {} : { images: images.map(({ url, isPrimary }) => ({ url, isPrimary })) }),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');

@@ -87,13 +87,16 @@ export async function PATCH(
         .where(and(eq(uploadItems.id, item.id), eq(uploadItems.prospectId, prospectId)));
     }
 
-    // Recount accepted and reviewed items for the prospect
+    // Recount accepted and reviewed items for the prospect.
+    // Totals fall back to the AI estimate when no admin override was entered
+    // (a plain Accept sends no final* values), and count every non-declined
+    // item so the agreement email never reports "$0 – $0".
     const [counts] = await db
       .select({
         reviewedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'declined'))`.as('reviewed_items'),
         acceptedItems: sql<number>`count(*) filter (where ${uploadItems.status} = 'accepted')`.as('accepted_items'),
-        totalEstimateLow: sql<number>`coalesce(sum(${uploadItems.finalEstimateLow}) filter (where ${uploadItems.status} = 'accepted'), 0)`.as('total_estimate_low'),
-        totalEstimateHigh: sql<number>`coalesce(sum(${uploadItems.finalEstimateHigh}) filter (where ${uploadItems.status} = 'accepted'), 0)`.as('total_estimate_high'),
+        totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})) filter (where ${uploadItems.status} != 'declined'), 0)`.as('total_estimate_low'),
+        totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})) filter (where ${uploadItems.status} != 'declined'), 0)`.as('total_estimate_high'),
       })
       .from(uploadItems)
       .where(eq(uploadItems.prospectId, prospectId));

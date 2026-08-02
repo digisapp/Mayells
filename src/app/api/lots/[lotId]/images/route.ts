@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lotImages, lots, users } from '@/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const imagePostSchema = z.object({
@@ -42,30 +42,38 @@ export async function POST(
 
     const { url, altText, isPrimary, sortOrder } = parsed.data;
 
-    const [image] = await db
-      .insert(lotImages)
-      .values({
-        lotId,
-        url,
-        altText: altText || null,
-        isPrimary: isPrimary || false,
-        sortOrder: sortOrder ?? 0,
-      })
-      .returning();
+    const image = await db.transaction(async (tx) => {
+      // If primary, demote any existing primary so exactly one row carries it
+      if (isPrimary) {
+        await tx
+          .update(lotImages)
+          .set({ isPrimary: false })
+          .where(and(eq(lotImages.lotId, lotId), eq(lotImages.isPrimary, true)));
+      }
 
-    // If primary, update the lot's primaryImageUrl
-    if (isPrimary) {
-      await db
+      const [inserted] = await tx
+        .insert(lotImages)
+        .values({
+          lotId,
+          url,
+          altText: altText || null,
+          isPrimary: isPrimary || false,
+          sortOrder: sortOrder ?? 0,
+        })
+        .returning();
+
+      // Update image count, and the lot's primaryImageUrl if primary
+      await tx
         .update(lots)
-        .set({ primaryImageUrl: url, updatedAt: sql`now()` })
+        .set({
+          imageCount: sql`${lots.imageCount} + 1`,
+          ...(isPrimary ? { primaryImageUrl: url } : {}),
+          updatedAt: sql`now()`,
+        })
         .where(eq(lots.id, lotId));
-    }
 
-    // Update image count
-    await db
-      .update(lots)
-      .set({ imageCount: sql`${lots.imageCount} + 1`, updatedAt: sql`now()` })
-      .where(eq(lots.id, lotId));
+      return inserted;
+    });
 
     return NextResponse.json({ data: image }, { status: 201 });
   } catch (error) {
@@ -98,27 +106,47 @@ export async function DELETE(
 
     const { imageId } = parsed.data;
 
-    const [deleted] = await db
-      .delete(lotImages)
-      .where(eq(lotImages.id, imageId))
-      .returning();
+    const deleted = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .delete(lotImages)
+        .where(and(eq(lotImages.id, imageId), eq(lotImages.lotId, lotId)))
+        .returning();
+
+      if (!row) return null;
+
+      // Update image count
+      await tx
+        .update(lots)
+        .set({ imageCount: sql`${lots.imageCount} - 1`, updatedAt: sql`now()` })
+        .where(eq(lots.id, lotId));
+
+      // If the deleted image was primary, promote the next image; clear the
+      // lot's primaryImageUrl only when no images remain
+      if (row.isPrimary) {
+        const [next] = await tx
+          .select()
+          .from(lotImages)
+          .where(eq(lotImages.lotId, lotId))
+          .orderBy(lotImages.sortOrder)
+          .limit(1);
+
+        if (next) {
+          await tx
+            .update(lotImages)
+            .set({ isPrimary: true })
+            .where(eq(lotImages.id, next.id));
+        }
+        await tx
+          .update(lots)
+          .set({ primaryImageUrl: next?.url ?? null, updatedAt: sql`now()` })
+          .where(eq(lots.id, lotId));
+      }
+
+      return row;
+    });
 
     if (!deleted) {
       return NextResponse.json({ error: 'Image not found' }, { status: 404 });
-    }
-
-    // Update image count
-    await db
-      .update(lots)
-      .set({ imageCount: sql`${lots.imageCount} - 1`, updatedAt: sql`now()` })
-      .where(eq(lots.id, lotId));
-
-    // If the deleted image was primary, clear the lot's primaryImageUrl
-    if (deleted.isPrimary) {
-      await db
-        .update(lots)
-        .set({ primaryImageUrl: null, updatedAt: sql`now()` })
-        .where(eq(lots.id, lotId));
     }
 
     return NextResponse.json({ success: true });

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { sellerProspects, uploadLinks, uploadItems, users } from '@/db/schema';
-import { eq, desc, countDistinct, sql } from 'drizzle-orm';
+import { eq, desc, countDistinct, sql, or, ilike } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { parsePagination } from '@/lib/pagination';
 
@@ -56,28 +56,58 @@ export async function GET(request: NextRequest) {
 
     const { limit, offset } = parsePagination(request.nextUrl.searchParams, { defaultLimit: 50, maxLimit: 100 });
 
-    const [prospects, [{ total }]] = await Promise.all([
+    // Server-side search across the whole table (the client used to filter
+    // only the loaded page). Escape LIKE wildcards in the user's input.
+    const rawSearch = request.nextUrl.searchParams.get('search')?.trim().slice(0, 200) ?? '';
+    const pattern = rawSearch ? `%${rawSearch.replace(/[\\%_]/g, '\\$&')}%` : null;
+    const searchWhere = pattern
+      ? or(
+          ilike(sellerProspects.fullName, pattern),
+          ilike(sellerProspects.email, pattern),
+          ilike(sellerProspects.phone, pattern),
+          ilike(sellerProspects.company, pattern),
+        )
+      : undefined;
+
+    const listQuery = db
+      .select({
+        prospect: sellerProspects,
+        // count DISTINCT — joining both uploadLinks and uploadItems produces a
+        // cartesian product (links × items rows per prospect), so a plain
+        // count() would inflate both totals.
+        uploadLinkCount: countDistinct(uploadLinks.id),
+        uploadItemCount: countDistinct(uploadItems.id),
+      })
+      .from(sellerProspects)
+      .leftJoin(uploadLinks, eq(uploadLinks.prospectId, sellerProspects.id))
+      .leftJoin(uploadItems, eq(uploadItems.prospectId, sellerProspects.id))
+      .where(searchWhere)
+      .groupBy(sellerProspects.id)
+      .orderBy(desc(sellerProspects.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const [prospects, [globalStats], filteredCount] = await Promise.all([
+      listQuery,
+      // Global (unfiltered) stats for the dashboard cards.
       db
         .select({
-          prospect: sellerProspects,
-          // count DISTINCT — joining both uploadLinks and uploadItems produces a
-          // cartesian product (links × items rows per prospect), so a plain
-          // count() would inflate both totals.
-          uploadLinkCount: countDistinct(uploadLinks.id),
-          uploadItemCount: countDistinct(uploadItems.id),
+          total: sql<number>`count(*)::int`,
+          pendingReview: sql<number>`count(*) filter (where ${sellerProspects.status} = 'new')::int`,
+          itemsReceived: sql<number>`count(*) filter (where ${sellerProspects.status} = 'items_received')::int`,
+          agreementSigned: sql<number>`count(*) filter (where ${sellerProspects.status} = 'agreement_signed')::int`,
         })
-        .from(sellerProspects)
-        .leftJoin(uploadLinks, eq(uploadLinks.prospectId, sellerProspects.id))
-        .leftJoin(uploadItems, eq(uploadItems.prospectId, sellerProspects.id))
-        .groupBy(sellerProspects.id)
-        .orderBy(desc(sellerProspects.createdAt))
-        .limit(limit)
-        .offset(offset),
-      db.select({ total: sql<number>`count(*)::int` }).from(sellerProspects),
+        .from(sellerProspects),
+      searchWhere
+        ? db.select({ total: sql<number>`count(*)::int` }).from(sellerProspects).where(searchWhere)
+        : Promise.resolve(null),
     ]);
+
+    const total = filteredCount ? filteredCount[0].total : globalStats.total;
 
     return NextResponse.json({
       data: prospects,
+      stats: globalStats,
       pagination: { total, limit, offset, hasMore: offset + limit < total },
     });
   } catch (error) {

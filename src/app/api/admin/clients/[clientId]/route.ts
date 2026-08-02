@@ -49,7 +49,6 @@ export async function GET(
           email: client.email,
           companyName: client.companyName,
           phone: client.phone,
-          bio: client.bio,
           createdAt: client.createdAt,
         },
         consignments: clientConsignments,

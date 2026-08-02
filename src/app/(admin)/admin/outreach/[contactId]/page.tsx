@@ -23,6 +23,7 @@ export default function EditOutreachContactPage() {
   const router = useRouter();
   const { contactId } = useParams<{ contactId: string }>();
   const [contact, setContact] = useState<Record<string, unknown> | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'not_found' | 'error'>('loading');
   const [isLoading, setIsLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
@@ -43,34 +44,59 @@ export default function EditOutreachContactPage() {
   });
 
   useEffect(() => {
-    fetch('/api/admin/outreach')
-      .then((r) => r.json())
-      .then((d) => {
-        const c = (d.data || []).find((item: Record<string, unknown>) => item.id === contactId);
-        if (c) {
-          setContact(c);
-          setForm({
-            companyName: (c.companyName as string) || '',
-            contactName: (c.contactName as string) || '',
-            title: (c.title as string) || '',
-            email: (c.email as string) || '',
-            phone: (c.phone as string) || '',
-            website: (c.website as string) || '',
-            category: (c.category as string) || 'other',
-            source: (c.source as string) || '',
-            address: (c.address as string) || '',
-            city: (c.city as string) || '',
-            state: (c.state as string) || '',
-            notes: (c.notes as string) || '',
-            nextFollowUpAt: formatDate(c.nextFollowUpAt as string | null),
-            lastContactedAt: formatDate(c.lastContactedAt as string | null),
-          });
+    let cancelled = false;
+    fetch(`/api/admin/outreach?id=${contactId}`)
+      .then(async (r) => {
+        if (cancelled) return;
+        if (r.status === 404 || r.status === 400) {
+          setLoadState('not_found');
+          return;
         }
+        if (!r.ok) throw new Error();
+        const d = await r.json();
+        const c = d.data as Record<string, unknown>;
+        if (cancelled) return;
+        setContact(c);
+        setForm({
+          companyName: (c.companyName as string) || '',
+          contactName: (c.contactName as string) || '',
+          title: (c.title as string) || '',
+          email: (c.email as string) || '',
+          phone: (c.phone as string) || '',
+          website: (c.website as string) || '',
+          category: (c.category as string) || 'other',
+          source: (c.source as string) || '',
+          address: (c.address as string) || '',
+          city: (c.city as string) || '',
+          state: (c.state as string) || '',
+          notes: (c.notes as string) || '',
+          nextFollowUpAt: formatDate(c.nextFollowUpAt as string | null),
+          lastContactedAt: formatDate(c.lastContactedAt as string | null),
+        });
+        setLoadState('loaded');
+      })
+      .catch(() => {
+        if (!cancelled) setLoadState('error');
       });
+    return () => { cancelled = true; };
   }, [contactId]);
 
-  if (!contact) {
-    return <div className="text-muted-foreground">Loading...</div>;
+  if (loadState === 'not_found' || loadState === 'error' || !contact) {
+    return (
+      <div className="max-w-3xl">
+        <Link href="/admin/outreach" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Outreach
+        </Link>
+        {loadState === 'not_found' ? (
+          <p className="text-muted-foreground">Contact not found. It may have been deleted.</p>
+        ) : loadState === 'error' ? (
+          <p className="text-destructive">Failed to load contact. Please try again.</p>
+        ) : (
+          <div className="text-muted-foreground">Loading...</div>
+        )}
+      </div>
+    );
   }
 
   function update(field: string, value: string) {

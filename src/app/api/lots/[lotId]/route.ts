@@ -160,11 +160,24 @@ export async function PATCH(
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    const [updated] = await db
-      .update(lots)
-      .set({ ...parsed.data, updatedAt: sql`now()` })
-      .where(eq(lots.id, lotId))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(lots)
+        .set({ ...parsed.data, updatedAt: sql`now()` })
+        .where(eq(lots.id, lotId))
+        .returning();
+
+      // Keep lot_images.isPrimary in sync with the lot's primaryImageUrl so
+      // the primary flag survives reload and image DELETE sees true state.
+      if (row && parsed.data.primaryImageUrl) {
+        await tx
+          .update(lotImages)
+          .set({ isPrimary: sql`(${lotImages.url} = ${parsed.data.primaryImageUrl})` })
+          .where(eq(lotImages.lotId, lotId));
+      }
+
+      return row;
+    });
 
     if (!updated) {
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });

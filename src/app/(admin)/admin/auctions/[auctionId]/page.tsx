@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { AuctionForm, type AuctionFormData } from '@/components/admin/AuctionForm';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Input } from '@/components/ui/input';
 import { ArrowLeft, Trash2, Plus, X, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -69,10 +68,13 @@ interface AvailableLot {
   primaryImageUrl: string | null;
 }
 
-export default function EditAuctionPage() {
+function EditAuctionContent() {
   const router = useRouter();
   const { auctionId } = useParams<{ auctionId: string }>();
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'lots' ? 'lots' : 'details';
   const [auction, setAuction] = useState<Record<string, unknown> | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [assignedLots, setAssignedLots] = useState<AssignedLot[]>([]);
   const [availableLots, setAvailableLots] = useState<AvailableLot[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -82,7 +84,11 @@ export default function EditAuctionPage() {
   useEffect(() => {
     fetch(`/api/auctions/${auctionId}`)
       .then((r) => r.json())
-      .then((d) => setAuction(d.data));
+      .then((d) => {
+        if (d.data) setAuction(d.data);
+        else setLoadError(true);
+      })
+      .catch(() => setLoadError(true));
     loadAssignedLots();
     loadAvailableLots();
   }, [auctionId]);
@@ -102,6 +108,19 @@ export default function EditAuctionPage() {
     fetch('/api/lots?status=approved&limit=100')
       .then((r) => r.json())
       .then((d) => setAvailableLots(d.data || []));
+  }
+
+  if (loadError) {
+    return (
+      <div className="max-w-4xl">
+        <Link href="/admin/auctions" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Auctions
+        </Link>
+        <h1 className="font-display text-display-sm mb-4">Auction Not Found</h1>
+        <p className="text-muted-foreground">This auction does not exist or could not be loaded.</p>
+      </div>
+    );
   }
 
   if (!auction) {
@@ -253,7 +272,7 @@ export default function EditAuctionPage() {
         </Card>
       )}
 
-      <Tabs defaultValue="details" className="mb-8">
+      <Tabs defaultValue={initialTab} className="mb-8">
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="lots">Lots ({assignedLots.length})</TabsTrigger>
@@ -354,5 +373,14 @@ export default function EditAuctionPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function EditAuctionPage() {
+  // useSearchParams requires a Suspense boundary
+  return (
+    <Suspense>
+      <EditAuctionContent />
+    </Suspense>
   );
 }

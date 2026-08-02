@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LiveChat } from '@/components/live/LiveChat';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
-import { Radio, Play, Square, ChevronLeft, ChevronRight, Gavel } from 'lucide-react';
+import { ArrowLeft, Play, Square, ChevronLeft, ChevronRight, Gavel } from 'lucide-react';
 
 interface AuctionLot {
   lotNumber: number;
@@ -36,49 +37,66 @@ export default function AuctioneerDashboardPage() {
   const auctionId = params.auctionId as string;
 
   const [auction, setAuction] = useState<AuctionData | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [lots, setLots] = useState<AuctionLot[]>([]);
   const [activeLotIndex, setActiveLotIndex] = useState(0);
   const [isLive, setIsLive] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [aRes, lRes] = await Promise.all([
-          fetch(`/api/auctions/${auctionId}`),
-          fetch(`/api/auctions/${auctionId}/lots`),
-        ]);
-        const aData = await aRes.json();
-        const lData = await lRes.json();
-        setAuction(aData.data);
-        // The lots API returns a FLAT shape ({ ...lot, lotNumber }); this
-        // console renders the nested { lotNumber, lot } shape. Map it here so
-        // reads like `activeLot.lot.title` don't hit `undefined` and crash the
-        // whole auctioneer console.
-        const rawLots: Array<Record<string, unknown>> = lData.data ?? [];
-        setLots(
-          rawLots.map((row) => ({
-            lotNumber: row.lotNumber as number,
-            lot: {
-              id: row.id as string,
-              title: row.title as string,
-              primaryImageUrl: (row.primaryImageUrl as string | null) ?? null,
-              currentBidAmount: (row.currentBidAmount as number) ?? 0,
-              bidCount: (row.bidCount as number) ?? 0,
-              estimateLow: (row.estimateLow as number | null) ?? null,
-              estimateHigh: (row.estimateHigh as number | null) ?? null,
-            },
-          })),
-        );
-        setIsLive(aData.data?.status === 'live');
-      } catch {
-        toast.error('Failed to load auction');
-      } finally {
-        setLoading(false);
+  const loadData = useCallback(async (silent = false) => {
+    try {
+      const [aRes, lRes] = await Promise.all([
+        fetch(`/api/auctions/${auctionId}`),
+        fetch(`/api/auctions/${auctionId}/lots`),
+      ]);
+      const aData = await aRes.json();
+      const lData = await lRes.json();
+      if (!aData.data) {
+        // Only a real 404 is terminal; a transient server error during a
+        // background poll must not replace the console with "Not Found"
+        if (aRes.status === 404) setNotFound(true);
+        else if (!silent) toast.error('Failed to load auction');
+        return;
       }
+      setAuction(aData.data);
+      // The lots API returns a FLAT shape ({ ...lot, lotNumber }); this
+      // console renders the nested { lotNumber, lot } shape. Map it here so
+      // reads like `activeLot.lot.title` don't hit `undefined` and crash the
+      // whole auctioneer console.
+      const rawLots: Array<Record<string, unknown>> = lData.data ?? [];
+      setLots(
+        rawLots.map((row) => ({
+          lotNumber: row.lotNumber as number,
+          lot: {
+            id: row.id as string,
+            title: row.title as string,
+            primaryImageUrl: (row.primaryImageUrl as string | null) ?? null,
+            currentBidAmount: (row.currentBidAmount as number) ?? 0,
+            bidCount: (row.bidCount as number) ?? 0,
+            estimateLow: (row.estimateLow as number | null) ?? null,
+            estimateHigh: (row.estimateHigh as number | null) ?? null,
+          },
+        })),
+      );
+      setIsLive(aData.data?.status === 'live');
+    } catch {
+      // A failed background poll shouldn't spam toasts
+      if (!silent) toast.error('Failed to load auction');
+    } finally {
+      setLoading(false);
     }
-    load();
   }, [auctionId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // While live, keep lot/bid data fresh
+  useEffect(() => {
+    if (!isLive) return;
+    const timer = setInterval(() => loadData(true), 5000);
+    return () => clearInterval(timer);
+  }, [isLive, loadData]);
 
   async function handleGoLive() {
     try {
@@ -86,6 +104,7 @@ export default function AuctioneerDashboardPage() {
       if (res.ok) {
         setIsLive(true);
         toast.success('Auction is now LIVE!');
+        loadData(true);
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to start');
@@ -101,6 +120,7 @@ export default function AuctioneerDashboardPage() {
       if (res.ok) {
         setIsLive(false);
         toast.success('Live auction ended');
+        loadData(true);
         router.push('/admin/live');
       } else {
         const data = await res.json();
@@ -112,6 +132,19 @@ export default function AuctioneerDashboardPage() {
   }
 
   const activeLot = lots[activeLotIndex];
+
+  if (notFound) {
+    return (
+      <div>
+        <Link href="/admin/live" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Live Auctions
+        </Link>
+        <h1 className="font-display text-display-sm mb-4">Auction Not Found</h1>
+        <p className="text-muted-foreground">This auction does not exist or could not be loaded.</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

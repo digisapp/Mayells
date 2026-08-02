@@ -18,6 +18,9 @@ const STATUSES = [
   'converted', 'not_interested', 'do_not_contact',
 ] as const;
 
+// The date inputs send YYYY-MM-DD; programmatic updates send full ISO — accept both.
+const dateString = z.iso.date().or(z.iso.datetime());
+
 const createContactSchema = z.object({
   companyName: z.string().min(1, 'Company name is required').max(300),
   contactName: z.string().max(200).optional().nullable(),
@@ -31,7 +34,7 @@ const createContactSchema = z.object({
   city: z.string().max(100).optional().nullable(),
   state: z.string().max(50).optional().nullable(),
   notes: z.string().max(5000).optional().nullable(),
-  nextFollowUpAt: z.string().datetime().optional().nullable(),
+  nextFollowUpAt: dateString.optional().nullable(),
 });
 
 const updateContactSchema = z.object({
@@ -49,8 +52,8 @@ const updateContactSchema = z.object({
   city: z.string().max(100).optional().nullable(),
   state: z.string().max(50).optional().nullable(),
   notes: z.string().max(5000).optional().nullable(),
-  lastContactedAt: z.string().datetime().optional().nullable(),
-  nextFollowUpAt: z.string().datetime().optional().nullable(),
+  lastContactedAt: dateString.optional().nullable(),
+  nextFollowUpAt: dateString.optional().nullable(),
 });
 
 const filterSchema = z.object({
@@ -73,6 +76,25 @@ export async function GET(req: NextRequest) {
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { searchParams } = new URL(req.url);
+
+    // Single-contact fetch: GET /api/admin/outreach?id=<uuid>
+    const id = searchParams.get('id');
+    if (id) {
+      const parsedId = z.string().uuid('Invalid contact ID').safeParse(id);
+      if (!parsedId.success) {
+        return NextResponse.json({ error: 'Invalid contact ID' }, { status: 400 });
+      }
+      const [contact] = await db
+        .select()
+        .from(outreachContacts)
+        .where(eq(outreachContacts.id, parsedId.data))
+        .limit(1);
+      if (!contact) {
+        return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      }
+      return NextResponse.json({ data: contact });
+    }
+
     const parsed = filterSchema.safeParse({
       status: searchParams.get('status') || undefined,
       category: searchParams.get('category') || undefined,

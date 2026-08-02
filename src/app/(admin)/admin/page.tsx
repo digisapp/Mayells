@@ -11,8 +11,8 @@ import { db } from '@/db';
 import { lots, auctions, users, outreachContacts, consignments, estateVisits } from '@/db/schema';
 import { sql, desc, eq } from 'drizzle-orm';
 import {
-  Gavel, Image, Users as UsersIcon, FileText, Package, BarChart3,
-  Mail, Plus, ClipboardCheck, Brain, Camera,
+  Gavel, Image, Users as UsersIcon, FileText, BarChart3,
+  Mail, Plus, ClipboardCheck, Brain, UserPlus,
 } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -91,12 +91,11 @@ export default async function AdminDashboardPage() {
   const quickLinks = [
     { href: '/admin/auctions', label: 'Auctions', icon: Gavel, desc: 'Create and manage auctions' },
     { href: '/admin/lots', label: 'Lots', icon: Image, desc: 'Manage lots and catalog' },
-    { href: '/admin/consignments', label: 'Consignments', icon: Package, desc: 'Review consignment submissions' },
+    { href: '/admin/prospects', label: 'Prospects', icon: UserPlus, desc: 'Consignment leads, uploads & agreements' },
     { href: '/admin/appraisals', label: 'Appraisals', icon: ClipboardCheck, desc: `Estate appraisals (${appraisalReviewCount} need review)` },
     { href: '/admin/outreach', label: 'Outreach', icon: Mail, desc: `Leads & follow-ups (${outreachFollowUpCount} pending)` },
     { href: '/admin/users', label: 'Users', icon: UsersIcon, desc: 'Manage accounts' },
     { href: '/admin/ai', label: 'AI Tools', icon: Brain, desc: 'Catalog, appraise, authenticate' },
-    { href: '/admin/submissions', label: 'Submissions', icon: Camera, desc: 'Consignment/appraisal photos' },
     { href: '/admin/analytics', label: 'Analytics', icon: BarChart3, desc: 'Reports and insights' },
   ];
 
@@ -152,7 +151,6 @@ export default async function AdminDashboardPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle>Recent Consignments</CardTitle>
-              <Link href="/admin/consignments" className="text-xs text-muted-foreground hover:text-foreground">View all</Link>
             </div>
           </CardHeader>
           <CardContent>

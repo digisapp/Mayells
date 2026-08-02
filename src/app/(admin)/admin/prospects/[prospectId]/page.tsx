@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -160,6 +160,7 @@ function confidenceBadge(confidence: string | null) {
 
 interface ItemOverrides {
   finalTitle: string;
+  // Money fields are edited in DOLLARS in the UI; the DB stores cents.
   finalEstimateLow: string;
   finalEstimateHigh: string;
   finalReserve: string;
@@ -167,11 +168,21 @@ interface ItemOverrides {
   adminNotes: string;
 }
 
+/** Cents (DB) -> dollars string for an input field. */
+function centsToDollarsInput(cents: number | null | undefined): string {
+  return cents == null ? '' : String(cents / 100);
+}
+
+/** Dollars string (input field) -> cents for the API, or undefined if blank/invalid. */
+function dollarsInputToCents(value: string): number | undefined {
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? undefined : Math.round(parsed * 100);
+}
+
 // ── Main Component ──
 
 export default function AdminProspectDetailPage() {
   const { prospectId } = useParams<{ prospectId: string }>();
-  const router = useRouter();
 
   const [prospect, setProspect] = useState<Prospect | null>(null);
   const [items, setItems] = useState<UploadItem[]>([]);
@@ -345,14 +356,15 @@ export default function AdminProspectDetailPage() {
     setUpdatingItems((prev) => new Set(prev).add(itemId));
     try {
       const payload: Record<string, unknown> = { id: itemId, action };
+      // Money inputs are in dollars; the API expects cents.
+      const lowCents = itemOverrides ? dollarsInputToCents(itemOverrides.finalEstimateLow) : undefined;
+      const highCents = itemOverrides ? dollarsInputToCents(itemOverrides.finalEstimateHigh) : undefined;
+      const reserveCents = itemOverrides ? dollarsInputToCents(itemOverrides.finalReserve) : undefined;
       if (itemOverrides) {
         if (itemOverrides.finalTitle.trim()) payload.finalTitle = itemOverrides.finalTitle.trim();
-        const parsedLow = parseInt(itemOverrides.finalEstimateLow, 10);
-        if (!isNaN(parsedLow)) payload.finalEstimateLow = parsedLow;
-        const parsedHigh = parseInt(itemOverrides.finalEstimateHigh, 10);
-        if (!isNaN(parsedHigh)) payload.finalEstimateHigh = parsedHigh;
-        const parsedReserve = parseInt(itemOverrides.finalReserve, 10);
-        if (!isNaN(parsedReserve)) payload.finalReserve = parsedReserve;
+        if (lowCents !== undefined) payload.finalEstimateLow = lowCents;
+        if (highCents !== undefined) payload.finalEstimateHigh = highCents;
+        if (reserveCents !== undefined) payload.finalReserve = reserveCents;
         if (itemOverrides.finalCategory.trim())
           payload.finalCategory = itemOverrides.finalCategory.trim();
         if (itemOverrides.adminNotes.trim())
@@ -378,15 +390,9 @@ export default function AdminProspectDetailPage() {
                   ...(itemOverrides?.finalTitle.trim() && {
                     finalTitle: itemOverrides.finalTitle.trim(),
                   }),
-                  ...(itemOverrides?.finalEstimateLow.trim() && {
-                    finalEstimateLow: parseInt(itemOverrides.finalEstimateLow, 10),
-                  }),
-                  ...(itemOverrides?.finalEstimateHigh.trim() && {
-                    finalEstimateHigh: parseInt(itemOverrides.finalEstimateHigh, 10),
-                  }),
-                  ...(itemOverrides?.finalReserve.trim() && {
-                    finalReserve: parseInt(itemOverrides.finalReserve, 10),
-                  }),
+                  ...(lowCents !== undefined && { finalEstimateLow: lowCents }),
+                  ...(highCents !== undefined && { finalEstimateHigh: highCents }),
+                  ...(reserveCents !== undefined && { finalReserve: reserveCents }),
                   ...(itemOverrides?.finalCategory.trim() && {
                     finalCategory: itemOverrides.finalCategory.trim(),
                   }),
@@ -498,9 +504,9 @@ export default function AdminProspectDetailPage() {
             ...o,
             [itemId]: {
               finalTitle: item.finalTitle || item.aiTitle || '',
-              finalEstimateLow: String(item.finalEstimateLow ?? item.aiEstimateLow ?? ''),
-              finalEstimateHigh: String(item.finalEstimateHigh ?? item.aiEstimateHigh ?? ''),
-              finalReserve: String(item.finalReserve ?? item.aiRecommendedReserve ?? ''),
+              finalEstimateLow: centsToDollarsInput(item.finalEstimateLow ?? item.aiEstimateLow),
+              finalEstimateHigh: centsToDollarsInput(item.finalEstimateHigh ?? item.aiEstimateHigh),
+              finalReserve: centsToDollarsInput(item.finalReserve ?? item.aiRecommendedReserve),
               finalCategory: item.finalCategory || item.aiCategory || '',
               adminNotes: item.adminNotes || '',
             },
@@ -1049,39 +1055,45 @@ export default function AdminProspectDetailPage() {
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-muted-foreground">Estimate Low</label>
+                          <label className="text-xs text-muted-foreground">Estimate Low ($)</label>
                           <Input
                             className="h-8 text-sm"
                             type="number"
+                            min={0}
+                            step="0.01"
                             value={itemOv.finalEstimateLow}
                             onChange={(e) =>
                               updateOverride(item.id, 'finalEstimateLow', e.target.value)
                             }
-                            placeholder="Low estimate"
+                            placeholder="Low estimate in dollars"
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-muted-foreground">Estimate High</label>
+                          <label className="text-xs text-muted-foreground">Estimate High ($)</label>
                           <Input
                             className="h-8 text-sm"
                             type="number"
+                            min={0}
+                            step="0.01"
                             value={itemOv.finalEstimateHigh}
                             onChange={(e) =>
                               updateOverride(item.id, 'finalEstimateHigh', e.target.value)
                             }
-                            placeholder="High estimate"
+                            placeholder="High estimate in dollars"
                           />
                         </div>
                         <div>
-                          <label className="text-xs text-muted-foreground">Reserve</label>
+                          <label className="text-xs text-muted-foreground">Reserve ($)</label>
                           <Input
                             className="h-8 text-sm"
                             type="number"
+                            min={0}
+                            step="0.01"
                             value={itemOv.finalReserve}
                             onChange={(e) =>
                               updateOverride(item.id, 'finalReserve', e.target.value)
                             }
-                            placeholder="Reserve price"
+                            placeholder="Reserve price in dollars"
                           />
                         </div>
                         <div className="col-span-2">

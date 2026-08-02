@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -66,6 +66,7 @@ export default function AdminWebhooksPage() {
   const [status, setStatus] = useState<string>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [replayingId, setReplayingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const fetchLogs = useCallback(async (pageOffset = 0, providerFilter = provider, statusFilter = status) => {
     setLoading(true);
@@ -75,11 +76,14 @@ export default function AdminWebhooksPage() {
       if (statusFilter) params.set('status', statusFilter);
 
       const res = await fetch(`/api/admin/webhooks?${params}`);
+      if (!res.ok) throw new Error('Failed to load webhook logs');
       const data = await res.json();
+      setLoadError(false);
       setLogs(data.data ?? []);
       setTotal(data.pagination?.total ?? 0);
       if (data.stats) setStats(data.stats as Stats);
     } catch {
+      setLoadError(true);
       toast.error('Failed to load webhook logs');
     } finally {
       setLoading(false);
@@ -213,6 +217,16 @@ export default function AdminWebhooksPage() {
             <div key={i} className="h-12 bg-muted animate-pulse rounded-lg" />
           ))}
         </div>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="py-16 text-center">
+            <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
+            <p className="text-muted-foreground mb-4">Failed to load webhook logs.</p>
+            <Button variant="outline" size="sm" onClick={() => fetchLogs(offset)}>
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
       ) : logs.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
@@ -245,9 +259,8 @@ export default function AdminWebhooksPage() {
                 const StatusIcon = sc?.icon ?? MinusCircle;
 
                 return (
-                  <>
+                  <Fragment key={log.id}>
                     <tr
-                      key={log.id}
                       className={cn(
                         'border-t hover:bg-accent/5 transition-colors cursor-pointer',
                         isExpanded && 'bg-accent/5',
@@ -295,7 +308,7 @@ export default function AdminWebhooksPage() {
                     </tr>
 
                     {isExpanded && (
-                      <tr key={`${log.id}-detail`} className="border-t bg-muted/20">
+                      <tr className="border-t bg-muted/20">
                         <td colSpan={7} className="px-4 py-4">
                           <div className="space-y-3">
                             {/* Error */}
@@ -361,7 +374,7 @@ export default function AdminWebhooksPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>

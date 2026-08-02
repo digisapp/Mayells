@@ -36,15 +36,32 @@ export default function EditLotPage() {
   const router = useRouter();
   const { lotId } = useParams<{ lotId: string }>();
   const [lot, setLot] = useState<Record<string, unknown> | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetch(`/api/lots/${lotId}`)
       .then((r) => r.json())
-      .then((d) => setLot(d.data))
-      .catch(() => toast.error('Failed to load lot'));
+      .then((d) => {
+        if (d.data) setLot(d.data);
+        else setLoadError(true);
+      })
+      .catch(() => setLoadError(true));
   }, [lotId]);
+
+  if (loadError) {
+    return (
+      <div className="max-w-3xl">
+        <Link href="/admin/lots" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
+          <ArrowLeft className="h-4 w-4" />
+          Back to Lots
+        </Link>
+        <h1 className="font-display text-display-sm mb-4">Lot Not Found</h1>
+        <p className="text-muted-foreground">This lot does not exist or could not be loaded.</p>
+      </div>
+    );
+  }
 
   if (!lot) {
     return <div className="text-muted-foreground">Loading...</div>;

@@ -18,7 +18,6 @@ interface ClientData {
     email: string;
     companyName: string | null;
     phone: string | null;
-    bio: string | null;
     createdAt: string;
   };
   consignments: Array<{
@@ -68,6 +67,7 @@ export default function AdminClientDetailPage() {
   const router = useRouter();
   const [data, setData] = useState<ClientData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [tab, setTab] = useState<'consignments' | 'lots'>('lots');
   const [showEmail, setShowEmail] = useState(false);
   const [emailSubject, setEmailSubject] = useState('');
@@ -76,8 +76,15 @@ export default function AdminClientDetailPage() {
 
   useEffect(() => {
     fetch(`/api/admin/clients/${clientId}`)
-      .then((r) => r.json())
-      .then((d) => setData(d.data ?? null))
+      .then(async (r) => {
+        if (r.status === 404) {
+          setNotFound(true);
+          return;
+        }
+        if (!r.ok) throw new Error('Failed to load client');
+        const d = await r.json();
+        setData(d.data ?? null);
+      })
       .catch(() => toast.error('Failed to load client data'))
       .finally(() => setLoading(false));
   }, [clientId]);
@@ -126,7 +133,9 @@ export default function AdminClientDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => router.push('/admin/clients')}>
           <ArrowLeft className="h-4 w-4 mr-2" /> Back to Clients
         </Button>
-        <p className="text-muted-foreground mt-8 text-center">Client not found.</p>
+        <p className="text-muted-foreground mt-8 text-center">
+          {notFound ? 'Client not found.' : 'Failed to load client data. Please try again.'}
+        </p>
       </div>
     );
   }

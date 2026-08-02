@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { FileText, CheckCircle, XCircle, RotateCcw, Loader2 } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, RotateCcw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
 
@@ -22,6 +22,19 @@ interface InvoiceRow {
   lotTitle: string;
 }
 
+interface Pagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+interface InvoiceStats {
+  pending: number;
+  overdue: number;
+  paidTotal: number;
+}
+
 const statusColors: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
   paid: 'bg-green-100 text-green-800',
@@ -32,16 +45,33 @@ const statusColors: Record<string, string> = {
 
 export default function AdminInvoicesPage() {
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 50, total: 0, totalPages: 0 });
+  const [stats, setStats] = useState<InvoiceStats>({ pending: 0, overdue: 0, paidTotal: 0 });
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch('/api/admin/invoices')
-      .then((r) => r.json())
-      .then((d) => setInvoices(d.data ?? []))
+  const fetchInvoices = useCallback((page: number, silent = false) => {
+    if (!silent) setLoading(true);
+    fetch(`/api/admin/invoices?page=${page}`)
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to load invoices');
+        return r.json();
+      })
+      .then((d) => {
+        setInvoices(d.data ?? []);
+        if (d.pagination) setPagination(d.pagination);
+        if (d.stats) setStats(d.stats);
+      })
       .catch(() => toast.error('Failed to load invoices'))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!silent) setLoading(false);
+      });
   }, []);
+
+  useEffect(() => {
+    fetchInvoices(pagination.page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.page]);
 
   async function updateStatus(id: string, status: string) {
     setUpdatingId(id);
@@ -56,6 +86,8 @@ export default function AdminInvoicesPage() {
           prev.map((inv) => (inv.id === id ? { ...inv, status } : inv))
         );
         toast.success(`Invoice marked as ${status}`);
+        // Refresh header stats without flashing the table skeleton
+        fetchInvoices(pagination.page, true);
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to update');
@@ -67,12 +99,6 @@ export default function AdminInvoicesPage() {
     }
   }
 
-  const pendingCount = invoices.filter((i) => i.status === 'pending').length;
-  const overdueCount = invoices.filter((i) => i.status === 'overdue').length;
-  const paidTotal = invoices
-    .filter((i) => i.status === 'paid')
-    .reduce((sum, i) => sum + i.totalAmount, 0);
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -81,24 +107,24 @@ export default function AdminInvoicesPage() {
             <FileText className="h-6 w-6" />
             Invoices
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">{invoices.length} total</p>
+          <p className="text-sm text-muted-foreground mt-1">{pagination.total} total</p>
         </div>
         <div className="flex gap-4 text-sm">
-          {pendingCount > 0 && (
+          {stats.pending > 0 && (
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-yellow-500" />
-              {pendingCount} pending
+              {stats.pending} pending
             </span>
           )}
-          {overdueCount > 0 && (
+          {stats.overdue > 0 && (
             <span className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-red-500" />
-              {overdueCount} overdue
+              {stats.overdue} overdue
             </span>
           )}
-          {paidTotal > 0 && (
+          {stats.paidTotal > 0 && (
             <span className="text-muted-foreground">
-              {formatCurrency(paidTotal)} collected
+              {formatCurrency(stats.paidTotal)} collected
             </span>
           )}
         </div>
@@ -111,6 +137,7 @@ export default function AdminInvoicesPage() {
           ))}
         </div>
       ) : (
+        <>
         <div className="border rounded-lg">
           <Table>
             <TableHeader>
@@ -162,7 +189,7 @@ export default function AdminInvoicesPage() {
                               <CheckCircle className="h-3.5 w-3.5 text-green-600" />
                             </Button>
                           )}
-                          {invoice.status === 'pending' && (
+                          {(invoice.status === 'pending' || invoice.status === 'overdue') && (
                             <Button
                               variant="ghost"
                               size="icon-xs"
@@ -198,6 +225,25 @@ export default function AdminInvoicesPage() {
             </TableBody>
           </Table>
         </div>
+
+        {pagination.totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 text-sm">
+            <p className="text-muted-foreground">
+              Page {pagination.page} of {pagination.totalPages}
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" disabled={pagination.page <= 1}
+                onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))} className="gap-1">
+                <ChevronLeft className="h-3.5 w-3.5" /> Prev
+              </Button>
+              <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages}
+                onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))} className="gap-1">
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import { z } from 'zod';
+import crypto from 'crypto';
 import { db } from '@/db';
 import { sql } from 'drizzle-orm';
+import { sellerProspects, uploadLinks, uploadItems } from '@/db/schema';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
-import { instantEstimate } from '@/lib/ai/instant-estimate';
+import { instantEstimate, type InstantEstimate } from '@/lib/ai/instant-estimate';
 import { stripImageMetadata, sanitizeStoredImages } from '@/lib/images/sanitize';
+import { formatCurrency } from '@/types';
 
 // Photo uploads plus a vision-model estimate can exceed the default timeout.
 export const maxDuration = 60;
@@ -149,6 +152,20 @@ export async function POST(req: NextRequest) {
       ? await instantEstimate({ imageUrls: aiImageUrls, itemsDescription: items })
       : null;
 
+    // Create a seller_prospects row so the lead lands in the admin Prospects
+    // funnel (previously it only existed as an email + loose storage photos).
+    // Best-effort: a DB hiccup must not fail the request — the admin
+    // notification email below still carries the full lead.
+    try {
+      await createProspectFromSubmission(
+        { name, phone, email, items, service, message },
+        photoUrls,
+        estimate,
+      );
+    } catch (err) {
+      logger.error('Failed to create prospect from appraisal request', err);
+    }
+
     sendAppraisalRequestNotification(
       { name, phone, email, service, items, message },
       photoUrls,
@@ -177,4 +194,81 @@ export async function POST(req: NextRequest) {
     logger.error('Appraisal request error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
+}
+
+/**
+ * Turn a website consign/appraisal submission into a seller prospect.
+ *
+ * Photos are attached the way the prospects funnel expects: a synthetic
+ * (already-completed, never-shared) upload link owned by the prospect, with a
+ * single upload item holding all submitted photos in 'uploaded' status — so
+ * the admin detail page shows the photos and offers "Run AI Processing"
+ * exactly as it does for items sent through /upload/[token].
+ */
+async function createProspectFromSubmission(
+  form: {
+    name: string;
+    phone: string;
+    email?: string;
+    items?: string;
+    service?: string;
+    message?: string;
+  },
+  photoUrls: string[],
+  estimate: InstantEstimate | null,
+) {
+  const hasPhotos = photoUrls.length > 0;
+
+  const sourceNotes = [
+    'Submitted via mayells.com consign/appraisal form',
+    form.service ? `Service requested: ${form.service}` : null,
+    form.message ? `Message: ${form.message}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const notes = estimate
+    ? `[${new Date().toISOString()}] AI instant estimate shown on site: ${formatCurrency(estimate.estimateLow)} – ${formatCurrency(estimate.estimateHigh)} (${estimate.confidence} confidence). ${estimate.summary}`
+    : null;
+
+  const [prospect] = await db
+    .insert(sellerProspects)
+    .values({
+      fullName: form.name,
+      email: form.email || null,
+      phone: form.phone,
+      source: 'website',
+      sourceNotes,
+      itemSummary: form.items || null,
+      notes,
+      // With photos the prospect goes straight to the needs-review state the
+      // admin list surfaces; without photos it starts as a fresh lead.
+      status: hasPhotos ? 'items_received' : 'new',
+      totalItems: hasPhotos ? 1 : 0,
+    })
+    .returning({ id: sellerProspects.id });
+
+  if (!hasPhotos) return;
+
+  const now = new Date();
+  const [link] = await db
+    .insert(uploadLinks)
+    .values({
+      prospectId: prospect.id,
+      token: crypto.randomUUID(),
+      // 'completed' so the token can never be used on /upload/[token] — it
+      // exists purely as the join the prospects funnel expects.
+      status: 'completed',
+      itemCount: 1,
+      lastUploadAt: now,
+    })
+    .returning({ id: uploadLinks.id });
+
+  await db.insert(uploadItems).values({
+    uploadLinkId: link.id,
+    prospectId: prospect.id,
+    images: photoUrls,
+    sellerNotes: form.items || null,
+    status: 'uploaded',
+  });
 }

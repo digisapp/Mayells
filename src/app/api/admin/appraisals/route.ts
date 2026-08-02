@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { estateVisits, users } from '@/db/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import { logger } from '@/lib/logger';
 
@@ -42,24 +42,6 @@ const createSchema = z.object({
   visitDate: z.string().optional(),
   notes: z.string().optional(),
 });
-
-export async function GET() {
-  try {
-    const admin = await requireAdmin();
-    if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-    const visits = await db
-      .select()
-      .from(estateVisits)
-      .orderBy(desc(estateVisits.createdAt))
-      .limit(200);
-
-    return NextResponse.json({ data: visits });
-  } catch (error) {
-    logger.error('Appraisals list error', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -101,9 +83,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    const { id, visitDate, ...rest } = parsed.data;
+    const { id, visitDate, clientEmail, ...rest } = parsed.data;
     const updates = {
       ...rest,
+      ...(clientEmail !== undefined ? { clientEmail: clientEmail || null } : {}),
       ...(visitDate ? { visitDate: new Date(visitDate) } : {}),
     };
 

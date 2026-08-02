@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { db } from '@/db';
-import { auctions, auctionLots, lots, bids, maxBids, consignments, users, invoices } from '@/db/schema';
+import { auctions, auctionLots, lots, bids, maxBids, consignments, users, invoices, automationSettings } from '@/db/schema';
 import { eq, lte, and, or, inArray, desc, asc } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
 import { openAuctionLots } from '@/lib/bidding/lifecycle';
@@ -78,6 +78,12 @@ async function runLifecycle() {
   };
 
   try {
+    // Automation settings gate: invoice generation on close is controlled by
+    // autoInvoiceOnClose (schema default true, so behavior is unchanged unless
+    // an admin turns it off).
+    const [settings] = await db.select().from(automationSettings).limit(1);
+    const autoInvoiceOnClose = settings?.autoInvoiceOnClose ?? true;
+
     // 1. Open scheduled auctions whose bidding start time has passed
     const toOpen = await db
       .select()
@@ -221,15 +227,17 @@ async function runLifecycle() {
                   })
                   .where(eq(lots.id, al.lotId));
 
-                invoice = await generateInvoiceForWonLot(
-                  {
-                    auctionId: auction.id,
-                    lotId: al.lotId,
-                    buyerId: winningBid.bidderId,
-                    hammerPrice: winningBid.amount,
-                  },
-                  tx,
-                );
+                if (autoInvoiceOnClose) {
+                  invoice = await generateInvoiceForWonLot(
+                    {
+                      auctionId: auction.id,
+                      lotId: al.lotId,
+                      buyerId: winningBid.bidderId,
+                      hammerPrice: winningBid.amount,
+                    },
+                    tx,
+                  );
+                }
                 outcome = 'sold';
               } else {
                 // Unsold (no bids or reserve not met) — relist or return
@@ -252,7 +260,7 @@ async function runLifecycle() {
               return { outcome, invoice, winnerId: winningBid?.bidderId };
             });
 
-            if (settlement.outcome === 'sold') results.invoicesGenerated++;
+            if (settlement.outcome === 'sold' && settlement.invoice) results.invoicesGenerated++;
             if (settlement.outcome === 'relisted') results.relistedToGallery++;
             if (settlement.outcome === 'returned') results.returnedToSeller++;
 

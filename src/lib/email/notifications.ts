@@ -416,40 +416,6 @@ export async function sendAppraisalRequestNotification(
   });
 }
 
-export async function sendConsignmentNotification(params: {
-  sellerName: string;
-  sellerEmail: string;
-  title: string;
-  description: string;
-  category?: string;
-}) {
-  // Notify admin
-  await sendAndLog({
-    to: ADMIN_EMAIL,
-    subject: `New Consignment Submission: ${params.title}`,
-    html: adminEmailLayout(`
-        <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">
-          <tr><td style="padding: 6px 12px; color: #666;">From:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(params.sellerName)} (${escapeHtml(params.sellerEmail)})</td></tr>
-          <tr><td style="padding: 6px 12px; color: #666;">Item:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(params.title)}</td></tr>
-          ${params.category ? `<tr><td style="padding: 6px 12px; color: #666;">Category:</td><td style="padding: 6px 12px;">${escapeHtml(params.category)}</td></tr>` : ''}
-          <tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Description:</td><td style="padding: 6px 12px;">${escapeHtml(params.description)}</td></tr>
-        </table>
-        ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/admin/consignments`, 'Review in Admin')}
-    `, 'New Consignment Submission'),
-  });
-
-  // Confirm to seller
-  await sendAndLog({
-    to: params.sellerEmail,
-    subject: `We've received your consignment: ${params.title}`,
-    html: emailLayout(`
-        <p>Thank you for submitting <strong>${escapeHtml(params.title)}</strong> for consignment with Mayells.</p>
-        <p>Our team will review your submission and contact you within 1-2 business days to discuss next steps.</p>
-        ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/consignments`, 'Track Your Consignment')}
-    `, 'Consignment Received'),
-  });
-}
-
 /**
  * Notify seller that their item sold and needs to be shipped.
  * Includes shipping options: drop off at FedEx/UPS, schedule pickup, or white glove.

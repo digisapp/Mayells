@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { invoices, users, lots } from '@/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { processPaidInvoice, cancelPayoutForRefundedInvoice } from '@/lib/payouts/service';
+import { logger } from '@/lib/logger';
 
 const invoicePatchSchema = z.object({
   id: z.string().uuid('Valid invoice ID required'),
@@ -30,35 +31,70 @@ async function requireAdmin() {
   return profile;
 }
 
-// GET /api/admin/invoices
-export async function GET() {
+const PAGE_SIZE = 50;
+
+// GET /api/admin/invoices?page=1
+export async function GET(req: NextRequest) {
   try {
     const admin = await requireAdmin();
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const allInvoices = await db
-      .select({
-        id: invoices.id,
-        invoiceNumber: invoices.invoiceNumber,
-        hammerPrice: invoices.hammerPrice,
-        buyerPremium: invoices.buyerPremium,
-        totalAmount: invoices.totalAmount,
-        status: invoices.status,
-        dueDate: invoices.dueDate,
-        paidAt: invoices.paidAt,
-        buyerName: users.fullName,
-        buyerEmail: users.email,
-        lotTitle: lots.title,
-      })
-      .from(invoices)
-      .innerJoin(users, eq(invoices.buyerId, users.id))
-      .innerJoin(lots, eq(invoices.lotId, lots.id))
-      .orderBy(desc(invoices.createdAt))
-      .limit(200);
+    const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') || '1', 10));
+    const offset = (page - 1) * PAGE_SIZE;
 
-    return NextResponse.json({ data: allInvoices });
-  } catch {
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+    const [data, countResult, statusRows] = await Promise.all([
+      db
+        .select({
+          id: invoices.id,
+          invoiceNumber: invoices.invoiceNumber,
+          hammerPrice: invoices.hammerPrice,
+          buyerPremium: invoices.buyerPremium,
+          totalAmount: invoices.totalAmount,
+          status: invoices.status,
+          dueDate: invoices.dueDate,
+          paidAt: invoices.paidAt,
+          buyerName: users.fullName,
+          buyerEmail: users.email,
+          lotTitle: lots.title,
+        })
+        .from(invoices)
+        .innerJoin(users, eq(invoices.buyerId, users.id))
+        .innerJoin(lots, eq(invoices.lotId, lots.id))
+        .orderBy(desc(invoices.createdAt))
+        .limit(PAGE_SIZE)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(invoices),
+      // Global (not page-scoped) numbers for the header summary
+      db
+        .select({
+          status: invoices.status,
+          count: sql<number>`count(*)::int`,
+          totalAmount: sql<number>`coalesce(sum(${invoices.totalAmount}), 0)::int`,
+        })
+        .from(invoices)
+        .groupBy(invoices.status),
+    ]);
+
+    const total = countResult[0]?.count ?? 0;
+    const stats = {
+      pending: statusRows.find((r) => r.status === 'pending')?.count ?? 0,
+      overdue: statusRows.find((r) => r.status === 'overdue')?.count ?? 0,
+      paidTotal: statusRows.find((r) => r.status === 'paid')?.totalAmount ?? 0,
+    };
+
+    return NextResponse.json({
+      data,
+      stats,
+      pagination: {
+        page,
+        pageSize: PAGE_SIZE,
+        total,
+        totalPages: Math.ceil(total / PAGE_SIZE),
+      },
+    });
+  } catch (error) {
+    logger.error('Admin invoices fetch error', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -131,7 +167,8 @@ export async function PATCH(req: NextRequest) {
     if (!updated) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
 
     return NextResponse.json({ data: updated });
-  } catch {
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 });
+  } catch (error) {
+    logger.error('Admin invoice update error', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

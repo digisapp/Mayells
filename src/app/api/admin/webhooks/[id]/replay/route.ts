@@ -74,18 +74,23 @@ export async function POST(
       errorMessage = err instanceof Error ? err.message : String(err);
     }
 
-    // Write a new log entry for the replay
+    // Write a new log entry for the replay. The (provider, event_id) partial
+    // unique index dedups live deliveries, so each replay entry needs a
+    // distinct eventId — a fixed 'replay:' prefix would collide on the second
+    // replay of the same event and 500 AFTER the handler already re-ran.
+    // Timestamp-suffixed, with onConflictDoNothing (same pattern as the live
+    // stripe route) as the backstop so a replay can never fail on logging.
     await db.insert(webhookLogs).values({
       provider: log.provider,
       eventType: log.eventType,
-      eventId: log.eventId ? `replay:${log.eventId}` : null,
+      eventId: log.eventId ? `replay:${Date.now()}:${log.eventId}`.slice(0, 255) : null,
       status,
       errorMessage: errorMessage ?? null,
       processingMs: Date.now() - startMs,
       payload,
       relatedType: relatedType ?? log.relatedType,
       relatedId: relatedId ?? log.relatedId,
-    });
+    }).onConflictDoNothing();
 
     // Increment replay count on the original
     await db.update(webhookLogs).set({

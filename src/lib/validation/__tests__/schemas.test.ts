@@ -5,7 +5,6 @@ import {
   bidSchema,
   lotSchema,
   auctionSchema,
-  consignmentSchema,
 } from '../schemas';
 
 describe('signupSchema', () => {
@@ -215,24 +214,6 @@ describe('auctionSchema', () => {
       slug: 'test',
       type: 'timed',
       buyerPremiumPercent: 60,
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('consignmentSchema', () => {
-  it('validates a valid consignment', () => {
-    const result = consignmentSchema.safeParse({
-      title: 'Antique Vase',
-      categorySlug: 'antiques',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects empty title', () => {
-    const result = consignmentSchema.safeParse({
-      title: '',
-      categorySlug: 'antiques',
     });
     expect(result.success).toBe(false);
   });

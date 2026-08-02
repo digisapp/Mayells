@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { auctions, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { auctionUpdateSchema } from '@/lib/validation/schemas';
+import { openAuctionLots } from '@/lib/bidding/lifecycle';
 import { logger } from '@/lib/logger';
 
 export async function GET(
@@ -73,6 +74,37 @@ export async function PATCH(
     }
     if (typeof updateData.biddingEndsAt === 'string') {
       updateData.biddingEndsAt = new Date(updateData.biddingEndsAt as string);
+    }
+
+    // A manual transition to 'open' must run the same lot-opening step the
+    // lifecycle cron performs (lot status, per-lot closingAt, Redis bid state);
+    // a bare status flip would leave every lot unbiddable. openAuctionLots is
+    // idempotent, and runs BEFORE the status flip (mirroring the cron and the
+    // live-start route) so a failure leaves the auction re-openable.
+    const [existing] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
+    if (!existing) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
+
+    const opensBidding =
+      parsed.data.status === 'open' &&
+      ['draft', 'scheduled', 'preview'].includes(existing.status);
+
+    if (opensBidding) {
+      const effective = {
+        ...existing,
+        biddingEndsAt: (updateData.biddingEndsAt as Date | undefined) ?? existing.biddingEndsAt,
+      };
+      // A timed auction with no end time can't be opened correctly
+      // (openAuctionLots refuses it) — don't flip it to 'open' with
+      // unbiddable lots.
+      if (effective.type !== 'live' && !effective.biddingEndsAt) {
+        return NextResponse.json(
+          { error: 'Set a bidding end date before opening this auction.' },
+          { status: 400 },
+        );
+      }
+      await openAuctionLots(effective);
     }
 
     const [updated] = await db

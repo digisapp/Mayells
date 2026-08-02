@@ -4,7 +4,6 @@ import { db } from '@/db';
 import { lots, auctions, users, invoices, bids, consignments, outreachContacts, watchlist } from '@/db/schema';
 import { sql } from 'drizzle-orm';
 import { fmt } from './fmt';
-import { WebTrafficCard } from './web-traffic-card';
 import { KeyMetrics } from './key-metrics';
 import { StatsBreakdownCards } from './stats-breakdown-cards';
 import { TopDepartmentsCard } from './top-departments-card';
@@ -20,8 +19,8 @@ export default async function AdminAnalyticsPage() {
     [consignmentStats],
     [outreachStats],
     [watchlistStats],
-    topCategories,
-    recentBids,
+    topCategoriesResult,
+    recentBidsResult,
   ] = await Promise.all([
     db.select({
       total: sql<number>`count(*)`,
@@ -29,7 +28,6 @@ export default async function AdminAnalyticsPage() {
       forSale: sql<number>`count(*) filter (where ${lots.status} = 'for_sale')`,
       inAuction: sql<number>`count(*) filter (where ${lots.status} = 'in_auction')`,
       draft: sql<number>`count(*) filter (where ${lots.status} = 'draft')`,
-      avgEstimate: sql<number>`coalesce(avg(${lots.estimateLow}), 0)`,
       totalValue: sql<number>`coalesce(sum(${lots.hammerPrice}) filter (where ${lots.status} = 'sold'), 0)`,
     }).from(lots),
 
@@ -58,6 +56,7 @@ export default async function AdminAnalyticsPage() {
       overdue: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'overdue'), 0)`,
       count: sql<number>`count(*)`,
       paidCount: sql<number>`count(*) filter (where ${invoices.status} = 'paid')`,
+      pendingCount: sql<number>`count(*) filter (where ${invoices.status} = 'pending')`,
     }).from(invoices),
 
     db.select({
@@ -110,15 +109,19 @@ export default async function AdminAnalyticsPage() {
     `),
   ]);
 
+  // db.execute returns a node-postgres QueryResult; the row arrays live on .rows
+  const topCategories = topCategoriesResult.rows as unknown as { name: string; lot_count: number; sold_count: number; revenue: number }[];
+  const recentBids = recentBidsResult.rows as unknown as { amount: number; created_at: string; lot_title: string; bidder_name: string }[];
+
   const conversionRate = outreachStats.total > 0
     ? ((Number(outreachStats.converted) / Number(outreachStats.total)) * 100).toFixed(1)
     : '0';
 
   const keyMetrics = [
     { label: 'Total Revenue', value: fmt(Number(revenueStats.paid)), sub: 'paid' },
-    { label: 'Pending', value: fmt(Number(revenueStats.pending)), sub: `${revenueStats.count} invoices` },
+    { label: 'Pending', value: fmt(Number(revenueStats.pending)), sub: `${Number(revenueStats.pendingCount)} invoices` },
     { label: 'Total Bids', value: Number(bidStats.total).toLocaleString(), sub: `${Number(bidStats.today)} today` },
-    { label: 'Active Users', value: Number(userStats.total).toLocaleString(), sub: `+${Number(userStats.thisWeek)} this week` },
+    { label: 'Total Users', value: Number(userStats.total).toLocaleString(), sub: `+${Number(userStats.thisWeek)} this week` },
     { label: 'Watchlist Saves', value: Number(watchlistStats.total).toLocaleString(), sub: 'total saves' },
     { label: 'Outreach Conversion', value: `${conversionRate}%`, sub: `${Number(outreachStats.converted)}/${Number(outreachStats.total)}` },
   ];
@@ -195,19 +198,13 @@ export default async function AdminAnalyticsPage() {
     <div>
       <h1 className="font-display text-display-sm mb-8">Analytics</h1>
 
-      <WebTrafficCard />
-
       <KeyMetrics metrics={keyMetrics} />
 
       <StatsBreakdownCards sections={breakdownSections} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <TopDepartmentsCard
-          categories={topCategories as unknown as { name: string; lot_count: number; sold_count: number; revenue: number }[]}
-        />
-        <RecentBidsCard
-          bids={recentBids as unknown as { amount: number; created_at: string; lot_title: string; bidder_name: string }[]}
-        />
+        <TopDepartmentsCard categories={topCategories} />
+        <RecentBidsCard bids={recentBids} />
       </div>
     </div>
   );

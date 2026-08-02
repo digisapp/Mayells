@@ -71,7 +71,8 @@ const AUCTIONS: Array<[string, string]> = [
   // kept as-is: Luxury Watches & Accessories
 ];
 
-let updated = 0, missed: string[] = [];
+let updated = 0;
+const missed: string[] = [];
 for (const [title, image, newTitle] of LOTS) {
   const res = newTitle
     ? await sql`update lots set primary_image_url = ${image}, title = ${newTitle}

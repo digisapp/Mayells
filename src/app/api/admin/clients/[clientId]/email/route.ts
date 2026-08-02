@@ -98,12 +98,18 @@ export async function POST(
 
     const resend = getResend();
     const emailSubject = subject || 'Your Item Summary — Mayells';
-    const { data: sent } = await resend.emails.send({
+    const { data: sent, error: sendError } = await resend.emails.send({
       from: 'Mayells <outreach@mayells.com>',
       to: client.email,
       subject: emailSubject,
       html,
     });
+
+    if (sendError) {
+      logger.error('Resend send error', sendError);
+      return NextResponse.json({ error: 'Failed to send email' }, { status: 500 });
+    }
+
     await db.insert(emails).values({
       resendId: sent?.id || null,
       direction: 'outbound',

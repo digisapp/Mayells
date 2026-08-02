@@ -7,6 +7,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
   ArrowLeft,
   Loader2,
   Send,
@@ -15,6 +24,7 @@ import {
   AlertCircle,
   Clock,
   RefreshCw,
+  Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/types';
@@ -87,6 +97,9 @@ export default function AppraisalDetailPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [editingItem, setEditingItem] = useState<EstateVisitItem | null>(null);
+  const [editingClient, setEditingClient] = useState(false);
+  const [savingClient, setSavingClient] = useState(false);
+  const [clientForm, setClientForm] = useState({ name: '', email: '', phone: '' });
 
   const fetchData = useCallback(async () => {
     try {
@@ -186,17 +199,60 @@ export default function AppraisalDetailPage() {
 
   const handleReprocess = async (itemId: string) => {
     try {
-      await fetch(`/api/admin/appraisals/${visitId}/items`, {
+      const resetRes = await fetch(`/api/admin/appraisals/${visitId}/items`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId, status: 'pending', errorMessage: null }),
       });
-      await fetch(`/api/admin/appraisals/${visitId}/process`, { method: 'POST' });
+      if (!resetRes.ok) throw new Error('Failed to reset item');
       toast.success('Re-analyzing item...');
       setEditingItem(null);
+      const processRes = await fetch(`/api/admin/appraisals/${visitId}/process`, { method: 'POST' });
+      if (!processRes.ok) throw new Error('Failed to start analysis');
       fetchData();
     } catch {
       toast.error('Failed to reprocess');
+    }
+  };
+
+  const openClientEdit = () => {
+    if (!visit) return;
+    setClientForm({
+      name: visit.clientName,
+      email: visit.clientEmail || '',
+      phone: visit.clientPhone || '',
+    });
+    setEditingClient(true);
+  };
+
+  const handleClientSave = async () => {
+    if (!clientForm.name.trim()) {
+      toast.error('Client name is required');
+      return;
+    }
+    setSavingClient(true);
+    try {
+      const res = await fetch('/api/admin/appraisals', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: visitId,
+          clientName: clientForm.name.trim(),
+          clientEmail: clientForm.email.trim(),
+          clientPhone: clientForm.phone.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Failed to update client info');
+      }
+      toast.success('Client info updated');
+      setEditingClient(false);
+      fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update client info');
+    } finally {
+      setSavingClient(false);
     }
   };
 
@@ -230,10 +286,22 @@ export default function AppraisalDetailPage() {
             <Badge variant="outline" className={statusColors[visit.status] || ''}>
               {visit.status}
             </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-muted-foreground"
+              onClick={openClientEdit}
+              aria-label="Edit client info"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
             {[visit.clientCity, visit.clientState].filter(Boolean).join(', ')}
             {visit.visitDate && ` · ${new Date(visit.visitDate).toLocaleDateString()}`}
+            {!visit.clientEmail && (
+              <span className="text-orange-600"> · No client email on file</span>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
@@ -367,6 +435,61 @@ export default function AppraisalDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Edit Client Info Dialog */}
+      <Dialog open={editingClient} onOpenChange={(open) => !open && setEditingClient(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Client Info</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="clientName">Name</Label>
+              <Input
+                id="clientName"
+                value={clientForm.name}
+                onChange={(e) => setClientForm((f) => ({ ...f, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="clientEmail">Email</Label>
+              <Input
+                id="clientEmail"
+                type="email"
+                value={clientForm.email}
+                onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="client@example.com"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Required to send the report to the client.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="clientPhone">Phone</Label>
+              <Input
+                id="clientPhone"
+                type="tel"
+                value={clientForm.phone}
+                onChange={(e) => setClientForm((f) => ({ ...f, phone: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setEditingClient(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="bg-champagne text-charcoal hover:bg-champagne/90"
+              onClick={handleClientSave}
+              disabled={savingClient}
+            >
+              {savingClient && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Sheet */}
       {editingItem && (
