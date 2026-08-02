@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Stats summary (always unfiltered for the header cards)
-    const [stats] = await db.execute(sql`
+    const { rows: [stats] } = await db.execute(sql`
       SELECT
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status = 'success')::int AS success,

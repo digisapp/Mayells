@@ -1,25 +1,31 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 import * as schema from './schema';
 
 const connectionString = process.env.DATABASE_URL!;
 
-// Serverless-safe pool settings. Without idle_timeout/max_lifetime, warm
-// Vercel instances hold sockets the Supabase pooler has already dropped, and
-// the next query hangs for minutes on the dead connection instead of
-// reconnecting — pages stall mid-stream and "never load".
-const client = postgres(connectionString, {
-  prepare: false,
+// node-postgres (pg), not postgres-js: on Vercel, postgres-js left query
+// promises pending forever when a pooled socket died mid-flight — the DB had
+// already answered, but the page render hung until the platform gave up
+// ("dashboard never loads"). pg surfaces those as errors, which the
+// (admin)/error.tsx boundary turns into a retry screen.
+//
+// DB-side guardrails (applied via ALTER ROLE postgres SET ..., because the
+// Supabase transaction pooler ignores per-connection startup parameters):
+// statement_timeout=20s, idle_in_transaction_session_timeout=60s.
+const pool = new Pool({
+  connectionString,
+  ssl: { rejectUnauthorized: false },
   max: 10,
-  ssl: 'require',
-  idle_timeout: 20, // close idle connections before the pooler drops them
-  max_lifetime: 60 * 15, // recycle connections every 15 minutes
-  connect_timeout: 10, // fail fast instead of hanging on a dead host
-  keep_alive: 30, // TCP keepalive so dead sockets are detected, not waited on
+  idleTimeoutMillis: 20_000, // release idle sockets before the pooler drops them
+  connectionTimeoutMillis: 10_000, // fail fast when a connection can't be made
+  keepAlive: true,
 });
-// Note: statement_timeout=20s and idle_in_transaction_session_timeout=60s are
-// set at the ROLE level (ALTER ROLE postgres SET ...) because the Supabase
-// transaction pooler ignores per-connection startup parameters. A stuck query
-// now errors in 20s instead of hanging a page render for 2 minutes.
 
-export const db = drizzle(client, { schema });
+// A pool-level error (e.g. a dead idle socket) must not crash the process —
+// without this handler, node-postgres re-throws and kills the lambda.
+pool.on('error', (err) => {
+  console.error('[db] idle pool connection error', err.message);
+});
+
+export const db = drizzle(pool, { schema });

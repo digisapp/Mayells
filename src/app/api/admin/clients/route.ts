@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
         )`
       : sql``;
 
-    const [clients, countResult] = await Promise.all([
+    const [clientsResult, countResult] = await Promise.all([
       db.execute(sql`
         SELECT
           u.id,
@@ -77,7 +77,8 @@ export async function GET(request: NextRequest) {
       `),
     ]);
 
-    const total = (countResult[0] as { total: number })?.total ?? 0;
+    const clients = clientsResult.rows;
+    const total = (countResult.rows[0] as { total: number })?.total ?? 0;
 
     return NextResponse.json({
       data: clients,
