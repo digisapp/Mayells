@@ -10,7 +10,7 @@ import {
   Inbox, Send, Mail, Reply, Plus, ChevronDown, ChevronUp, Circle,
   Search, ChevronLeft, ChevronRight, CheckCheck, AlertTriangle, Clock,
   ShieldAlert, User, Bot, Sparkles, Trash2, Check, X, ArrowLeft,
-  MessageSquare, Paperclip,
+  MessageSquare, Paperclip, Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { escapeHtml } from '@/lib/email/escape';
@@ -114,6 +114,101 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Full-screen viewer for image attachments: large view, prev/next, download. */
+function AttachmentLightbox({
+  images, index, onClose, onNavigate,
+}: {
+  images: AttachmentLink[];
+  index: number;
+  onClose: () => void;
+  onNavigate: (index: number) => void;
+}) {
+  const image = images[index];
+  const hasPrev = index > 0;
+  const hasNext = index < images.length - 1;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'ArrowLeft' && hasPrev) onNavigate(index - 1);
+      if (e.key === 'ArrowRight' && hasNext) onNavigate(index + 1);
+    };
+    window.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [index, hasPrev, hasNext, onClose, onNavigate]);
+
+  if (!image) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex flex-col"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={image.filename}
+    >
+      <div className="flex items-center justify-between gap-3 p-3 text-white" onClick={(e) => e.stopPropagation()}>
+        <p className="text-sm truncate">
+          {image.filename}
+          <span className="ml-2 text-xs text-white/60">
+            {formatBytes(image.size)}{images.length > 1 ? ` · ${index + 1} of ${images.length}` : ''}
+          </span>
+        </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <a
+            href={image.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md bg-white/10 hover:bg-white/20 px-3 py-1.5 text-sm transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            Download
+          </a>
+          <button
+            onClick={onClose}
+            className="rounded-md bg-white/10 hover:bg-white/20 p-1.5 transition-colors"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+      <div className="relative flex-1 flex items-center justify-center min-h-0 p-4">
+        {hasPrev && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onNavigate(index - 1); }}
+            className="absolute left-3 z-10 rounded-full bg-white/10 hover:bg-white/20 p-2 text-white transition-colors"
+            aria-label="Previous image"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={image.downloadUrl}
+          alt={image.filename}
+          className="max-h-full max-w-full object-contain rounded-md"
+          onClick={(e) => e.stopPropagation()}
+        />
+        {hasNext && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onNavigate(index + 1); }}
+            className="absolute right-3 z-10 rounded-full bg-white/10 hover:bg-white/20 p-2 text-white transition-colors"
+            aria-label="Next image"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Attachments of an inbound email. Files live on Resend behind expiring
  * signed URLs, so this fetches fresh links every time it mounts.
@@ -121,6 +216,7 @@ function formatBytes(bytes: number): string {
 function EmailAttachments({ emailId }: { emailId: string }) {
   const [items, setItems] = useState<AttachmentLink[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,14 +251,13 @@ function EmailAttachments({ emailId }: { emailId: string }) {
       </p>
       {images.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {images.map((a) => (
-            <a
+          {images.map((a, i) => (
+            <button
               key={a.id}
-              href={a.downloadUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block group relative"
-              title={`${a.filename} (${formatBytes(a.size)})`}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex(i); }}
+              className="block group relative cursor-zoom-in"
+              title={`${a.filename} (${formatBytes(a.size)}) — click to view`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -173,9 +268,17 @@ function EmailAttachments({ emailId }: { emailId: string }) {
               <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-b-md truncate">
                 {a.filename}
               </span>
-            </a>
+            </button>
           ))}
         </div>
+      )}
+      {lightboxIndex !== null && (
+        <AttachmentLightbox
+          images={images}
+          index={lightboxIndex}
+          onClose={() => setLightboxIndex(null)}
+          onNavigate={setLightboxIndex}
+        />
       )}
       {files.map((a) => (
         <a
