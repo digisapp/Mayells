@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Truck, Package, MapPin, ExternalLink } from 'lucide-react';
+import { Truck, Package, MapPin, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface ShipmentRow {
   shipment: {
@@ -37,6 +37,19 @@ interface ShipmentRow {
   };
 }
 
+interface Pagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+interface ShipmentStats {
+  pending: number;
+  inTransit: number;
+  completed: number;
+}
+
 const SHIPMENT_STATUSES = [
   'pending',
   'label_created',
@@ -50,6 +63,9 @@ const SHIPMENT_STATUSES = [
 ] as const;
 
 const CARRIERS = ['fedex', 'ups', 'usps', 'dhl', 'arta', 'other'] as const;
+
+const STATUS_FILTERS = ['all', 'pending', 'in_transit', 'completed'] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 const statusColors: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   pending: 'outline',
@@ -65,6 +81,9 @@ const statusColors: Record<string, 'default' | 'secondary' | 'outline' | 'destru
 
 export default function AdminShipmentsPage() {
   const [shipments, setShipments] = useState<ShipmentRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 50, total: 0, totalPages: 0 });
+  const [stats, setStats] = useState<ShipmentStats>({ pending: 0, inTransit: 0, completed: 0 });
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [editing, setEditing] = useState<ShipmentRow | null>(null);
@@ -72,18 +91,29 @@ export default function AdminShipmentsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const load = () => {
+  const fetchShipments = useCallback((page: number, status: StatusFilter, silent = false) => {
+    if (!silent) setLoading(true);
     setLoadError(false);
-    fetch('/api/admin/shipments')
+    const params = new URLSearchParams({ page: String(page) });
+    if (status !== 'all') params.set('status', status);
+    fetch(`/api/admin/shipments?${params}`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to load shipments');
         return res.json();
       })
-      .then(data => { setShipments(data.data || []); setLoading(false); })
-      .catch(() => { setLoadError(true); setLoading(false); });
-  };
+      .then(data => {
+        setShipments(data.data ?? []);
+        if (data.pagination) setPagination(data.pagination);
+        if (data.stats) setStats(data.stats);
+      })
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
+  }, []);
 
-  useEffect(load, []);
+  useEffect(() => {
+    fetchShipments(pagination.page, statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.page, statusFilter]);
 
   const openEdit = (row: ShipmentRow) => {
     setForm({
@@ -117,7 +147,8 @@ export default function AdminShipmentsPage() {
         setSaveError(data.error || 'Failed to update shipment');
       } else {
         setEditing(null);
-        load();
+        // Refresh rows and header stats without flashing the skeleton
+        fetchShipments(pagination.page, statusFilter, true);
       }
     } catch {
       setSaveError('Network error');
@@ -137,10 +168,6 @@ export default function AdminShipmentsPage() {
     );
   }
 
-  const pending = shipments.filter(s => ['pending', 'label_created'].includes(s.shipment.status));
-  const inTransit = shipments.filter(s => ['pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery'].includes(s.shipment.status));
-  const completed = shipments.filter(s => ['delivered', 'returned', 'exception'].includes(s.shipment.status));
-
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -149,22 +176,39 @@ export default function AdminShipmentsPage() {
             <Truck className="h-6 w-6" />
             Shipments
           </h1>
-          <p className="text-muted-foreground mt-1">{shipments.length} total shipments</p>
+          <p className="text-muted-foreground mt-1">{pagination.total} total shipments</p>
         </div>
         <div className="flex gap-4 text-sm">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-yellow-500" />
-            {pending.length} pending
+            {stats.pending} pending
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-blue-500" />
-            {inTransit.length} in transit
+            {stats.inTransit} in transit
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-green-500" />
-            {completed.length} completed
+            {stats.completed} completed
           </span>
         </div>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        {STATUS_FILTERS.map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => { setStatusFilter(s); setPagination(p => ({ ...p, page: 1 })); }}
+            className={`text-xs px-3 py-1.5 rounded-md border transition-colors capitalize ${
+              statusFilter === s
+                ? 'bg-foreground text-background border-foreground'
+                : 'border-border/50 hover:bg-accent/10'
+            }`}
+          >
+            {s.replace(/_/g, ' ')}
+          </button>
+        ))}
       </div>
 
       {loadError && (
@@ -173,7 +217,7 @@ export default function AdminShipmentsPage() {
           <p>Failed to load shipments.</p>
           <button
             type="button"
-            onClick={() => { setLoading(true); load(); }}
+            onClick={() => fetchShipments(pagination.page, statusFilter)}
             className="mt-4 text-xs px-3 py-1.5 rounded-md border border-border/50 hover:bg-accent/10 transition-colors"
           >
             Retry
@@ -184,7 +228,11 @@ export default function AdminShipmentsPage() {
       {!loadError && shipments.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <Package className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>No shipments yet. They appear here after buyers pay invoices.</p>
+          <p>
+            {statusFilter === 'all'
+              ? 'No shipments yet. They appear here after buyers pay invoices.'
+              : `No ${statusFilter.replace(/_/g, ' ')} shipments.`}
+          </p>
         </div>
       )}
 
@@ -262,6 +310,24 @@ export default function AdminShipmentsPage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-muted-foreground">
+            Page {pagination.page} of {pagination.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" disabled={pagination.page <= 1}
+              onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))} className="gap-1">
+              <ChevronLeft className="h-3.5 w-3.5" /> Prev
+            </Button>
+            <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages}
+              onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))} className="gap-1">
+              Next <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       )}
 

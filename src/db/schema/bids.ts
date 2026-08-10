@@ -36,6 +36,9 @@ export const bids = pgTable('bids', {
   index('bids_auction_idx').on(table.auctionId),
   index('bids_status_idx').on(table.status),
   index('bids_lot_status_idx').on(table.lotId, table.status),
+  // "Recent bids" views (admin analytics) order the whole table by recency;
+  // bids is the fastest-growing table, so this must not be a full sort.
+  index('bids_created_at_idx').on(table.createdAt),
 ]);
 
 export const bidsRelations = relations(bids, ({ one }) => ({

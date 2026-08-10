@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -105,6 +105,13 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
     }
   }
 
+  // One idempotency key per bid ATTEMPT (same amount + max), kept across
+  // retries: if the request 500s or the network drops after the bid actually
+  // landed, the user's retry replays the same key and gets their original bid
+  // back instead of ALREADY_HIGH_BIDDER. Rotated when the attempt changes or
+  // resolves (success or clean rejection).
+  const attemptRef = useRef<{ sig: string; key: string } | null>(null);
+
   async function submitBid(amountCents: number, maxCents?: number) {
     setError(null);
     setSuccess(null);
@@ -116,6 +123,10 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
       setError('Your max bid must be at least your bid amount.');
       return;
     }
+    const attemptSig = `${amountCents}:${maxCents ?? ''}`;
+    if (!attemptRef.current || attemptRef.current.sig !== attemptSig) {
+      attemptRef.current = { sig: attemptSig, key: genIdempotencyKey() };
+    }
     setSubmitting(true);
     try {
       const res = await fetch(`/api/lots/${encodeURIComponent(lotRef)}/bids`, {
@@ -124,10 +135,17 @@ export function BidForm({ lotRef, currentBidAmount, minNextBid, isHighBidder, on
         body: JSON.stringify({
           amount: amountCents,
           ...(maxCents !== undefined ? { maxBidAmount: maxCents } : {}),
-          idempotencyKey: genIdempotencyKey(),
+          idempotencyKey: attemptRef.current.key,
         }),
       });
       const json = await res.json();
+
+      // A definitive answer (success or clean 4xx rejection) ends the
+      // attempt; only server errors keep the key alive for an idempotent
+      // retry.
+      if (res.status < 500) {
+        attemptRef.current = null;
+      }
 
       if (res.status === 401) {
         setError('Please sign in to place a bid.');

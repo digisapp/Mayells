@@ -1,4 +1,7 @@
-export const dynamic = 'force-dynamic';
+// ISR: serve from the CDN and re-render at most once a minute. Admin lot and
+// auction mutations plus new bids also trigger on-demand revalidation, so the
+// homepage stays fresh without paying a lambda + DB render per visitor.
+export const revalidate = 60;
 
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -34,6 +37,7 @@ import { auctions, auctionLots, lots } from '@/db/schema';
 import { inArray, desc, eq, and, sql, asc } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { LotCard } from '@/components/lots/LotCard';
+import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
 import { HeroAppraisalForm } from '@/components/home/HeroAppraisalForm';
 import { ClosingSoonRail, type ClosingSoonItem } from '@/components/home/ClosingSoonRail';
 import { LiveNowBanner } from '@/components/home/LiveNowBanner';
@@ -66,7 +70,7 @@ async function getHomeData() {
           .orderBy(desc(auctions.createdAt))
           .limit(6),
         db
-          .select()
+          .select({ lot: lots, auctionSlug: bestAuctionSlugSql })
           .from(lots)
           // Only surface publicly-visible featured lots — a featured draft or
           // withdrawn lot would render on the homepage and link to a 404.
@@ -123,12 +127,11 @@ async function getHomeData() {
 
     return {
       upcomingAuctions,
-      featuredLots,
+      featuredLots: featuredLots.map(({ lot, auctionSlug }) => ({ ...lot, auctionSlug })),
       galleryLots,
       liveAuction: liveAuctions[0] ?? null,
       closingSoon,
       openLotCount: openLotCountRows[0]?.count ?? 0,
-      serverNow: Date.now(),
     };
   } catch {
     return {
@@ -138,13 +141,12 @@ async function getHomeData() {
       liveAuction: null,
       closingSoon: [] as ClosingSoonItem[],
       openLotCount: 0,
-      serverNow: Date.now(),
     };
   }
 }
 
 export default async function HomePage() {
-  const { upcomingAuctions, featuredLots, galleryLots, liveAuction, closingSoon, openLotCount, serverNow } =
+  const { upcomingAuctions, featuredLots, galleryLots, liveAuction, closingSoon, openLotCount } =
     await getHomeData();
 
   // Lead the hero with real artwork when we have it; the appraisal form moves
@@ -261,7 +263,10 @@ export default async function HomePage() {
       </section>
 
       {/* Closing Soon — live marketplace rail */}
-      <ClosingSoonRail items={closingSoon} serverNow={serverNow} />
+      {/* No serverNow on this ISR page — a cached render time would inject up
+          to `revalidate` seconds of artificial clock skew; client clocks are
+          the better reference here. */}
+      <ClosingSoonRail items={closingSoon} />
 
       {/* Trust Strip — first-party platform proof */}
       <section className="border-b border-border/50">

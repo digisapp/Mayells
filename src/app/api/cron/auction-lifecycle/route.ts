@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { db } from '@/db';
 import { auctions, auctionLots, lots, bids, maxBids, consignments, users, invoices, automationSettings } from '@/db/schema';
-import { eq, lte, and, or, inArray, desc, asc } from 'drizzle-orm';
+import { eq, lte, and, or, inArray, desc, asc, isNull, gt } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
 import { openAuctionLots } from '@/lib/bidding/lifecycle';
 import { sealLotForSettlement, settlingKeyFor } from '@/lib/bidding/bid-engine';
 import { notifyWatchersOfEndingLots } from '@/lib/bidding/ending-soon';
 import { sendInvoiceNotification } from '@/lib/email/notifications';
 import { redis } from '@/lib/redis';
+import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 
 // Large auctions can take a while to settle; allow the full Vercel budget.
@@ -73,6 +74,7 @@ async function runLifecycle() {
     relistedToGallery: 0,
     returnedToSeller: 0,
     markedOverdue: 0,
+    invoiceEmailsRetried: 0,
     endingSoonEmailed: 0,
     errors: [] as string[],
   };
@@ -290,6 +292,13 @@ async function runLifecycle() {
                     accessToken: settlement.invoice.accessToken,
                   });
                 }
+                // Stamp only after a successful send (or when there is no
+                // address to send to) — an unstamped pending invoice is
+                // retried by the sweep below on the next tick.
+                await db
+                  .update(invoices)
+                  .set({ emailSentAt: now, updatedAt: now })
+                  .where(eq(invoices.id, settlement.invoice.id));
               } catch (err) {
                 results.errors.push(`Failed to email invoice for lot ${al.lotId}: ${err}`);
               }
@@ -328,6 +337,31 @@ async function runLifecycle() {
       }
     }
 
+    // 2b. Flag live auctions stuck in limbo: a live sale with no scheduled end
+    // whose every lot has passed its (fallback) close time stops accepting
+    // bids but is never selected for settlement — only the auctioneer's End
+    // button moves it. Surface it loudly instead of letting it sit unnoticed.
+    try {
+      const liveNoEnd = await db
+        .select({ id: auctions.id, title: auctions.title })
+        .from(auctions)
+        .where(and(eq(auctions.status, 'live'), isNull(auctions.biddingEndsAt)));
+      for (const liveAuction of liveNoEnd) {
+        const [stillOpen] = await db
+          .select({ id: auctionLots.id })
+          .from(auctionLots)
+          .where(and(eq(auctionLots.auctionId, liveAuction.id), gt(auctionLots.closingAt, now)))
+          .limit(1);
+        if (!stillOpen) {
+          const msg = `Live auction ${liveAuction.id} ("${liveAuction.title}") has every lot past its close but was never ended — settle it via the live console End button`;
+          results.errors.push(msg);
+          logger.error(msg);
+        }
+      }
+    } catch (err) {
+      results.errors.push(`Failed to check for stranded live auctions: ${err}`);
+    }
+
     // 3. Flip unpaid invoices past their due date to 'overdue'.
     try {
       const overdue = await db
@@ -340,6 +374,52 @@ async function runLifecycle() {
       results.errors.push(`Failed to mark overdue invoices: ${err}`);
     }
 
+    // 3b. Retry invoice emails that never went out (send failed, or the run
+    // died between the settlement commit and the send). Unpaid + unstamped =
+    // the buyer has no pay link; without this sweep the idempotent settle
+    // skip means nothing would ever retry.
+    try {
+      const unsent = await db
+        .select({
+          id: invoices.id,
+          invoiceNumber: invoices.invoiceNumber,
+          totalAmount: invoices.totalAmount,
+          dueDate: invoices.dueDate,
+          accessToken: invoices.accessToken,
+          buyerEmail: users.email,
+          lotTitle: lots.title,
+        })
+        .from(invoices)
+        .innerJoin(users, eq(users.id, invoices.buyerId))
+        .innerJoin(lots, eq(lots.id, invoices.lotId))
+        .where(and(inArray(invoices.status, ['pending', 'overdue']), isNull(invoices.emailSentAt)))
+        .limit(50);
+
+      for (const inv of unsent) {
+        try {
+          if (inv.buyerEmail) {
+            await sendInvoiceNotification({
+              email: inv.buyerEmail,
+              lotTitle: inv.lotTitle,
+              invoiceNumber: inv.invoiceNumber,
+              totalAmount: inv.totalAmount,
+              dueDate: inv.dueDate,
+              accessToken: inv.accessToken,
+            });
+          }
+          await db
+            .update(invoices)
+            .set({ emailSentAt: now, updatedAt: now })
+            .where(eq(invoices.id, inv.id));
+          results.invoiceEmailsRetried++;
+        } catch (err) {
+          results.errors.push(`Retry of invoice email ${inv.invoiceNumber} failed: ${err}`);
+        }
+      }
+    } catch (err) {
+      results.errors.push(`Failed to sweep unsent invoice emails: ${err}`);
+    }
+
     // 4. Email watchlist "closing soon" alerts (once per watched lot).
     try {
       const endingSoon = await notifyWatchersOfEndingLots(now, 60);
@@ -349,6 +429,16 @@ async function runLifecycle() {
       }
     } catch (err) {
       results.errors.push(`Failed to send ending-soon alerts: ${err}`);
+    }
+
+    // Anything that opened, settled, or relisted changed what the public
+    // catalog shows — refresh the ISR caches now rather than waiting out the
+    // revalidate window.
+    if (
+      results.opened + results.closed + results.lotsSettled +
+      results.relistedToGallery + results.returnedToSeller > 0
+    ) {
+      revalidatePublicCatalog();
     }
 
     return NextResponse.json({
@@ -410,9 +500,18 @@ async function relistUnsoldLot(
 
     return 'relisted';
   } else {
-    // No price to relist at — mark as unsold, return to seller
+    // No price to relist at — mark as unsold, return to seller. Zero the
+    // denormalized bid state like the relist branch does: a later re-auction
+    // of this lot must not display the old sale's current bid / bidder, and
+    // the upward-only guard in the bid engine would otherwise block a lower
+    // fresh start from ever correcting it.
     await executor.update(lots).set({
       status: 'unsold',
+      currentBidAmount: 0,
+      currentBidderId: null,
+      bidCount: 0,
+      winnerId: null,
+      hammerPrice: null,
       updatedAt: now,
     }).where(eq(lots.id, lot.id));
 

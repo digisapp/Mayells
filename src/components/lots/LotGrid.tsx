@@ -2,7 +2,7 @@ import { LotCard } from './LotCard';
 import type { Lot } from '@/db/schema/lots';
 
 interface LotGridProps {
-  lots: Lot[];
+  lots: (Lot & { auctionSlug?: string | null })[];
   auctionSlug?: string;
   columns?: 2 | 3 | 4;
   isGallery?: boolean;

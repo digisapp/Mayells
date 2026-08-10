@@ -6,6 +6,7 @@ import { auctions, users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { auctionUpdateSchema } from '@/lib/validation/schemas';
 import { openAuctionLots } from '@/lib/bidding/lifecycle';
+import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 
 export async function GET(
@@ -117,6 +118,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    revalidatePublicCatalog(updated.slug);
     return NextResponse.json({ data: updated });
   } catch (error) {
     logger.error('Update auction error', error);
@@ -155,6 +157,7 @@ export async function DELETE(
     }
 
     await db.delete(auctions).where(eq(auctions.id, auctionId));
+    revalidatePublicCatalog();
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error('Delete auction error', error);

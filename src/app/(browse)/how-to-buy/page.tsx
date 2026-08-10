@@ -1,4 +1,5 @@
-export const dynamic = 'force-dynamic';
+// Marketing/FAQ content with one trivial query — cache for an hour.
+export const revalidate = 3600;
 
 import Link from 'next/link';
 import { Monitor, Phone, FileText, ArrowRight, ExternalLink } from 'lucide-react';

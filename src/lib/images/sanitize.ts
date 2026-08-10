@@ -9,7 +9,6 @@ const FORMAT_MIME: Record<string, string> = {
   jpg: 'image/jpeg',
   png: 'image/png',
   webp: 'image/webp',
-  avif: 'image/avif',
 };
 
 /**
@@ -31,24 +30,29 @@ export async function stripImageMetadata(
     const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
     const img = sharp(buf, { failOn: 'none' });
     const meta = await img.metadata();
-    const mime = meta.format ? FORMAT_MIME[meta.format] : undefined;
+    // sharp ≥0.35 reports AVIF files as format 'heif' with av1 compression
+    // (there is no 'avif' FormatEnum key anymore). Plain HEIC (hevc) still
+    // falls through to the null return below, as before.
+    const isAvif = meta.format === 'heif' && meta.compression === 'av1';
+    const mime = isAvif ? 'image/avif' : meta.format ? FORMAT_MIME[meta.format] : undefined;
     if (!mime) return null;
     if (!meta.exif && !meta.xmp && !meta.iptc) return null;
 
     const rotated = img.rotate(); // sharp output drops metadata by default
     let out: Buffer;
-    switch (meta.format) {
-      case 'png':
-        out = await rotated.png().toBuffer();
-        break;
-      case 'webp':
-        out = await rotated.webp({ quality: 90 }).toBuffer();
-        break;
-      case 'avif':
-        out = await rotated.avif({ quality: 60 }).toBuffer();
-        break;
-      default:
-        out = await rotated.jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+    if (isAvif) {
+      out = await rotated.avif({ quality: 60 }).toBuffer();
+    } else {
+      switch (meta.format) {
+        case 'png':
+          out = await rotated.png().toBuffer();
+          break;
+        case 'webp':
+          out = await rotated.webp({ quality: 90 }).toBuffer();
+          break;
+        default:
+          out = await rotated.jpeg({ quality: 90, mozjpeg: true }).toBuffer();
+      }
     }
     return { buffer: out, contentType: mime };
   } catch {

@@ -18,6 +18,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
   max: 10,
   idleTimeoutMillis: 20_000, // release idle sockets before the pooler drops them
+  allowExitOnIdle: true, // don't let idle sockets pin a frozen serverless instance
   connectionTimeoutMillis: 10_000, // fail fast when a connection can't be made
   keepAlive: true,
 });

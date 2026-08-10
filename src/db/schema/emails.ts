@@ -64,6 +64,9 @@ export const emails = pgTable('emails', {
   index('emails_message_id_idx').on(table.messageId),
   index('emails_created_at_idx').on(table.createdAt),
   index('emails_user_id_idx').on(table.userId),
+  // Email delete re-parents replies by in_reply_to_id — without this it's a
+  // table scan per delete.
+  index('emails_in_reply_to_idx').on(table.inReplyToId),
 ]);
 
 export type Email = typeof emails.$inferSelect;

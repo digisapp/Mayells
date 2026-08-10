@@ -3,6 +3,9 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   images: {
+    // Serve AVIF where the browser supports it (typically 20-30% smaller than
+    // WebP for catalog photography), falling back to WebP.
+    formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       {
         protocol: 'https',

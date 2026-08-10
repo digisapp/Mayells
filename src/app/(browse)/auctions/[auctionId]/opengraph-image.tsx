@@ -36,7 +36,6 @@ export default async function OGImage({ params }: { params: Promise<{ auctionId:
       >
         {/* Cover image */}
         {auction?.coverImageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={auction.coverImageUrl}
             alt=""

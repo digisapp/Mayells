@@ -36,6 +36,32 @@ const emailDeleteSchema = z.object({
 
 const PAGE_SIZE = 30;
 
+// Slim header projection for the inbox list and thread views. Full bodies, AI
+// drafts, and attachment metadata can be multi-MB per page — the UI fetches
+// them on demand from GET /api/admin/emails/[id] when a row is expanded.
+const listColumns = {
+  id: emails.id,
+  direction: emails.direction,
+  status: emails.status,
+  fromEmail: emails.fromEmail,
+  fromName: emails.fromName,
+  toEmail: emails.toEmail,
+  toName: emails.toName,
+  subject: emails.subject,
+  inReplyToId: emails.inReplyToId,
+  threadId: emails.threadId,
+  userId: emails.userId,
+  aiAutoSent: emails.aiAutoSent,
+  aiCategory: emails.aiCategory,
+  aiConfidence: emails.aiConfidence,
+  aiSummary: emails.aiSummary,
+  readAt: emails.readAt,
+  createdAt: emails.createdAt,
+  preview: sql<string>`left(coalesce(${emails.bodyText}, ''), 200)`,
+  // CASE guards jsonb_array_length so a null or non-array value can't throw
+  hasAttachments: sql<boolean>`coalesce(case when jsonb_typeof(${emails.attachments}) = 'array' then jsonb_array_length(${emails.attachments}) > 0 end, false)`,
+};
+
 async function requireAdmin() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -61,7 +87,7 @@ export async function GET(req: NextRequest) {
     // Thread view: fetch all emails in a conversation
     if (threadId) {
       const threadEmails = await db
-        .select()
+        .select(listColumns)
         .from(emails)
         .where(or(eq(emails.id, threadId), eq(emails.threadId, threadId)))
         .orderBy(emails.createdAt);
@@ -96,7 +122,7 @@ export async function GET(req: NextRequest) {
 
     const [data, countResult, unreadResult] = await Promise.all([
       db
-        .select()
+        .select(listColumns)
         .from(emails)
         .where(whereClause)
         .orderBy(desc(emails.createdAt))

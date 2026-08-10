@@ -201,10 +201,12 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
   // of re-running the Redis eval — which would either raise the minimum for
   // everyone or return ALREADY_HIGH_BIDDER for a bid that actually succeeded.
   if (idempotencyKey) {
+    // Scoped to this bidder: a colliding or leaked key must never return
+    // another bidder's row as "your bid".
     const [existing] = await db
       .select()
       .from(bids)
-      .where(eq(bids.idempotencyKey, idempotencyKey))
+      .where(and(eq(bids.idempotencyKey, idempotencyKey), eq(bids.bidderId, bidderId)))
       .limit(1);
     if (existing) {
       return { success: true, bid: existing };
@@ -318,34 +320,51 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
     throw dbError;
   }
 
-  // Step 3: Anti-snipe check
-  const antiSnipeResult = await checkAndExtendAuction(
-    lotId,
-    now,
-    antiSnipeSettings,
-  );
+  // Steps 3–4 run AFTER the bid committed. A throw here must not surface as a
+  // failure: the bid stands, and a 500 would make the client retry with a
+  // fresh idempotency key only to hit ALREADY_HIGH_BIDDER. Callers rely on
+  // this guarantee — the bids route treats any placeBid throw as "no bid
+  // landed" and rolls back the armed proxy max.
 
-  // Update Postgres closing time if extended. Scope to THIS auction — a
-  // relisted lot can appear in more than one auction row, and updating by
-  // lotId alone would clobber another auction's closingAt.
-  if (antiSnipeResult.extended && antiSnipeResult.newCloseTime) {
-    await db
-      .update(auctionLots)
-      .set({ closingAt: new Date(antiSnipeResult.newCloseTime * 1000) })
-      .where(and(eq(auctionLots.lotId, lotId), eq(auctionLots.auctionId, auctionId)));
+  // Step 3: Anti-snipe check (best-effort past this point)
+  let antiSnipeResult: Awaited<ReturnType<typeof checkAndExtendAuction>> = { extended: false };
+  try {
+    antiSnipeResult = await checkAndExtendAuction(lotId, now, antiSnipeSettings);
 
-    // Mark bid as having triggered extension
-    await db
-      .update(bids)
-      .set({ triggeredExtension: true })
-      .where(eq(bids.id, newBid.id));
+    // Update Postgres closing time if extended. Scope to THIS auction — a
+    // relisted lot can appear in more than one auction row, and updating by
+    // lotId alone would clobber another auction's closingAt.
+    if (antiSnipeResult.extended && antiSnipeResult.newCloseTime) {
+      await db
+        .update(auctionLots)
+        .set({ closingAt: new Date(antiSnipeResult.newCloseTime * 1000) })
+        .where(and(eq(auctionLots.lotId, lotId), eq(auctionLots.auctionId, auctionId)));
+
+      // Mark bid as having triggered extension
+      await db
+        .update(bids)
+        .set({ triggeredExtension: true })
+        .where(eq(bids.id, newBid.id));
+    }
+  } catch (err) {
+    // Redis holds the authoritative (possibly extended) close time; the
+    // settlement fence re-checks it, so a missed PG mirror only affects
+    // display until the next bid or tick.
+    logger.error('Post-commit anti-snipe step failed for a landed bid', err, { lotId, auctionId });
   }
 
   // Step 4: Process max bids (proxy bidding). Only the originating bid drives
   // resolution; proxy counter-bids it places pass processProxies=false so the
   // war runs as one bounded loop rather than unbounded recursion.
-  if (processProxies) {
-    await runProxyResolution(lotId, auctionId, bidderId, amount, antiSnipeSettings, startingBid);
+  try {
+    if (processProxies) {
+      await runProxyResolution(lotId, auctionId, bidderId, amount, antiSnipeSettings, startingBid);
+    }
+  } catch (err) {
+    // The manual bid stands; an interrupted proxy war resumes on the next
+    // incoming bid (maxes stay armed). Log loudly — this is the signal that
+    // a standing rival max may not have fired yet.
+    logger.error('Proxy resolution failed after committed bid', err, { lotId, auctionId });
   }
 
   void track('bid_placed', {
@@ -486,6 +505,41 @@ export async function initializeLotBidState(lotId: string, closeTime: Date, star
   // still seeds those fresh.
   await redis.set(currentBidKey, { amount: 0, bidderId: '', timestamp: 0, startingBid }, { nx: true });
   await redis.set(closeTimeKey, Math.floor(closeTime.getTime() / 1000), { nx: true });
+}
+
+/**
+ * Batch variant of initializeLotBidState: seeds every lot's Redis state in a
+ * single pipelined round trip (a 300-lot sale is 1 Upstash call instead of
+ * 600 sequential ones).
+ *
+ * `fresh` entries (the lot's status just transitioned to in_auction, so no
+ * live bid can exist yet) OVERWRITE their keys and drop any settling seal —
+ * this repairs stale, TTL-less keys left behind if a previous settlement's
+ * Redis cleanup failed, which would otherwise make a re-auctioned lot
+ * permanently unbiddable (the NX seed would keep the old, already-past close
+ * time). Non-fresh entries (re-entry on a lot that was already in_auction)
+ * keep the NX semantics documented above so a live bid state is never reset.
+ */
+export async function initializeLotBidStates(
+  entries: Array<{ lotId: string; closeTime: Date; startingBid: number; fresh: boolean }>,
+): Promise<void> {
+  if (entries.length === 0) return;
+  const pipeline = redis.pipeline();
+  for (const entry of entries) {
+    const currentBidKey = `bid:lot:${entry.lotId}:current`;
+    const closeTimeKey = `bid:lot:${entry.lotId}:close_time`;
+    const state = { amount: 0, bidderId: '', timestamp: 0, startingBid: entry.startingBid };
+    const closeSeconds = Math.floor(entry.closeTime.getTime() / 1000);
+    if (entry.fresh) {
+      pipeline.set(currentBidKey, state);
+      pipeline.set(closeTimeKey, closeSeconds);
+      pipeline.del(settlingKeyFor(entry.lotId));
+    } else {
+      pipeline.set(currentBidKey, state, { nx: true });
+      pipeline.set(closeTimeKey, closeSeconds, { nx: true });
+    }
+  }
+  await pipeline.exec();
 }
 
 export function settlingKeyFor(lotId: string): string {

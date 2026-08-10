@@ -12,7 +12,8 @@ export interface ClosingSoonItem {
 
 interface ClosingSoonRailProps {
   items: ClosingSoonItem[];
-  serverNow: number;
+  /** Omit on cached/ISR pages — a stale render timestamp is worse than the client clock. */
+  serverNow?: number;
 }
 
 export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {

@@ -17,10 +17,17 @@ interface AntiSnipeResult {
 // call removes the race and guarantees the close time is monotonic.
 //
 // KEYS[1] = close time key
+// KEYS[2] = settling (settlement seal) key
 // ARGV[1] = bid timestamp (unix secs)
 // ARGV[2] = anti-snipe window (secs)
 // ARGV[3] = anti-snipe extension (secs)
+//
+// The seal check mirrors the bid gate: once settlement has sealed the lot, a
+// bid that squeaked through pre-seal must not push the close time forward —
+// otherwise a failed settlement attempt would defer on the extended close
+// while the seal still rejects every bid, blacking out the lot's final window.
 const EXTEND_CLOSE_TIME_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return cjson.encode({extended=false}) end
 local raw = redis.call('GET', KEYS[1])
 if not raw then return cjson.encode({extended=false}) end
 local closeTime = tonumber(raw)
@@ -43,9 +50,13 @@ export async function checkAndExtendAuction(
 
   const closeTimeKey = `bid:lot:${lotId}:close_time`;
 
+  // Same key bid-engine's settlingKeyFor() builds — inlined to avoid a
+  // circular import between anti-snipe and bid-engine.
+  const settlingKey = `bid:lot:${lotId}:settling`;
+
   const raw = await redis.eval(
     EXTEND_CLOSE_TIME_LUA,
-    [closeTimeKey],
+    [closeTimeKey, settlingKey],
     [
       bidTimestamp.toString(),
       (settings.antiSnipeWindowMinutes * 60).toString(),

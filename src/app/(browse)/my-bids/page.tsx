@@ -89,7 +89,6 @@ export default async function MyBidsPage() {
   const invoiceByLot = new Map(invoiceRows.map((i) => [i.lotId, i]));
 
   // Server renders once per request — authoritative time for the countdowns.
-  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
   const active: Row[] = [];
   const won: Row[] = [];

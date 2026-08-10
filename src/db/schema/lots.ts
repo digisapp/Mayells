@@ -109,6 +109,9 @@ export const lots = pgTable('lots', {
   index('lots_current_bidder_idx').on(table.currentBidderId),
   index('lots_winner_idx').on(table.winnerId),
   index('lots_consignment_idx').on(table.consignmentId),
+  // Default "newest" ordering on public browse + admin lots lists, and the
+  // saved-search watermark predicate.
+  index('lots_created_at_idx').on(table.createdAt),
 ]);
 
 export const lotsRelations = relations(lots, ({ one, many }) => ({

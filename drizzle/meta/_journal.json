@@ -127,6 +127,13 @@
       "when": 1785625117583,
       "tag": "0017_email_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786367334111,
+      "tag": "0018_perf_indexes_invoice_email",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
-export const dynamic = 'force-dynamic';
+// ISR per category path; admin lot mutations revalidate on demand.
+export const revalidate = 60;
 
 import { cache } from 'react';
 import type { Metadata } from 'next';
@@ -6,6 +7,7 @@ import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { eq, desc, and, inArray } from 'drizzle-orm';
+import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
 import { LotGrid } from '@/components/lots/LotGrid';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
@@ -50,8 +52,8 @@ export default async function CategoryPage({
 
   if (!category) notFound();
 
-  const categoryLots = await db
-    .select()
+  const rows = await db
+    .select({ lot: lots, auctionSlug: bestAuctionSlugSql })
     .from(lots)
     // Public listing — never expose draft / pending / withdrawn / unsold lots.
     .where(and(
@@ -60,6 +62,8 @@ export default async function CategoryPage({
     ))
     .orderBy(desc(lots.createdAt))
     .limit(48);
+
+  const categoryLots = rows.map(({ lot, auctionSlug }) => ({ ...lot, auctionSlug }));
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">

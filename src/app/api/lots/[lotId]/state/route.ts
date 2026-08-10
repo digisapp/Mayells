@@ -14,7 +14,7 @@ import { logger } from '@/lib/logger';
  * device clock skew. No bidder identities are exposed.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ lotId: string }> },
 ) {
   try {
@@ -55,14 +55,20 @@ export async function GET(
 
     // Auth-aware: derive whether the caller is the current high bidder WITHOUT
     // ever exposing bidder ids publicly (bidder identities stay anonymized).
-    // Only pay the auth lookup when a session cookie is actually present.
+    // Anonymous polls (no session cookie) skip auth entirely, and signed-in
+    // polls use getClaims() — locally-verified JWT claims — instead of a
+    // Supabase Auth REST round trip on every 6-second tick.
     let isHighBidder: boolean | undefined;
-    try {
-      const supabase = await createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) isHighBidder = row.currentBidderId === user.id;
-    } catch {
-      isHighBidder = undefined;
+    const hasAuthCookie = req.cookies.getAll().some((c) => c.name.startsWith('sb-'));
+    if (hasAuthCookie) {
+      try {
+        const supabase = await createClient();
+        const { data } = await supabase.auth.getClaims();
+        const viewerId = data?.claims?.sub;
+        if (viewerId) isHighBidder = row.currentBidderId === viewerId;
+      } catch {
+        isHighBidder = undefined;
+      }
     }
 
     const startingBid = row.startingBid ?? 0;

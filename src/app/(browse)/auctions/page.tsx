@@ -1,4 +1,5 @@
-export const dynamic = 'force-dynamic';
+// ISR: cacheable at the CDN; admin auction mutations revalidate on demand.
+export const revalidate = 60;
 
 import { db } from '@/db';
 import { auctions } from '@/db/schema';
@@ -28,7 +29,10 @@ export default async function AuctionsPage() {
     // 'completed', so omitting it made the entire past-sale archive vanish
     // within one cron tick of an auction ending.
     .where(inArray(auctions.status, ['scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed']))
-    .orderBy(desc(auctions.biddingStartsAt));
+    .orderBy(desc(auctions.biddingStartsAt))
+    // Bound the archive: open/upcoming sales are always few, so the cap only
+    // trims the oldest past sales once the archive grows beyond ~100 entries.
+    .limit(100);
 
   const openAuctions = allAuctions.filter((a) => a.status === 'open' || a.status === 'live');
   const upcomingAuctions = allAuctions.filter((a) => a.status === 'scheduled' || a.status === 'preview');

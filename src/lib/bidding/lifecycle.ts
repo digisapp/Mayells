@@ -1,7 +1,7 @@
 import { db } from '@/db';
 import { auctions, auctionLots, lots } from '@/db/schema';
-import { eq, asc, gt, and } from 'drizzle-orm';
-import { initializeLotBidState } from './bid-engine';
+import { eq, asc, gt, and, inArray, ne } from 'drizzle-orm';
+import { initializeLotBidStates } from './bid-engine';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
@@ -51,26 +51,48 @@ export async function openAuctionLots(auction: Auction, now: Date = new Date()):
     .where(eq(auctionLots.auctionId, auction.id))
     .orderBy(asc(auctionLots.lotNumber));
 
+  if (aLots.length === 0) return 0;
+
   const intervalSeconds = auction.lotClosingIntervalSeconds ?? 0;
-  let opened = 0;
+  const lotIds = aLots.map(({ auctionLot: al }) => al.lotId);
 
-  for (const [index, { auctionLot: al, lot }] of aLots.entries()) {
-    await db
-      .update(lots)
-      .set({ status: 'in_auction', updatedAt: now })
-      .where(eq(lots.id, al.lotId));
+  // Flip every lot in one statement. RETURNING identifies the lots that
+  // actually transitioned ("fresh" opens — no live bids can exist for those)
+  // vs. lots already in_auction from a partially-completed earlier run, which
+  // must keep their live Redis state (NX seed below).
+  const flipped = await db
+    .update(lots)
+    .set({ status: 'in_auction', updatedAt: now })
+    .where(and(inArray(lots.id, lotIds), ne(lots.status, 'in_auction')))
+    .returning({ id: lots.id });
+  const freshIds = new Set(flipped.map((row) => row.id));
 
-    const closingAt = new Date(baseCloseMs + index * intervalSeconds * 1000);
-    await db
-      .update(auctionLots)
-      .set({ closingAt })
-      .where(eq(auctionLots.id, al.id));
-
-    await initializeLotBidState(al.lotId, closingAt, lot.startingBid ?? 0);
-    opened++;
+  // Staggered close times. Kept as per-row Drizzle updates (identical Date
+  // serialization to the rest of the codebase) but pool-parallel instead of
+  // sequential — a 300-lot sale finishes in a couple of seconds instead of
+  // eating most of the cron's budget.
+  const CHUNK = 10;
+  for (let i = 0; i < aLots.length; i += CHUNK) {
+    await Promise.all(
+      aLots.slice(i, i + CHUNK).map(({ auctionLot: al }, offset) => {
+        const index = i + offset;
+        const closingAt = new Date(baseCloseMs + index * intervalSeconds * 1000);
+        return db.update(auctionLots).set({ closingAt }).where(eq(auctionLots.id, al.id));
+      }),
+    );
   }
 
-  return opened;
+  // Seed all Redis bid states in one pipelined round trip.
+  await initializeLotBidStates(
+    aLots.map(({ auctionLot: al, lot }, index) => ({
+      lotId: al.lotId,
+      closeTime: new Date(baseCloseMs + index * intervalSeconds * 1000),
+      startingBid: lot.startingBid ?? 0,
+      fresh: freshIds.has(al.lotId),
+    })),
+  );
+
+  return aLots.length;
 }
 
 /**
@@ -88,20 +110,25 @@ export async function forceCloseAuctionLots(auctionId: string, now: Date = new D
     .from(auctionLots)
     .where(and(eq(auctionLots.auctionId, auctionId), gt(auctionLots.closingAt, now)));
 
+  if (openLots.length === 0) return;
+
   const nowSeconds = Math.floor(now.getTime() / 1000);
 
-  for (const al of openLots) {
-    await db
-      .update(auctionLots)
-      .set({ closingAt: now })
-      .where(eq(auctionLots.id, al.id));
+  // One set-based Postgres update + one pipelined Redis round trip.
+  await db
+    .update(auctionLots)
+    .set({ closingAt: now })
+    .where(inArray(auctionLots.id, openLots.map((al) => al.id)));
 
-    try {
-      await redis.set(`bid:lot:${al.lotId}:close_time`, nowSeconds);
-    } catch (err) {
-      logger.error('Failed to collapse Redis close time on early end', err, {
-        lotId: al.lotId,
-      });
+  try {
+    const pipeline = redis.pipeline();
+    for (const al of openLots) {
+      pipeline.set(`bid:lot:${al.lotId}:close_time`, nowSeconds);
     }
+    await pipeline.exec();
+  } catch (err) {
+    logger.error('Failed to collapse Redis close times on early end', err, {
+      auctionId,
+    });
   }
 }

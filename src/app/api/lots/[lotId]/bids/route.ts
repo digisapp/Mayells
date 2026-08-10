@@ -11,6 +11,7 @@ import { getBidderVerification, checkBidAllowed } from '@/lib/bidding/verificati
 import { UUID_RE, biddableAuctionOrder } from '@/lib/bidding/lot-resolution';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-ip';
+import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 
 // Map bid-engine error codes to HTTP responses
@@ -126,13 +127,13 @@ export async function POST(
     }
 
     // Record/refresh the user's max bid before placing, so proxy bidding
-    // can resolve competing max bids in this same call. No unique
-    // constraint exists on (lotId, bidderId) yet, so select-then-write.
-    //
-    // Capture the prior state so we can ROLL BACK if the manual bid ends up
-    // rejected — otherwise a bid that returns BID_TOO_LOW / AUCTION_CLOSED
-    // would still leave the user's proxy armed, and it could later win the lot
-    // on their behalf without a single confirmed bid.
+    // can resolve competing max bids in this same call. The prior state is
+    // captured first so we can ROLL BACK if the manual bid ends up rejected —
+    // otherwise a bid that returns BID_TOO_LOW / AUCTION_CLOSED would still
+    // leave the user's proxy armed, and it could later win the lot on their
+    // behalf without a single confirmed bid. The write itself is an upsert on
+    // max_bids_lot_bidder_unique_idx so two concurrent first-time maxes from
+    // the same bidder can't 23505 into a 500.
     let priorMax: { id: string; maxAmount: number; isActive: boolean } | null = null;
     let insertedMaxId: string | null = null;
     if (maxBidAmount !== undefined) {
@@ -144,16 +145,17 @@ export async function POST(
 
       if (existing) {
         priorMax = { id: existing.id, maxAmount: existing.maxAmount, isActive: existing.isActive };
-        await db
-          .update(maxBids)
-          .set({ maxAmount: maxBidAmount, isActive: true, updatedAt: new Date() })
-          .where(eq(maxBids.id, existing.id));
-      } else {
-        const [inserted] = await db
-          .insert(maxBids)
-          .values({ lotId: lot.id, bidderId: user.id, maxAmount: maxBidAmount })
-          .returning({ id: maxBids.id });
-        insertedMaxId = inserted.id;
+      }
+      const [written] = await db
+        .insert(maxBids)
+        .values({ lotId: lot.id, bidderId: user.id, maxAmount: maxBidAmount })
+        .onConflictDoUpdate({
+          target: [maxBids.lotId, maxBids.bidderId],
+          set: { maxAmount: maxBidAmount, isActive: true, updatedAt: new Date() },
+        })
+        .returning({ id: maxBids.id });
+      if (!existing) {
+        insertedMaxId = written.id;
       }
     }
 
@@ -172,23 +174,34 @@ export async function POST(
       }
     };
 
-    const result = await placeBid({
-      lotId: lot.id,
-      auctionId: auction.id,
-      bidderId: user.id,
-      amount,
-      maxBidAmount,
-      bidType: 'manual',
-      idempotencyKey,
-      ipAddress: getClientIp(request),
-      userAgent: request.headers.get('user-agent') || undefined,
-      startingBid: lot.startingBid ?? 0,
-      antiSnipeSettings: {
-        antiSnipeEnabled: auction.antiSnipeEnabled,
-        antiSnipeMinutes: auction.antiSnipeMinutes,
-        antiSnipeWindowMinutes: auction.antiSnipeWindowMinutes,
-      },
-    });
+    let result;
+    try {
+      result = await placeBid({
+        lotId: lot.id,
+        auctionId: auction.id,
+        bidderId: user.id,
+        amount,
+        maxBidAmount,
+        bidType: 'manual',
+        idempotencyKey,
+        ipAddress: getClientIp(request),
+        userAgent: request.headers.get('user-agent') || undefined,
+        startingBid: lot.startingBid ?? 0,
+        antiSnipeSettings: {
+          antiSnipeEnabled: auction.antiSnipeEnabled,
+          antiSnipeMinutes: auction.antiSnipeMinutes,
+          antiSnipeWindowMinutes: auction.antiSnipeWindowMinutes,
+        },
+      });
+    } catch (err) {
+      // placeBid THREW (Redis outage, PG failure) rather than returning a
+      // clean rejection — no bid landed (post-commit steps are caught inside
+      // the engine and never throw), but the max we armed above is live.
+      // Disarm it, or the user could later win via a proxy they never
+      // confirmed. Then rethrow into the standard 500 path.
+      await rollbackMaxBid();
+      throw err;
+    }
 
     if (!result.success) {
       // Raising your own max bid while already the high bidder is a valid
@@ -276,6 +289,10 @@ export async function POST(
         }
       });
     }
+
+    // Refresh the ISR-cached catalog pages so the new current bid shows up
+    // without waiting out the revalidate window. Post-response, best-effort.
+    after(() => revalidatePublicCatalog(auction.slug));
 
     return NextResponse.json(
       {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { shipments, users, shipmentStatusEnum, carrierEnum } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, sql, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 
 const shipmentPatchSchema = z.object({
@@ -15,7 +15,17 @@ const shipmentPatchSchema = z.object({
   trackingUrl: z.string().url('Valid tracking URL required').max(2048).or(z.literal('')).optional(),
 });
 
-export async function GET() {
+const PAGE_SIZE = 50;
+
+// Header summary buckets — also the valid values for the ?status= filter
+const STATUS_GROUPS = {
+  pending: ['pending', 'label_created'],
+  in_transit: ['pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery'],
+  completed: ['delivered', 'returned', 'exception'],
+} as const;
+
+// GET /api/admin/shipments?page=1&status=pending|in_transit|completed
+export async function GET(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -24,16 +34,66 @@ export async function GET() {
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
     if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const items = await db
-      .select({
-        shipment: shipments,
-        seller: { id: users.id, fullName: users.fullName, email: users.email },
-      })
-      .from(shipments)
-      .innerJoin(users, eq(shipments.sellerId, users.id))
-      .orderBy(desc(shipments.createdAt));
+    const page = Math.max(1, parseInt(req.nextUrl.searchParams.get('page') || '1', 10));
+    const offset = (page - 1) * PAGE_SIZE;
+    const statusParam = req.nextUrl.searchParams.get('status');
+    const group = statusParam && statusParam in STATUS_GROUPS
+      ? STATUS_GROUPS[statusParam as keyof typeof STATUS_GROUPS]
+      : undefined;
+    const whereClause = group ? inArray(shipments.status, [...group]) : undefined;
 
-    return NextResponse.json({ data: items });
+    const [items, countResult, statusRows] = await Promise.all([
+      db
+        .select({
+          shipment: {
+            id: shipments.id,
+            status: shipments.status,
+            method: shipments.method,
+            carrier: shipments.carrier,
+            trackingNumber: shipments.trackingNumber,
+            trackingUrl: shipments.trackingUrl,
+            fromCity: shipments.fromCity,
+            fromState: shipments.fromState,
+            toCity: shipments.toCity,
+            toState: shipments.toState,
+            toName: shipments.toName,
+            createdAt: shipments.createdAt,
+          },
+          seller: { id: users.id, fullName: users.fullName, email: users.email },
+        })
+        .from(shipments)
+        .innerJoin(users, eq(shipments.sellerId, users.id))
+        .where(whereClause)
+        .orderBy(desc(shipments.createdAt))
+        .limit(PAGE_SIZE)
+        .offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(shipments).where(whereClause),
+      // Global (not page- or filter-scoped) numbers for the header summary
+      db
+        .select({ status: shipments.status, count: sql<number>`count(*)::int` })
+        .from(shipments)
+        .groupBy(shipments.status),
+    ]);
+
+    const total = countResult[0]?.count ?? 0;
+    const countIn = (statuses: readonly string[]) =>
+      statusRows.reduce((sum, r) => (statuses.includes(r.status) ? sum + r.count : sum), 0);
+    const stats = {
+      pending: countIn(STATUS_GROUPS.pending),
+      inTransit: countIn(STATUS_GROUPS.in_transit),
+      completed: countIn(STATUS_GROUPS.completed),
+    };
+
+    return NextResponse.json({
+      data: items,
+      stats,
+      pagination: {
+        page,
+        pageSize: PAGE_SIZE,
+        total,
+        totalPages: Math.ceil(total / PAGE_SIZE),
+      },
+    });
   } catch (error) {
     logger.error('Admin shipments error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

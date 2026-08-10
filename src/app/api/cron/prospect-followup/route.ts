@@ -6,6 +6,12 @@ import { eq, and, lte, or, isNull, notLike } from 'drizzle-orm';
 import { sendProspectFollowUpEmail } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
 
+// Sequential email sends over a big backlog can exceed the default function
+// timeout; give the run headroom and cap each batch (per-prospect stamping
+// makes the remainder pick up next day).
+export const maxDuration = 300;
+const MAX_PER_RUN = 100;
+
 const CRON_SECRET = process.env.CRON_SECRET;
 
 // Marker appended to notes when an upload follow-up is sent — used to exclude
@@ -59,7 +65,8 @@ async function handler(request: NextRequest) {
           eq(sellerProspects.status, 'new'),
           lte(sellerProspects.createdAt, followUpCutoff),
         ),
-      );
+      )
+      .limit(MAX_PER_RUN);
 
     for (const prospect of newProspects) {
       if (!prospect.email) continue;
@@ -114,7 +121,8 @@ async function handler(request: NextRequest) {
             notLike(sellerProspects.notes, `%${UPLOAD_FOLLOWUP_MARKER}%`),
           ),
         ),
-      );
+      )
+      .limit(MAX_PER_RUN);
 
     // Deduplicate by prospect ID (a prospect may have multiple upload links)
     const seen = new Set<string>();

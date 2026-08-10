@@ -371,11 +371,22 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<HandlerResul
         .returning({ lotId: invoices.lotId });
 
       // The sale is unwound — release the lot so it isn't stuck 'sold' with a
-      // winner. Mark it 'unsold' so an admin can relist/re-auction it.
+      // winner. Mark it 'unsold' so an admin can relist/re-auction it. Zero
+      // the denormalized bid state too: a re-auction must not display the old
+      // sale's current bid/bidder, and the engine's upward-only guard would
+      // block a lower fresh start from correcting it.
       if (refundedInvoice.length > 0) {
         await db
           .update(lots)
-          .set({ status: 'unsold', winnerId: null, hammerPrice: null, updatedAt: new Date() })
+          .set({
+            status: 'unsold',
+            winnerId: null,
+            hammerPrice: null,
+            currentBidAmount: 0,
+            currentBidderId: null,
+            bidCount: 0,
+            updatedAt: new Date(),
+          })
           .where(eq(lots.id, refundedInvoice[0].lotId));
       }
 

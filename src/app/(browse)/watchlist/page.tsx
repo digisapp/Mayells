@@ -46,7 +46,6 @@ export default async function WatchlistPage() {
     .orderBy(desc(watchlist.createdAt));
 
   // Server renders once per request — authoritative time for countdown skew.
-  // eslint-disable-next-line react-hooks/purity
   const serverNow = Date.now();
 
   return (

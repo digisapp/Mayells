@@ -1,26 +1,39 @@
-export const dynamic = 'force-dynamic';
+// ISR per auction path; new bids and admin mutations revalidate on demand so
+// current-bid figures on the catalog stay near-live without per-request renders.
+export const revalidate = 60;
 
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { auctions, auctionLots, lots } from '@/db/schema';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, or } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { Calendar, Clock, Gavel, ExternalLink } from 'lucide-react';
 import { generateAuctionJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
-import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
-async function getAuction(auctionId: string) {
-  let [auction] = await db.select().from(auctions).where(eq(auctions.slug, auctionId)).limit(1);
-  if (!auction) {
-    [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
-  }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// cache(): generateMetadata and the page body share one lookup per request.
+// Single query instead of a slug-then-id serial fallback (the id comparison is
+// only attempted for UUID-shaped params — a non-UUID string would make the
+// uuid-column cast throw).
+const getAuction = cache(async (auctionId: string) => {
+  const [auction] = await db
+    .select()
+    .from(auctions)
+    .where(
+      UUID_RE.test(auctionId)
+        ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId))
+        : eq(auctions.slug, auctionId),
+    )
+    .limit(1);
   return auction;
-}
+});
 
 export async function generateMetadata({ params }: { params: Promise<{ auctionId: string }> }): Promise<Metadata> {
   const { auctionId } = await params;
@@ -62,7 +75,9 @@ export default async function AuctionDetailPage({
   const auction = await getAuction(auctionId);
   if (!auction) notFound();
 
-  void track('auction_viewed', { auctionId: auction.id, status: auction.status, lotCount: auction.lotCount ?? 0 });
+  // NOTE: no server-side track() here — on an ISR page it would fire once per
+  // revalidation, not per view, and report misleading counts. Vercel Analytics'
+  // client script already records these page views.
 
   const auctionLotsResult = await db
     .select({ lot: lots, auctionLot: auctionLots })
@@ -133,10 +148,10 @@ export default async function AuctionDetailPage({
           {auction.biddingEndsAt && auction.status === 'open' && (
             <span className="flex items-center gap-1.5">
               <Clock className="h-4 w-4" />
+              {/* No serverNow: this page is ISR-cached, so a render timestamp
+                  would inject stale skew; the client clock is the reference. */}
               Closes in: <AuctionCountdown
                 endsAt={new Date(auction.biddingEndsAt)}
-                // eslint-disable-next-line react-hooks/purity
-                serverNow={Date.now()}
                 className="font-medium text-foreground"
               />
             </span>

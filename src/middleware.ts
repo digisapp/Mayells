@@ -51,6 +51,15 @@ const isAdminUser = isAdminProfile;
 
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
+  const pathname = request.nextUrl.pathname;
+  const isAdminScope = pathname.startsWith('/admin');
+
+  // Fast path: anonymous visitor on a public page. No session to refresh and
+  // no role to check — skip creating the Supabase client entirely.
+  const hasAuthCookie = request.cookies.getAll().some((c) => c.name.startsWith('sb-'));
+  if (!hasAuthCookie && !isAdminScope) {
+    return response;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,8 +79,21 @@ export async function middleware(request: NextRequest) {
     },
   );
 
+  // Public pages: middleware's only job is keeping the session fresh (RSC
+  // pages can't write refreshed auth cookies). getClaims() verifies the JWT
+  // locally and refreshes when expired — unlike getUser(), it doesn't pay a
+  // Supabase Auth REST round trip on every signed-in navigation.
+  if (!isAdminScope) {
+    try {
+      await supabase.auth.getClaims();
+    } catch {
+      // Best-effort refresh; per-route handlers still authenticate strictly.
+    }
+    return response;
+  }
+
+  // Admin scope: strict server-side validation.
   const { data: { user } } = await supabase.auth.getUser();
-  const pathname = request.nextUrl.pathname;
 
   // Handle /admin/login — if already logged in as admin, go to /admin
   if (adminAuthRoutes.some((route) => pathname.startsWith(route))) {
@@ -85,17 +107,13 @@ export async function middleware(request: NextRequest) {
   }
 
   // Admin routes: require auth + admin role
-  if (pathname.startsWith('/admin')) {
-    if (!user) {
-      return NextResponse.redirect(new URL('/admin/login', request.url));
-    }
-    const profile = await getUserProfile(user.id);
-    if (!isAdminUser(profile)) {
-      return NextResponse.redirect(new URL('/admin/login', request.url));
-    }
-    return response;
+  if (!user) {
+    return NextResponse.redirect(new URL('/admin/login', request.url));
   }
-
+  const profile = await getUserProfile(user.id);
+  if (!isAdminUser(profile)) {
+    return NextResponse.redirect(new URL('/admin/login', request.url));
+  }
   return response;
 }
 

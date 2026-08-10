@@ -7,15 +7,53 @@ import { createClient } from '@/lib/supabase/server';
 import { auctionSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 
+// Auction statuses the public may see. draft (unannounced plans) and
+// cancelled stay internal.
+const PUBLIC_AUCTION_STATUSES = [
+  'scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed',
+] as const;
+
+type AuctionStatus = (typeof auctions.status.enumValues)[number];
+
+/** Public-safe auction shape: no livekitRoomName or admin user ids. */
+function toPublicAuction(a: typeof auctions.$inferSelect) {
+  const { livekitRoomName, createdById, auctioneerId, ...publicFields } = a;
+  void livekitRoomName; void createdById; void auctioneerId;
+  return publicFields;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
 
+    // Only authenticated admins may list non-public auctions (draft plans,
+    // cancelled sales) or see internal fields.
+    let isAdmin = false;
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const [profile] = await db
+          .select({ role: users.role, isAdmin: users.isAdmin })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .limit(1);
+        isAdmin = isAdminProfile(profile);
+      }
+    } catch {
+      isAdmin = false;
+    }
+
     const conditions = [];
     if (status) {
-      const statuses = status.split(',') as ('draft' | 'scheduled' | 'preview' | 'open' | 'closed')[];
-      conditions.push(inArray(auctions.status, statuses));
+      const requested = status.split(',') as AuctionStatus[];
+      const allowed = isAdmin
+        ? requested
+        : requested.filter((s) => (PUBLIC_AUCTION_STATUSES as readonly string[]).includes(s));
+      conditions.push(inArray(auctions.status, allowed.length > 0 ? allowed : [...PUBLIC_AUCTION_STATUSES]));
+    } else if (!isAdmin) {
+      conditions.push(inArray(auctions.status, [...PUBLIC_AUCTION_STATUSES]));
     }
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -24,9 +62,10 @@ export async function GET(req: NextRequest) {
       .select()
       .from(auctions)
       .where(where)
-      .orderBy(desc(auctions.biddingStartsAt));
+      .orderBy(desc(auctions.biddingStartsAt))
+      .limit(200);
 
-    return NextResponse.json({ data: result });
+    return NextResponse.json({ data: isAdmin ? result : result.map(toPublicAuction) });
   } catch (error) {
     logger.error('Auctions list error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

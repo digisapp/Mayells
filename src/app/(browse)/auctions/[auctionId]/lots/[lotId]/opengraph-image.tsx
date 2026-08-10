@@ -36,7 +36,6 @@ export default async function OGImage({ params }: { params: Promise<{ lotId: str
       >
         {/* Lot image as background */}
         {lot?.primaryImageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={lot.primaryImageUrl}
             alt=""

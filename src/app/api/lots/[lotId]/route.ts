@@ -5,55 +5,10 @@ import { db } from '@/db';
 import { lots, lotImages, bids, users } from '@/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { lotUpdateSchema } from '@/lib/validation/schemas';
+import { toPublicLot } from '@/lib/lots/visibility';
+import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
-import type { Lot, Bid } from '@/db/schema';
-
-/**
- * Public-safe projection of a lot. Excludes auction-integrity and PII fields:
- * reservePrice, sellerId, consignmentId, currentBidderId, winnerId, and
- * internal AI valuation fields.
- */
-function toPublicLot(lot: Lot) {
-  return {
-    id: lot.id,
-    lotNumber: lot.lotNumber,
-    title: lot.title,
-    subtitle: lot.subtitle,
-    description: lot.description,
-    categoryId: lot.categoryId,
-    subcategoryId: lot.subcategoryId,
-    artist: lot.artist,
-    maker: lot.maker,
-    period: lot.period,
-    circa: lot.circa,
-    origin: lot.origin,
-    medium: lot.medium,
-    dimensions: lot.dimensions,
-    weight: lot.weight,
-    condition: lot.condition,
-    conditionNotes: lot.conditionNotes,
-    provenance: lot.provenance,
-    literature: lot.literature,
-    exhibited: lot.exhibited,
-    status: lot.status,
-    saleType: lot.saleType,
-    buyNowPrice: lot.buyNowPrice,
-    estimateLow: lot.estimateLow,
-    estimateHigh: lot.estimateHigh,
-    startingBid: lot.startingBid,
-    currentBidAmount: lot.currentBidAmount,
-    bidCount: lot.bidCount,
-    hammerPrice: lot.hammerPrice,
-    primaryImageUrl: lot.primaryImageUrl,
-    imageCount: lot.imageCount,
-    isFeatured: lot.isFeatured,
-    isHighlight: lot.isHighlight,
-    aiTags: lot.aiTags,
-    slug: lot.slug,
-    createdAt: lot.createdAt,
-    updatedAt: lot.updatedAt,
-  };
-}
+import type { Bid } from '@/db/schema';
 
 /**
  * Public-safe bid history: amount, time, and a stable anonymized bidder
@@ -183,6 +138,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 
+    revalidatePublicCatalog();
     return NextResponse.json({ data: updated });
   } catch (error) {
     logger.error('Update lot error', error);
@@ -221,6 +177,7 @@ export async function DELETE(
     }
 
     await db.delete(lots).where(eq(lots.id, lotId));
+    revalidatePublicCatalog();
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error('Delete lot error', error);

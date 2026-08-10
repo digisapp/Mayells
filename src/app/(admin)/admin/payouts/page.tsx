@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Banknote, CircleDollarSign } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Banknote, CircleDollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface PayoutRow {
   payout: {
@@ -22,6 +23,19 @@ interface PayoutRow {
   invoice: { id: string; invoiceNumber: string; status: string };
 }
 
+interface Pagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+interface PayoutStats {
+  pending: number;
+  pendingNet: number;
+  paid: number;
+}
+
 const statusColors: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
   pending: 'outline',
   paid: 'default',
@@ -30,12 +44,18 @@ const statusColors: Record<string, 'default' | 'secondary' | 'outline' | 'destru
 
 const METHODS = ['wire', 'check', 'other'] as const;
 
+const STATUS_FILTERS = ['all', 'pending', 'paid', 'cancelled'] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+
 function formatCents(cents: number): string {
   return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
 export default function AdminPayoutsPage() {
   const [rows, setRows] = useState<PayoutRow[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 50, total: 0, totalPages: 0 });
+  const [stats, setStats] = useState<PayoutStats>({ pending: 0, pendingNet: 0, paid: 0 });
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [markingId, setMarkingId] = useState<string | null>(null);
@@ -44,18 +64,29 @@ export default function AdminPayoutsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => {
+  const fetchPayouts = useCallback((page: number, status: StatusFilter, silent = false) => {
+    if (!silent) setLoading(true);
     setLoadError(false);
-    fetch('/api/admin/payouts')
+    const params = new URLSearchParams({ page: String(page) });
+    if (status !== 'all') params.set('status', status);
+    fetch(`/api/admin/payouts?${params}`)
       .then(res => {
         if (!res.ok) throw new Error('Failed to load payouts');
         return res.json();
       })
-      .then(data => { setRows(data.data || []); setLoading(false); })
-      .catch(() => { setLoadError(true); setLoading(false); });
-  };
+      .then(data => {
+        setRows(data.data ?? []);
+        if (data.pagination) setPagination(data.pagination);
+        if (data.stats) setStats(data.stats);
+      })
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
+  }, []);
 
-  useEffect(load, []);
+  useEffect(() => {
+    fetchPayouts(pagination.page, statusFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.page, statusFilter]);
 
   const markPaid = async (payoutId: string) => {
     setSaving(true);
@@ -72,7 +103,8 @@ export default function AdminPayoutsPage() {
       } else {
         setMarkingId(null);
         setReference('');
-        load();
+        // Refresh rows and header stats without flashing the skeleton
+        fetchPayouts(pagination.page, statusFilter, true);
       }
     } catch {
       setError('Network error');
@@ -92,10 +124,6 @@ export default function AdminPayoutsPage() {
     );
   }
 
-  const pending = rows.filter(r => r.payout.status === 'pending');
-  const paid = rows.filter(r => r.payout.status === 'paid');
-  const pendingTotal = pending.reduce((sum, r) => sum + r.payout.netAmount, 0);
-
   return (
     <div>
       <div className="flex items-center justify-between mb-8">
@@ -109,13 +137,30 @@ export default function AdminPayoutsPage() {
         <div className="flex gap-4 text-sm">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-yellow-500" />
-            {pending.length} pending · {formatCents(pendingTotal)} owed
+            {stats.pending} pending · {formatCents(stats.pendingNet)} owed
           </span>
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-green-500" />
-            {paid.length} paid
+            {stats.paid} paid
           </span>
         </div>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        {STATUS_FILTERS.map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => { setStatusFilter(s); setPagination(p => ({ ...p, page: 1 })); }}
+            className={`text-xs px-3 py-1.5 rounded-md border transition-colors capitalize ${
+              statusFilter === s
+                ? 'bg-foreground text-background border-foreground'
+                : 'border-border/50 hover:bg-accent/10'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
       </div>
 
       {loadError && (
@@ -124,7 +169,7 @@ export default function AdminPayoutsPage() {
           <p>Failed to load payouts.</p>
           <button
             type="button"
-            onClick={() => { setLoading(true); load(); }}
+            onClick={() => fetchPayouts(pagination.page, statusFilter)}
             className="mt-4 text-xs px-3 py-1.5 rounded-md border border-border/50 hover:bg-accent/10 transition-colors"
           >
             Retry
@@ -135,7 +180,11 @@ export default function AdminPayoutsPage() {
       {!loadError && rows.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <CircleDollarSign className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p>No payouts yet. They appear here once a buyer pays an invoice.</p>
+          <p>
+            {statusFilter === 'all'
+              ? 'No payouts yet. They appear here once a buyer pays an invoice.'
+              : `No ${statusFilter} payouts.`}
+          </p>
         </div>
       )}
 
@@ -241,6 +290,24 @@ export default function AdminPayoutsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm">
+          <p className="text-muted-foreground">
+            Page {pagination.page} of {pagination.totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" disabled={pagination.page <= 1}
+              onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))} className="gap-1">
+              <ChevronLeft className="h-3.5 w-3.5" /> Prev
+            </Button>
+            <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages}
+              onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))} className="gap-1">
+              Next <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       )}
     </div>

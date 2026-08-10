@@ -33,6 +33,11 @@ export const invoices = pgTable('invoices', {
   status: invoiceStatusEnum('status').default('pending').notNull(),
   dueDate: timestamp('due_date').notNull(),
   paidAt: timestamp('paid_at'),
+  // When the buyer's invoice email (with the pay link) was actually sent.
+  // Null on a pending invoice means the send failed or was interrupted — the
+  // lifecycle cron sweeps those and retries, so a buyer can't be stranded
+  // without a pay link.
+  emailSentAt: timestamp('email_sent_at'),
 
   // Stripe
   stripePaymentIntentId: text('stripe_payment_intent_id'),

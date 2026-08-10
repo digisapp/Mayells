@@ -5,7 +5,7 @@ import { lots, lotImages, users } from '@/db/schema';
 import { eq, desc, asc, and, ilike, sql, inArray } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { lotSchema } from '@/lib/validation/schemas';
-import { PUBLIC_LOT_STATUSES } from '@/lib/lots/visibility';
+import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
 import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
@@ -106,7 +106,9 @@ export async function GET(req: NextRequest) {
     ]);
 
     return NextResponse.json({
-      data: result,
+      // Admin callers (lot editor pickers) need the full row; the public gets
+      // the safe projection — no reservePrice, seller/bidder ids, or AI fields.
+      data: isAdmin ? result : result.map(toPublicLot),
       total: Number(countResult[0].count),
       limit,
       offset,

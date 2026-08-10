@@ -3,11 +3,30 @@ import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { auctionLots, lots, auctions, users } from '@/db/schema';
-import { eq, asc, sql } from 'drizzle-orm';
+import { eq, asc, sql, and, inArray } from 'drizzle-orm';
 import { assignLotSchema } from '@/lib/validation/schemas';
 import { initializeLotBidState } from '@/lib/bidding/bid-engine';
 import { LIVE_FALLBACK_CLOSE_MS } from '@/lib/bidding/lifecycle';
+import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
+import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
+
+/** True when the caller is an authenticated admin (errors count as anonymous). */
+async function callerIsAdmin(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const [profile] = await db
+      .select({ role: users.role, isAdmin: users.isAdmin })
+      .from(users)
+      .where(eq(users.id, user.id))
+      .limit(1);
+    return isAdminProfile(profile);
+  } catch {
+    return false;
+  }
+}
 
 export async function GET(
   req: NextRequest,
@@ -35,6 +54,12 @@ export async function GET(
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    // Public callers only see publicly-listable lots and the safe projection;
+    // a draft/withdrawn lot assigned to an auction ahead of publication must
+    // not be visible (nor its reservePrice) until it goes live. Admin callers
+    // (the auction editor) see everything.
+    const isAdmin = await callerIsAdmin();
+
     const result = await db
       .select({
         auctionLot: auctionLots,
@@ -42,11 +67,18 @@ export async function GET(
       })
       .from(auctionLots)
       .innerJoin(lots, eq(auctionLots.lotId, lots.id))
-      .where(eq(auctionLots.auctionId, auction.id))
+      .where(
+        isAdmin
+          ? eq(auctionLots.auctionId, auction.id)
+          : and(
+              eq(auctionLots.auctionId, auction.id),
+              inArray(lots.status, [...PUBLIC_LOT_STATUSES]),
+            ),
+      )
       .orderBy(asc(auctionLots.lotNumber));
 
     const lotsWithNumbers = result.map(({ auctionLot, lot }) => ({
-      ...lot,
+      ...(isAdmin ? lot : toPublicLot(lot)),
       lotNumber: auctionLot.lotNumber,
       closingAt: auctionLot.closingAt,
     }));
@@ -129,6 +161,7 @@ export async function POST(
       await initializeLotBidState(parsed.data.lotId, closingAt, lotRow?.startingBid ?? 0);
     }
 
+    revalidatePublicCatalog(auction.slug);
     return NextResponse.json({ data: auctionLot }, { status: 201 });
   } catch (error) {
     logger.error('Assign lot error', error);
@@ -177,6 +210,7 @@ export async function DELETE(
       db.update(auctions).set({ lotCount: sql`${auctions.lotCount} - 1`, updatedAt: sql`now()` }).where(eq(auctions.id, auctionId)),
     ]);
 
+    revalidatePublicCatalog();
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error('Remove lot error', error);

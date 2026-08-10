@@ -13,14 +13,22 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate: clean old caches
+// Activate: clean old caches + enable navigation preload so intercepted
+// page navigations start their network request in parallel with SW boot
+// (this SW is registered from /upload/[token] but scoped to '/', so every
+// later page view on the site passes through it).
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      )
-    )
+    Promise.all([
+      caches.keys().then((keys) =>
+        Promise.all(
+          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        )
+      ),
+      self.registration.navigationPreload
+        ? self.registration.navigationPreload.enable()
+        : Promise.resolve(),
+    ])
   );
   self.clients.claim();
 });
@@ -49,8 +57,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first for API calls and pages
+  // Network-first for API calls and pages. For navigations, use the
+  // preloaded response when available instead of starting a second fetch.
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    (async () => {
+      try {
+        if (event.preloadResponse) {
+          const preloaded = await event.preloadResponse;
+          if (preloaded) return preloaded;
+        }
+        return await fetch(event.request);
+      } catch {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        throw new Error('offline');
+      }
+    })()
   );
 });

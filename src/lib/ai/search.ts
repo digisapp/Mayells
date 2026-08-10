@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { getModel } from './client';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
-import { sql, and, eq, gte, lte, ilike, or, inArray, desc } from 'drizzle-orm';
+import { and, eq, gte, lte, ilike, or, inArray, desc } from 'drizzle-orm';
+import { PUBLIC_LOT_STATUSES, publicLotColumns } from '@/lib/lots/visibility';
 
 const searchIntentSchema = z.object({
   keywords: z.array(z.string()).describe('Search keywords extracted from query'),
@@ -47,8 +48,9 @@ export async function aiSearch(query: string, limit = 24) {
 
   const conditions = [];
 
-  // Only show active lots
-  conditions.push(inArray(lots.status, ['in_auction', 'approved']));
+  // Public search surface: only publicly-listable lots ('approved' is an
+  // internal pre-publication status and must not appear in results).
+  conditions.push(inArray(lots.status, [...PUBLIC_LOT_STATUSES]));
 
   // Category filter
   if (intent.category) {
@@ -114,8 +116,10 @@ export async function aiSearch(query: string, limit = 24) {
       orderBy = desc(lots.bidCount);
   }
 
+  // Public-safe projection: confidential columns (reservePrice, seller and
+  // bidder ids, AI valuations) never leave the database.
   const results = await db
-    .select()
+    .select(publicLotColumns)
     .from(lots)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(orderBy)

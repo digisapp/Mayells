@@ -5,7 +5,8 @@ import { formatCurrency } from '@/types';
 import type { Lot } from '@/db/schema/lots';
 
 interface LotCardProps {
-  lot: Lot;
+  /** A lot row, optionally carrying its resolved auction slug (see bestAuctionSlugSql). */
+  lot: Lot & { auctionSlug?: string | null };
   auctionSlug?: string;
   showBidInfo?: boolean;
   isGallery?: boolean;
@@ -13,10 +14,13 @@ interface LotCardProps {
 
 export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: LotCardProps) {
   const galleryMode = isGallery || lot.saleType === 'gallery' || lot.saleType === 'private';
+  // Prefer a known auction slug (grid-level or per-lot) so the card links
+  // straight to the canonical URL; /lots/{slug} is a resolver+redirect hop.
+  const resolvedAuctionSlug = auctionSlug ?? lot.auctionSlug ?? null;
   const href = galleryMode
     ? `/gallery/${lot.slug || lot.id}`
-    : auctionSlug
-      ? `/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`
+    : resolvedAuctionSlug
+      ? `/auctions/${resolvedAuctionSlug}/lots/${lot.slug || lot.id}`
       : `/lots/${lot.slug || lot.id}`;
 
   return (

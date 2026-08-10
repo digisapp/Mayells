@@ -1,10 +1,11 @@
 export const dynamic = 'force-dynamic';
 
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { lots, lotImages } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
 import { BuyNowPanel } from '@/components/gallery/BuyNowPanel';
 import { LotImageGallery } from '@/components/lots/LotImageGallery';
@@ -16,13 +17,23 @@ import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
-async function getLot(lotId: string) {
-  let [lot] = await db.select().from(lots).where(eq(lots.slug, lotId)).limit(1);
-  if (!lot) {
-    [lot] = await db.select().from(lots).where(eq(lots.id, lotId)).limit(1);
-  }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// cache(): generateMetadata and the page body share one lookup per request;
+// single OR-query instead of a serial slug→id fallback (id compare only for
+// UUID-shaped params so the uuid cast can't throw).
+const getLot = cache(async (lotId: string) => {
+  const [lot] = await db
+    .select()
+    .from(lots)
+    .where(
+      UUID_RE.test(lotId)
+        ? or(eq(lots.id, lotId), eq(lots.slug, lotId))
+        : eq(lots.slug, lotId),
+    )
+    .limit(1);
   return lot;
-}
+});
 
 export async function generateMetadata({ params }: { params: Promise<{ lotId: string }> }): Promise<Metadata> {
   const { lotId } = await params;

@@ -79,9 +79,10 @@ describe('checkAndExtendAuction', () => {
 
     expect(result.extended).toBe(true);
     expect(result.newCloseTime).toBe(1000 + 120); // closeTime + 2 minutes
-    // Verify the wrapper passed the window and extension in seconds.
+    // Verify the wrapper passed the window and extension in seconds, plus the
+    // settlement-seal key the script checks before extending.
     const [, keys, argv] = mockedRedis.eval.mock.calls[0];
-    expect(keys).toEqual(['bid:lot:lot-1:close_time']);
+    expect(keys).toEqual(['bid:lot:lot-1:close_time', 'bid:lot:lot-1:settling']);
     expect(argv).toEqual(['800', '300', '120']);
   });
 

@@ -15,9 +15,10 @@ import {
 import { toast } from 'sonner';
 import { escapeHtml } from '@/lib/email/escape';
 
+// Slim header row returned by the list/thread endpoints — full bodies and AI
+// drafts are fetched on demand from /api/admin/emails/[id] when expanded.
 interface EmailRow {
   id: string;
-  resendId: string | null;
   direction: 'inbound' | 'outbound';
   status: string;
   fromEmail: string;
@@ -25,23 +26,26 @@ interface EmailRow {
   toEmail: string;
   toName: string | null;
   subject: string | null;
-  bodyHtml: string | null;
-  bodyText: string | null;
   inReplyToId: string | null;
   threadId: string | null;
   userId: string | null;
-  isSpam: boolean;
-  aiDraftHtml: string | null;
-  aiDraftText: string | null;
-  aiDraftedAt: string | null;
   aiAutoSent: boolean;
   aiCategory: string | null;
   aiConfidence: number | null;
   aiSummary: string | null;
   readAt: string | null;
-  repliedAt: string | null;
   createdAt: string;
-  attachments: { id: string; filename: string; size: number; contentType: string }[] | null;
+  preview: string;
+  hasAttachments: boolean;
+}
+
+// Heavy fields of the full email row, fetched per email on expand
+interface EmailDetail {
+  id: string;
+  bodyHtml: string | null;
+  bodyText: string | null;
+  aiDraftText: string | null;
+  aiDraftedAt: string | null;
 }
 
 interface AttachmentLink {
@@ -297,8 +301,8 @@ function EmailAttachments({ emailId }: { emailId: string }) {
   );
 }
 
-function QuotedOriginal({ email }: { email: EmailRow }) {
-  const text = email.bodyText || '';
+function QuotedOriginal({ email, detail }: { email: EmailRow; detail: EmailDetail }) {
+  const text = detail.bodyText || '';
   if (!text) return null;
   const preview = text.length > 500 ? text.slice(0, 500) + '…' : text;
   return (
@@ -320,6 +324,8 @@ export default function AdminEmailsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [emailDetails, setEmailDetails] = useState<Record<string, EmailDetail>>({});
+  const [detailFailedIds, setDetailFailedIds] = useState<Set<string>>(new Set());
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyBody, setReplyBody] = useState('');
   const [replyAttachments, setReplyAttachments] = useState<{ content: string; filename: string; contentType: string }[]>([]);
@@ -375,6 +381,20 @@ export default function AdminEmailsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Fetch the heavy fields (bodies, AI draft) of one email, cached by id
+  const loadEmailDetail = useCallback((id: string) => {
+    setDetailFailedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    fetch(`/api/admin/emails/${id}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setEmailDetails((prev) => ({ ...prev, [id]: d.data })))
+      .catch(() => setDetailFailedIds((prev) => new Set(prev).add(id)));
+  }, []);
+
   useEffect(() => {
     if (!threadView) {
       fetchEmails(tab, pagination.page, searchQuery);
@@ -405,7 +425,12 @@ export default function AdminEmailsPage() {
       const res = await fetch(`/api/admin/emails?thread_id=${threadId}`);
       if (!res.ok) throw new Error('Failed to load thread');
       const d = await res.json();
-      setThreadEmails(d.data ?? []);
+      const rows: EmailRow[] = d.data ?? [];
+      setThreadEmails(rows);
+      // Thread rows are slim headers — fetch each email's body on demand
+      rows.forEach((e) => {
+        if (!emailDetails[e.id]) loadEmailDetail(e.id);
+      });
     } catch {
       toast.error('Failed to load thread');
     } finally {
@@ -497,8 +522,8 @@ export default function AdminEmailsPage() {
 
   // ─── Email Actions ───────────────────────────────────────────────────────────
 
-  async function handleSendAiDraft(email: EmailRow) {
-    if (!email.aiDraftText) return;
+  async function handleSendAiDraft(email: EmailRow, detail: EmailDetail) {
+    if (!detail.aiDraftText) return;
     setSendingId(`ai-${email.id}`);
     try {
       const res = await fetch('/api/admin/emails', {
@@ -509,15 +534,15 @@ export default function AdminEmailsPage() {
           subject: `Re: ${(email.subject || '').replace(/^Re:\s*/i, '')}`,
           html: `
             <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
-              ${escapeHtml(email.aiDraftText).replace(/\n/g, '<br />')}
+              ${escapeHtml(detail.aiDraftText).replace(/\n/g, '<br />')}
               <br /><br />
               <div style="border-left: 2px solid #ccc; padding-left: 12px; margin-top: 16px; color: #666; font-size: 13px;">
                 <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${escapeHtml(email.fromName || email.fromEmail)} wrote:</p>
-                <div>${email.bodyHtml || escapeHtml(email.bodyText || '').replace(/\n/g, '<br />') || ''}</div>
+                <div>${detail.bodyHtml || escapeHtml(detail.bodyText || '').replace(/\n/g, '<br />') || ''}</div>
               </div>
             </div>
           `,
-          text: `${email.aiDraftText}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(email.bodyText || '').split('\n').join('\n> ')}`,
+          text: `${detail.aiDraftText}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(detail.bodyText || '').split('\n').join('\n> ')}`,
           inReplyToId: email.id,
         }),
       });
@@ -555,13 +580,14 @@ export default function AdminEmailsPage() {
       setExpandedId(null);
     } else {
       setExpandedId(email.id);
+      if (!emailDetails[email.id]) loadEmailDetail(email.id);
       if (email.direction === 'inbound' && email.status === 'received') {
         markAsRead(email.id);
       }
     }
   }
 
-  async function handleReply(email: EmailRow) {
+  async function handleReply(email: EmailRow, detail: EmailDetail) {
     if (!replyBody.trim()) return;
     setSendingId(`reply-${email.id}`);
     try {
@@ -577,11 +603,11 @@ export default function AdminEmailsPage() {
               <br /><br />
               <div style="border-left: 2px solid #ccc; padding-left: 12px; margin-top: 16px; color: #666; font-size: 13px;">
                 <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${escapeHtml(email.fromName || email.fromEmail)} wrote:</p>
-                <div>${email.bodyHtml || escapeHtml(email.bodyText || '').replace(/\n/g, '<br />') || ''}</div>
+                <div>${detail.bodyHtml || escapeHtml(detail.bodyText || '').replace(/\n/g, '<br />') || ''}</div>
               </div>
             </div>
           `,
-          text: `${replyBody}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(email.bodyText || '').split('\n').join('\n> ')}`,
+          text: `${replyBody}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(detail.bodyText || '').split('\n').join('\n> ')}`,
           inReplyToId: email.id,
           ...(replyAttachments.length > 0 && { attachments: replyAttachments }),
         }),
@@ -671,6 +697,10 @@ export default function AdminEmailsPage() {
 
   const unreadCount = unreadTotal;
 
+  // Only one row expands at a time — its full body/draft, once fetched
+  const expandedDetail = expandedId ? emailDetails[expandedId] : undefined;
+  const expandedDetailFailed = expandedId ? detailFailedIds.has(expandedId) : false;
+
   // ─── Thread View Render ────────────────────────────────────────────────────
 
   if (threadView) {
@@ -692,46 +722,53 @@ export default function AdminEmailsPage() {
           <p className="text-muted-foreground">No emails in this thread.</p>
         ) : (
           <div className="space-y-4">
-            {threadEmails.map((email) => (
-              <Card key={email.id} className={email.direction === 'outbound' ? 'ml-8 border-champagne/30' : ''}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">
-                        {email.direction === 'inbound'
-                          ? email.fromName || email.fromEmail
-                          : `Mayells → ${email.toEmail}`}
+            {threadEmails.map((email) => {
+              const detail = emailDetails[email.id];
+              return (
+                <Card key={email.id} className={email.direction === 'outbound' ? 'ml-8 border-champagne/30' : ''}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {email.direction === 'inbound'
+                            ? email.fromName || email.fromEmail
+                            : `Mayells → ${email.toEmail}`}
+                        </span>
+                        <StatusBadge status={email.status} />
+                        {email.aiAutoSent && (
+                          <Badge variant="secondary" className="bg-purple-100 text-purple-700 gap-1 text-xs">
+                            <Bot className="h-2.5 w-2.5" />
+                            AI
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(email.createdAt).toLocaleDateString(undefined, {
+                          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+                        })}
                       </span>
-                      <StatusBadge status={email.status} />
-                      {email.aiAutoSent && (
-                        <Badge variant="secondary" className="bg-purple-100 text-purple-700 gap-1 text-xs">
-                          <Bot className="h-2.5 w-2.5" />
-                          AI
-                        </Badge>
-                      )}
                     </div>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(email.createdAt).toLocaleDateString(undefined, {
-                        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{email.subject}</p>
-                </CardHeader>
-                <CardContent>
-                  {email.bodyHtml ? (
-                    <SandboxedEmail html={email.bodyHtml} className="rounded-md" />
-                  ) : email.bodyText ? (
-                    <pre className="text-sm whitespace-pre-wrap">{email.bodyText}</pre>
-                  ) : (
-                    <p className="text-sm text-muted-foreground italic">(no content)</p>
-                  )}
-                  {email.direction === 'inbound' && (email.attachments?.length ?? 0) > 0 && (
-                    <EmailAttachments emailId={email.id} />
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    <p className="text-sm text-muted-foreground">{email.subject}</p>
+                  </CardHeader>
+                  <CardContent>
+                    {detailFailedIds.has(email.id) ? (
+                      <p className="text-sm text-red-600">Could not load email content.</p>
+                    ) : !detail ? (
+                      <div className="h-16 bg-muted animate-pulse rounded-md" />
+                    ) : detail.bodyHtml ? (
+                      <SandboxedEmail html={detail.bodyHtml} className="rounded-md" />
+                    ) : detail.bodyText ? (
+                      <pre className="text-sm whitespace-pre-wrap">{detail.bodyText}</pre>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">(no content)</p>
+                    )}
+                    {email.direction === 'inbound' && email.hasAttachments && (
+                      <EmailAttachments emailId={email.id} />
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1044,7 +1081,7 @@ export default function AdminEmailsPage() {
                           </span>
                         </div>
                         <p className={`text-sm truncate mt-0.5 flex items-center gap-1.5 ${email.status === 'received' && email.direction === 'inbound' ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {(email.attachments?.length ?? 0) > 0 && (
+                          {email.hasAttachments && (
                             <Paperclip className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
                           )}
                           <span className="truncate">{email.subject || '(no subject)'}</span>
@@ -1052,7 +1089,7 @@ export default function AdminEmailsPage() {
                         {/* AI summary or body preview */}
                         {expandedId !== email.id && (
                           <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {email.aiSummary || email.bodyText?.slice(0, 120) || ''}
+                            {email.aiSummary || email.preview || ''}
                           </p>
                         )}
                       </div>
@@ -1092,38 +1129,42 @@ export default function AdminEmailsPage() {
                       </div>
                     )}
 
-                    {email.bodyHtml ? (
+                    {expandedDetailFailed ? (
+                      <p className="text-sm text-red-600 p-4">Could not load email content.</p>
+                    ) : !expandedDetail ? (
+                      <div className="h-24 bg-muted animate-pulse rounded-md" />
+                    ) : expandedDetail.bodyHtml ? (
                       <div className="bg-muted/30 rounded-md overflow-hidden">
-                        <SandboxedEmail html={email.bodyHtml} className="rounded-md" />
+                        <SandboxedEmail html={expandedDetail.bodyHtml} className="rounded-md" />
                       </div>
-                    ) : email.bodyText ? (
+                    ) : expandedDetail.bodyText ? (
                       <pre className="text-sm bg-muted/30 rounded-md p-4 whitespace-pre-wrap overflow-auto max-h-96">
-                        {email.bodyText}
+                        {expandedDetail.bodyText}
                       </pre>
                     ) : (
                       <p className="text-sm text-muted-foreground italic p-4">(no content)</p>
                     )}
 
                     {/* Inbound attachments (fresh signed URLs fetched on expand) */}
-                    {email.direction === 'inbound' && (email.attachments?.length ?? 0) > 0 && (
+                    {email.direction === 'inbound' && email.hasAttachments && (
                       <EmailAttachments emailId={email.id} />
                     )}
 
                     {/* AI Draft */}
-                    {email.aiDraftText && email.direction === 'inbound' && !email.aiAutoSent && email.status !== 'replied' && (
+                    {expandedDetail?.aiDraftText && email.direction === 'inbound' && !email.aiAutoSent && email.status !== 'replied' && (
                       <div className="mt-4 border border-purple-200 bg-purple-50/30 rounded-lg p-4">
                         <div className="flex items-center gap-2 mb-2">
                           <Bot className="h-4 w-4 text-purple-600" />
                           <span className="text-sm font-medium text-purple-800">AI Draft Reply</span>
                           <span className="text-xs text-purple-500">
-                            {email.aiDraftedAt && `Generated ${new Date(email.aiDraftedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
+                            {expandedDetail.aiDraftedAt && `Generated ${new Date(expandedDetail.aiDraftedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
                           </span>
                         </div>
-                        <pre className="text-sm whitespace-pre-wrap text-foreground mb-3">{email.aiDraftText}</pre>
+                        <pre className="text-sm whitespace-pre-wrap text-foreground mb-3">{expandedDetail.aiDraftText}</pre>
                         <div className="flex gap-2">
                           <Button
                             size="sm"
-                            onClick={() => handleSendAiDraft(email)}
+                            onClick={() => handleSendAiDraft(email, expandedDetail)}
                             disabled={sendingId === `ai-${email.id}`}
                             className="bg-purple-600 text-white hover:bg-purple-700"
                           >
@@ -1135,7 +1176,7 @@ export default function AdminEmailsPage() {
                             variant="outline"
                             onClick={() => {
                               setReplyingTo(email.id);
-                              setReplyBody(email.aiDraftText || '');
+                              setReplyBody(expandedDetail.aiDraftText || '');
                             }}
                           >
                             Edit & Send
@@ -1155,8 +1196,8 @@ export default function AdminEmailsPage() {
 
                     {/* Actions row */}
                     <div className="mt-4 flex items-center gap-2">
-                      {/* Reply (inbox/spam only) */}
-                      {(tab === 'inbox' || tab === 'spam') && (
+                      {/* Reply (inbox/spam only) — quoting needs the full body loaded */}
+                      {(tab === 'inbox' || tab === 'spam') && expandedDetail && (
                         <>
                           {replyingTo === email.id ? (
                             <div className="w-full space-y-3 border-t pt-3">
@@ -1170,7 +1211,7 @@ export default function AdminEmailsPage() {
                                 rows={5}
                                 autoFocus
                               />
-                              <QuotedOriginal email={email} />
+                              <QuotedOriginal email={email} detail={expandedDetail} />
                               {replyAttachments.length > 0 && (
                                 <div className="flex flex-wrap gap-2">
                                   {replyAttachments.map((a, i) => (
@@ -1187,7 +1228,7 @@ export default function AdminEmailsPage() {
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
-                                  onClick={() => handleReply(email)}
+                                  onClick={() => handleReply(email, expandedDetail)}
                                   disabled={sendingId === `reply-${email.id}`}
                                   className="bg-champagne text-charcoal hover:bg-champagne/90"
                                 >

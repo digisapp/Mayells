@@ -1,10 +1,15 @@
+// Stays dynamic: the page is personalized (watch state, admin preview,
+// clock-skew seed). The waterfall below is trimmed instead: cached lot
+// lookup shared with generateMetadata, one OR-query instead of a serial
+// slug→id fallback, and the auth round trip runs alongside the data batch.
 export const dynamic = 'force-dynamic';
 
+import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { lots, lotImages, auctionLots, auctions, bids } from '@/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, or } from 'drizzle-orm';
 import { ShareButtons } from '@/components/lots/ShareButtons';
 import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { LiveLotPanel } from '@/components/lots/LiveLotPanel';
@@ -25,13 +30,23 @@ import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
-async function getLot(lotId: string) {
-  let [lot] = await db.select().from(lots).where(eq(lots.slug, lotId)).limit(1);
-  if (!lot) {
-    [lot] = await db.select().from(lots).where(eq(lots.id, lotId)).limit(1);
-  }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// cache(): generateMetadata and the page body share one lookup per request.
+// The id comparison is only attempted for UUID-shaped params — a non-UUID
+// string would make the uuid-column cast throw.
+const getLot = cache(async (lotId: string) => {
+  const [lot] = await db
+    .select()
+    .from(lots)
+    .where(
+      UUID_RE.test(lotId)
+        ? or(eq(lots.id, lotId), eq(lots.slug, lotId))
+        : eq(lots.slug, lotId),
+    )
+    .limit(1);
   return lot;
-}
+});
 
 export async function generateMetadata({ params }: { params: Promise<{ auctionId: string; lotId: string }> }): Promise<Metadata> {
   const { auctionId, lotId } = await params;
@@ -71,21 +86,21 @@ export default async function LotDetailPage({
 }) {
   const { auctionId, lotId } = await params;
 
-  // Find lot by slug or ID
-  let [lot] = await db.select().from(lots).where(eq(lots.slug, lotId)).limit(1);
-  if (!lot) {
-    [lot] = await db.select().from(lots).where(eq(lots.id, lotId)).limit(1);
-  }
+  // Shared (cached) lookup with generateMetadata — one query per request.
+  const lot = await getLot(lotId);
   if (!lot) notFound();
 
-  // Fetch all lot-dependent data in parallel
-  const [images, [auctionLot], bidHistory, categoryResult] = await Promise.all([
+  // Fetch all lot-dependent data AND the viewer's auth state in parallel —
+  // the Supabase Auth round trip is independent of the lot queries.
+  const supabase = await createClient();
+  const [images, [auctionLot], bidHistory, categoryResult, { data: { user: viewer } }] = await Promise.all([
     db.select().from(lotImages).where(eq(lotImages.lotId, lot.id)).orderBy(lotImages.sortOrder),
     db.select().from(auctionLots).where(eq(auctionLots.lotId, lot.id)).limit(1),
     db.select().from(bids).where(eq(bids.lotId, lot.id)).orderBy(desc(bids.createdAt)).limit(20),
     lot.categoryId
       ? db.select().from(categories).where(eq(categories.id, lot.categoryId)).limit(1)
       : Promise.resolve([null]),
+    supabase.auth.getUser(),
   ]);
 
   const [category] = categoryResult;
@@ -97,8 +112,6 @@ export default async function LotDetailPage({
   }
 
   // Watch state + admin status for the signed-in viewer.
-  const supabase = await createClient();
-  const { data: { user: viewer } } = await supabase.auth.getUser();
   let isWatching = false;
   let viewerIsAdmin = false;
   if (viewer) {
