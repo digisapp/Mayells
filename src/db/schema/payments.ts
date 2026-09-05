@@ -28,7 +28,7 @@ export const payments = pgTable('payments', {
   index('payments_invoice_idx').on(table.invoiceId),
   index('payments_buyer_idx').on(table.buyerId),
   index('payments_status_idx').on(table.status),
-]);
+]).enableRLS();
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
   invoice: one(invoices, {

@@ -22,7 +22,7 @@ export const inquiries = pgTable('inquiries', {
   adminNotes: text('admin_notes'),
   createdAt: timestamp('created_at').default(sql`now()`).notNull(),
   updatedAt: timestamp('updated_at').default(sql`now()`).notNull(),
-});
+}).enableRLS();
 
 export type Inquiry = typeof inquiries.$inferSelect;
 export type NewInquiry = typeof inquiries.$inferInsert;

@@ -62,7 +62,7 @@ export const invoices = pgTable('invoices', {
   // At most one live invoice per lot — settlement reruns must not double-invoice
   uniqueIndex('invoices_lot_unique_idx').on(table.lotId).where(sql`status <> 'cancelled'`),
   index('invoices_due_date_idx').on(table.dueDate),
-]);
+]).enableRLS();
 
 export const invoicesRelations = relations(invoices, ({ one }) => ({
   buyer: one(users, {

@@ -7,6 +7,6 @@ export const bidIncrements = pgTable('bid_increments', {
   toAmount: integer('to_amount').notNull(),
   increment: integer('increment').notNull(),
   createdAt: timestamp('created_at').default(sql`now()`),
-});
+}).enableRLS();
 
 export type BidIncrement = typeof bidIncrements.$inferSelect;

@@ -75,7 +75,7 @@ export const consignments = pgTable('consignments', {
 }, (table) => [
   index('consignments_seller_idx').on(table.sellerId),
   index('consignments_status_idx').on(table.status),
-]);
+]).enableRLS();
 
 export const consignmentsRelations = relations(consignments, ({ one }) => ({
   seller: one(users, {

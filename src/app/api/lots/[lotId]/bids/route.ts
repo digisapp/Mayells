@@ -5,7 +5,8 @@ import { db } from '@/db';
 import { lots, auctions, auctionLots, bids, maxBids } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { bidSchema } from '@/lib/validation/schemas';
-import { placeBid } from '@/lib/bidding/bid-engine';
+import { placeBid, reseedLotBidState } from '@/lib/bidding/bid-engine';
+import { broadcastLotEvent, broadcastLiveAuctionEvent } from '@/lib/realtime/broadcast';
 import { notifyOutbid, computeOutbidRecipients } from '@/lib/bidding/notify-outbid';
 import { getBidderVerification, checkBidAllowed } from '@/lib/bidding/verification';
 import { UUID_RE, biddableAuctionOrder } from '@/lib/bidding/lot-resolution';
@@ -174,33 +175,54 @@ export async function POST(
       }
     };
 
-    let result;
-    try {
-      result = await placeBid({
-        lotId: lot.id,
-        auctionId: auction.id,
-        bidderId: user.id,
-        amount,
-        maxBidAmount,
-        bidType: 'manual',
-        idempotencyKey,
-        ipAddress: getClientIp(request),
-        userAgent: request.headers.get('user-agent') || undefined,
+    const attemptBid = async () => {
+      try {
+        return await placeBid({
+          lotId: lot.id,
+          auctionId: auction.id,
+          bidderId: user.id,
+          amount,
+          maxBidAmount,
+          bidType: 'manual',
+          idempotencyKey,
+          ipAddress: getClientIp(request),
+          userAgent: request.headers.get('user-agent') || undefined,
+          startingBid: lot.startingBid ?? 0,
+          antiSnipeSettings: {
+            antiSnipeEnabled: auction.antiSnipeEnabled,
+            antiSnipeMinutes: auction.antiSnipeMinutes,
+            antiSnipeWindowMinutes: auction.antiSnipeWindowMinutes,
+          },
+        });
+      } catch (err) {
+        // placeBid THREW (Redis outage, PG failure) rather than returning a
+        // clean rejection — no bid landed (post-commit steps are caught inside
+        // the engine and never throw), but the max we armed above is live.
+        // Disarm it, or the user could later win via a proxy they never
+        // confirmed. Then rethrow into the standard 500 path.
+        await rollbackMaxBid();
+        throw err;
+      }
+    };
+
+    let result = await attemptBid();
+
+    // Self-heal: Postgres says this lot is live (status and close time were
+    // validated above) but Redis holds no gate state — the store was flushed
+    // or evicted mid-auction, or an open was never repaired. Rebuild the gate
+    // from the authoritative row (NX, never clobbering live state) and retry
+    // once, instead of turning every bidder away with "not open".
+    if (!result.success && result.error === 'STATE_MISSING' && closingAt) {
+      const reseeded = await reseedLotBidState(lot.id, {
+        closeTime: closingAt,
         startingBid: lot.startingBid ?? 0,
-        antiSnipeSettings: {
-          antiSnipeEnabled: auction.antiSnipeEnabled,
-          antiSnipeMinutes: auction.antiSnipeMinutes,
-          antiSnipeWindowMinutes: auction.antiSnipeWindowMinutes,
-        },
+        currentBidAmount: lot.currentBidAmount,
+        currentBidderId: lot.currentBidderId,
       });
-    } catch (err) {
-      // placeBid THREW (Redis outage, PG failure) rather than returning a
-      // clean rejection — no bid landed (post-commit steps are caught inside
-      // the engine and never throw), but the max we armed above is live.
-      // Disarm it, or the user could later win via a proxy they never
-      // confirmed. Then rethrow into the standard 500 path.
-      await rollbackMaxBid();
-      throw err;
+      if (reseeded) {
+        logger.warn('Rebuilt missing Redis bid state from Postgres', { lotId: lot.id, auctionId: auction.id });
+        result = await attemptBid();
+      }
     }
 
     if (!result.success) {
@@ -293,6 +315,22 @@ export async function POST(
     // Refresh the ISR-cached catalog pages so the new current bid shows up
     // without waiting out the revalidate window. Post-response, best-effort.
     after(() => revalidatePublicCatalog(auction.slug));
+
+    // Push the change to everyone watching this lot / this live sale. Clients
+    // treat it as a cue to refetch state; the payload is informational only.
+    const extended = result.extended ?? false;
+    const newCloseTime = result.newCloseTime ?? null;
+    after(() =>
+      Promise.all([
+        broadcastLotEvent(lot.id, 'bid', {
+          currentBidAmount: finalAmount,
+          bidCount: updatedLot?.bidCount ?? null,
+          extended,
+          newCloseTime,
+        }),
+        broadcastLiveAuctionEvent(auction.id, 'lot_bid', { lotId: lot.id }),
+      ]),
+    );
 
     return NextResponse.json(
       {

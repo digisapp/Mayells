@@ -40,7 +40,7 @@ export const estateVisits = pgTable('estate_visits', {
   index('estate_visits_status_idx').on(table.status),
   index('estate_visits_token_idx').on(table.reportToken),
   index('estate_visits_created_idx').on(table.createdAt),
-]);
+]).enableRLS();
 
 export const estateVisitItems = pgTable('estate_visit_items', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -70,7 +70,7 @@ export const estateVisitItems = pgTable('estate_visit_items', {
 }, (table) => [
   index('estate_items_visit_idx').on(table.visitId, table.sortOrder),
   index('estate_items_status_idx').on(table.status),
-]);
+]).enableRLS();
 
 export const estateVisitsRelations = relations(estateVisits, ({ many }) => ({
   items: many(estateVisitItems),

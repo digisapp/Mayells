@@ -50,7 +50,7 @@ export const outreachContacts = pgTable('outreach_contacts', {
   index('outreach_status_idx').on(table.status),
   index('outreach_category_idx').on(table.category),
   index('outreach_follow_up_idx').on(table.nextFollowUpAt),
-]);
+]).enableRLS();
 
 export type OutreachContact = typeof outreachContacts.$inferSelect;
 export type NewOutreachContact = typeof outreachContacts.$inferInsert;

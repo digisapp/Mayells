@@ -17,7 +17,7 @@ export const lotImages = pgTable('lot_images', {
   createdAt: timestamp('created_at').default(sql`now()`),
 }, (table) => [
   index('lot_images_lot_idx').on(table.lotId, table.sortOrder),
-]);
+]).enableRLS();
 
 export const lotImagesRelations = relations(lotImages, ({ one }) => ({
   lot: one(lots, {

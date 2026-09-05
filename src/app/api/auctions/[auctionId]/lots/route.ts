@@ -13,6 +13,20 @@ import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 
+/**
+ * Name of the unique index/constraint behind a Postgres 23505 error, or null.
+ * Drizzle wraps driver errors (the pg DatabaseError lives on `cause`), so
+ * look at both layers.
+ */
+function uniqueViolationConstraint(err: unknown): string | null {
+  const candidates = [err, (err as { cause?: unknown })?.cause];
+  for (const c of candidates) {
+    const e = c as { code?: string; constraint?: string } | undefined;
+    if (e?.code === '23505') return e.constraint ?? '';
+  }
+  return null;
+}
+
 /** True when the caller is an authenticated admin (errors count as anonymous). */
 async function callerIsAdmin(): Promise<boolean> {
   try {
@@ -146,15 +160,36 @@ export async function POST(
           ? new Date(Date.now() + LIVE_FALLBACK_CLOSE_MS)
           : null;
 
-    const [auctionLot] = await db
-      .insert(auctionLots)
-      .values({
-        auctionId,
-        lotId: parsed.data.lotId,
-        lotNumber: parsed.data.lotNumber,
-        closingAt,
-      })
-      .returning();
+    // The unique index on (auction_id, lot_number) is the arbiter of lot
+    // numbers: when the client omits one, the next free number is computed in
+    // the same statement; when it supplies a stale one (two admins assigning
+    // at once), the conflict surfaces as a clear 409 instead of a 500.
+    let auctionLot: typeof auctionLots.$inferSelect;
+    try {
+      [auctionLot] = await db
+        .insert(auctionLots)
+        .values({
+          auctionId,
+          lotId: parsed.data.lotId,
+          lotNumber:
+            parsed.data.lotNumber ??
+            sql`(select coalesce(max(${auctionLots.lotNumber}), 0) + 1 from ${auctionLots} where ${auctionLots.auctionId} = ${auctionId})`,
+          closingAt,
+        })
+        .returning();
+    } catch (err) {
+      const constraint = uniqueViolationConstraint(err);
+      if (constraint === 'auction_lots_auction_lot_number_unique_idx') {
+        return NextResponse.json(
+          { error: `Lot number ${parsed.data.lotNumber} is already used in this auction. Refresh the list and try again.` },
+          { status: 409 },
+        );
+      }
+      if (constraint === 'auction_lots_auction_lot_unique_idx') {
+        return NextResponse.json({ error: 'This lot is already assigned to this auction' }, { status: 409 });
+      }
+      throw err;
+    }
 
     // Only flip the lot into the biddable state when the auction is actually
     // running; otherwise leave it in its current (pre-auction) status.

@@ -15,7 +15,7 @@ export const watchlist = pgTable('watchlist', {
   index('watchlist_user_idx').on(table.userId),
   index('watchlist_lot_idx').on(table.lotId),
   uniqueIndex('watchlist_unique_idx').on(table.userId, table.lotId),
-]);
+]).enableRLS();
 
 export const watchlistRelations = relations(watchlist, ({ one }) => ({
   user: one(users, {

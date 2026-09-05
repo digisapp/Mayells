@@ -123,7 +123,7 @@ export const shipments = pgTable('shipments', {
   index('shipments_buyer_idx').on(table.buyerId),
   index('shipments_status_idx').on(table.status),
   index('shipments_tracking_idx').on(table.trackingNumber),
-]);
+]).enableRLS();
 
 export const shipmentsRelations = relations(shipments, ({ one }) => ({
   invoice: one(invoices, {

@@ -15,7 +15,7 @@ export const savedSearches = pgTable('saved_searches', {
   createdAt: timestamp('created_at').default(sql`now()`),
 }, (table) => [
   index('saved_searches_user_idx').on(table.userId),
-]);
+]).enableRLS();
 
 export const savedSearchesRelations = relations(savedSearches, ({ one }) => ({
   user: one(users, {

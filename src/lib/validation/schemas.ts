@@ -100,7 +100,8 @@ export const auctionUpdateSchema = auctionBaseSchema.partial().extend({
 
 export const assignLotSchema = z.object({
   lotId: z.string().uuid(),
-  lotNumber: z.number().int().positive(),
+  // Omit to let the server assign the next free number in the auction.
+  lotNumber: z.number().int().positive().optional(),
 });
 
 export type SignupInput = z.infer<typeof signupSchema>;

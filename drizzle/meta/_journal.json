@@ -134,6 +134,20 @@
       "when": 1786367334111,
       "tag": "0018_perf_indexes_invoice_email",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788645253505,
+      "tag": "0019_enable_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788645404783,
+      "tag": "0020_auction_lot_number_unique",
+      "breakpoints": true
     }
   ]
 }

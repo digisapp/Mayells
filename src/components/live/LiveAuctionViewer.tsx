@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { LiveVideoPlayer } from './LiveVideoPlayer';
@@ -8,6 +8,7 @@ import { LiveChat } from './LiveChat';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/types';
+import { useRealtimeTopic } from '@/hooks/useRealtimeTopic';
 
 interface AuctionLot {
   lotNumber: number;
@@ -32,13 +33,26 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
   const activeLot = lots[activeLotIndex];
   const router = useRouter();
 
+  // Push: the bids route / settlement cron broadcast lot_bid / lot_closed on
+  // the auction's private channel. Coalesce bursts into one soft refresh.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onLiveEvent = useCallback(() => {
+    if (refreshTimer.current) return;
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      router.refresh();
+    }, 250);
+  }, [router]);
+  const { connected } = useRealtimeTopic(`live:${auction.id}`, onLiveEvent);
+
   // The lot bid amounts / counts are server-rendered props that would
   // otherwise freeze at page-load. Poll a soft refresh so live bidders always
   // see current prices. router.refresh() re-runs the server component while
   // preserving client state (the selected lot), and pauses while the tab is
-  // hidden to avoid needless load.
+  // hidden to avoid needless load. While the realtime channel is connected
+  // the poll is only a reconciliation fallback.
   useEffect(() => {
-    const REFRESH_MS = 5000;
+    const REFRESH_MS = connected ? 20000 : 5000;
     let timer: ReturnType<typeof setInterval> | undefined;
 
     const start = () => {
@@ -64,7 +78,7 @@ export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
       stop();
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [router]);
+  }, [router, connected]);
 
   return (
     <div className="h-dvh dark bg-background text-foreground flex flex-col">

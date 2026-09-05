@@ -67,7 +67,7 @@ export const emails = pgTable('emails', {
   // Email delete re-parents replies by in_reply_to_id — without this it's a
   // table scan per delete.
   index('emails_in_reply_to_idx').on(table.inReplyToId),
-]);
+]).enableRLS();
 
 export type Email = typeof emails.$inferSelect;
 export type NewEmail = typeof emails.$inferInsert;

@@ -8,6 +8,6 @@ export const newsletterSubscribers = pgTable('newsletter_subscribers', {
   unsubscribed: boolean('unsubscribed').default(false),
 }, (table) => [
   uniqueIndex('newsletter_email_unique').on(table.email),
-]);
+]).enableRLS();
 
 export type NewsletterSubscriber = typeof newsletterSubscribers.$inferSelect;

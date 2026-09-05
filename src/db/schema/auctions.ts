@@ -73,7 +73,7 @@ export const auctions = pgTable('auctions', {
   index('auctions_slug_idx').on(table.slug),
   index('auctions_bidding_starts_idx').on(table.biddingStartsAt),
   index('auctions_featured_idx').on(table.isFeatured, table.status),
-]);
+]).enableRLS();
 
 export const auctionsRelations = relations(auctions, ({ one, many }) => ({
   createdBy: one(users, {
@@ -100,13 +100,15 @@ export const auctionLots = pgTable('auction_lots', {
   closingAt: timestamp('closing_at'),
   createdAt: timestamp('created_at').default(sql`now()`),
 }, (table) => [
-  index('auction_lots_auction_idx').on(table.auctionId, table.lotNumber),
+  // Lot numbers are unique within a sale — the database, not the admin UI's
+  // client-computed "next number", is the arbiter when two admins assign at once.
+  uniqueIndex('auction_lots_auction_lot_number_unique_idx').on(table.auctionId, table.lotNumber),
   index('auction_lots_lot_idx').on(table.lotId),
   // A lot can appear in an auction at most once — settlement and removal assume this
   uniqueIndex('auction_lots_auction_lot_unique_idx').on(table.auctionId, table.lotId),
   // Ending-soon scans and closing-time lookups as closed-sale history grows.
   index('auction_lots_closing_at_idx').on(table.closingAt).where(sql`closing_at is not null`),
-]);
+]).enableRLS();
 
 export const auctionLotsRelations = relations(auctionLots, ({ one }) => ({
   auction: one(auctions, {

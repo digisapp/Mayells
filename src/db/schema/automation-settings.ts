@@ -60,6 +60,6 @@ export const automationSettings = pgTable('automation_settings', {
 
   updatedAt: timestamp('updated_at').default(sql`now()`),
   updatedById: uuid('updated_by_id'),
-});
+}).enableRLS();
 
 export type AutomationSettings = typeof automationSettings.$inferSelect;

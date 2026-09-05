@@ -40,7 +40,7 @@ vi.mock('../verification', () => ({
   checkBidAllowed: vi.fn(() => ({ allowed: true })),
 }));
 
-import { placeBid, initializeLotBidState, parseBidScriptResult, sealLotForSettlement, settlingKeyFor } from '../bid-engine';
+import { placeBid, initializeLotBidState, reseedLotBidState, parseBidScriptResult, sealLotForSettlement, settlingKeyFor } from '../bid-engine';
 import { INCREMENT_TIERS } from '../bid-increments';
 import { checkAndExtendAuction } from '../anti-snipe';
 import { redis } from '@/lib/redis';
@@ -290,6 +290,51 @@ describe('placeBid – proxy (max bid) processing', () => {
         isActive: true, // 13_000 < maxAmount 20_000, max not exhausted
       }),
     );
+  });
+});
+
+describe('reseedLotBidState', () => {
+  it('rebuilds both gate keys from the Postgres snapshot without clobbering live state', async () => {
+    mockedRedis.set.mockResolvedValue('OK');
+    const closeTime = new Date(1_750_000_000_000);
+
+    const changed = await reseedLotBidState('lot-1', {
+      closeTime,
+      startingBid: 1_000,
+      currentBidAmount: 12_000,
+      currentBidderId: 'bidder-9',
+    });
+
+    expect(changed).toBe(true);
+    expect(mockedRedis.set).toHaveBeenCalledWith(
+      'bid:lot:lot-1:current',
+      expect.objectContaining({ amount: 12_000, bidderId: 'bidder-9', startingBid: 1_000 }),
+      { nx: true },
+    );
+    expect(mockedRedis.set).toHaveBeenCalledWith('bid:lot:lot-1:close_time', 1_750_000_000, { nx: true });
+  });
+
+  it('reports false when Redis already held both keys (NX refused both writes)', async () => {
+    mockedRedis.set.mockResolvedValue(null);
+    const changed = await reseedLotBidState('lot-1', {
+      closeTime: new Date(),
+      startingBid: 0,
+      currentBidAmount: 0,
+      currentBidderId: null,
+    });
+    expect(changed).toBe(false);
+  });
+
+  it('seeds an empty bidder id when no bid has landed yet', async () => {
+    mockedRedis.set.mockResolvedValue('OK');
+    await reseedLotBidState('lot-1', {
+      closeTime: new Date(),
+      startingBid: 500,
+      currentBidAmount: 0,
+      currentBidderId: null,
+    });
+    const stateCall = mockedRedis.set.mock.calls.find((c) => c[0] === 'bid:lot:lot-1:current');
+    expect((stateCall?.[1] as { bidderId: string }).bidderId).toBe('');
   });
 });
 

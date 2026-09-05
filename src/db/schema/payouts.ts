@@ -48,7 +48,7 @@ export const payouts = pgTable('payouts', {
   // At most one live payout per lot — a webhook redelivery or admin replay
   // must never owe the seller twice
   uniqueIndex('payouts_lot_unique_idx').on(table.lotId).where(sql`status <> 'cancelled'`),
-]);
+]).enableRLS();
 
 export const payoutsRelations = relations(payouts, ({ one }) => ({
   invoice: one(invoices, {

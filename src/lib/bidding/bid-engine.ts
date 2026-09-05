@@ -508,6 +508,42 @@ export async function initializeLotBidState(lotId: string, closeTime: Date, star
 }
 
 /**
+ * Self-heal for a lot whose Redis bid state vanished MID-AUCTION (Redis flush,
+ * eviction, or a failed open that was never repaired). Rebuilds the two gate
+ * keys from the authoritative Postgres snapshot — current high bid + bidder
+ * and the lot's close time — using NX so a state that does exist is never
+ * clobbered. Returns true when at least one key was (re)written, i.e. a retry
+ * of the bid is worthwhile.
+ *
+ * Only call this when Postgres says the lot is genuinely biddable
+ * (status in_auction, close time in the future); the settlement seal is
+ * checked first by the bid script, so a lot mid-settlement is never revived.
+ */
+export async function reseedLotBidState(
+  lotId: string,
+  snapshot: {
+    closeTime: Date;
+    startingBid: number;
+    currentBidAmount: number;
+    currentBidderId: string | null;
+  },
+): Promise<boolean> {
+  const currentBidKey = `bid:lot:${lotId}:current`;
+  const closeTimeKey = `bid:lot:${lotId}:close_time`;
+  const state = {
+    amount: snapshot.currentBidAmount,
+    bidderId: snapshot.currentBidderId ?? '',
+    timestamp: Math.floor(Date.now() / 1000),
+    startingBid: snapshot.startingBid,
+  };
+  const [setState, setClose] = await Promise.all([
+    redis.set(currentBidKey, state, { nx: true }),
+    redis.set(closeTimeKey, Math.floor(snapshot.closeTime.getTime() / 1000), { nx: true }),
+  ]);
+  return setState !== null || setClose !== null;
+}
+
+/**
  * Batch variant of initializeLotBidState: seeds every lot's Redis state in a
  * single pipelined round trip (a 300-lot sale is 1 Upstash call instead of
  * 600 sequential ones).

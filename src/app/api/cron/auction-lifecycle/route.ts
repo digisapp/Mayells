@@ -10,6 +10,7 @@ import { notifyWatchersOfEndingLots } from '@/lib/bidding/ending-soon';
 import { sendInvoiceNotification } from '@/lib/email/notifications';
 import { redis } from '@/lib/redis';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
+import { broadcastLotEvent, broadcastLiveAuctionEvent } from '@/lib/realtime/broadcast';
 import { logger } from '@/lib/logger';
 
 // Large auctions can take a while to settle; allow the full Vercel budget.
@@ -127,6 +128,10 @@ async function runLifecycle() {
         results.errors.push(`Failed to open auction ${auction.id}: ${err}`);
       }
     }
+
+    // Realtime "lot closed" pushes, fired after each settlement commits and
+    // awaited together at the end so a slow Realtime API never stalls the run.
+    const broadcasts: Promise<void>[] = [];
 
     // 2. Settle auctions past their end time, plus any auction stuck mid-settlement:
     //    - 'closing' is set by the live auction end route (auctioneer ended early)
@@ -317,6 +322,10 @@ async function runLifecycle() {
             }
 
             results.lotsSettled++;
+            broadcasts.push(
+              broadcastLotEvent(al.lotId, 'closed', { outcome: settlement.outcome }),
+              broadcastLiveAuctionEvent(auction.id, 'lot_closed', { lotId: al.lotId, outcome: settlement.outcome }),
+            );
           } catch (err) {
             unsettledRemaining++;
             results.errors.push(`Failed to settle lot ${al.lotId}: ${err}`);
@@ -361,6 +370,8 @@ async function runLifecycle() {
     } catch (err) {
       results.errors.push(`Failed to check for stranded live auctions: ${err}`);
     }
+
+    await Promise.allSettled(broadcasts);
 
     // 3. Flip unpaid invoices past their due date to 'overdue'.
     try {

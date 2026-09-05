@@ -14,7 +14,7 @@ export const categories = pgTable('categories', {
 }, (table) => [
   index('categories_slug_idx').on(table.slug),
   index('categories_sort_order_idx').on(table.sortOrder),
-]);
+]).enableRLS();
 
 export const subcategories = pgTable('subcategories', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -25,7 +25,7 @@ export const subcategories = pgTable('subcategories', {
   createdAt: timestamp('created_at').default(sql`now()`),
 }, (table) => [
   index('subcategories_category_idx').on(table.categoryId),
-]);
+]).enableRLS();
 
 export const categoriesRelations = relations(categories, ({ many }) => ({
   subcategories: many(subcategories),

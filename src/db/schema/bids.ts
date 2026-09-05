@@ -39,7 +39,7 @@ export const bids = pgTable('bids', {
   // "Recent bids" views (admin analytics) order the whole table by recency;
   // bids is the fastest-growing table, so this must not be a full sort.
   index('bids_created_at_idx').on(table.createdAt),
-]);
+]).enableRLS();
 
 export const bidsRelations = relations(bids, ({ one }) => ({
   auction: one(auctions, {
@@ -70,7 +70,7 @@ export const maxBids = pgTable('max_bids', {
   // One proxy max bid per bidder per lot — proxy execution assumes this
   uniqueIndex('max_bids_lot_bidder_unique_idx').on(table.lotId, table.bidderId),
   index('max_bids_active_idx').on(table.lotId, table.isActive),
-]);
+]).enableRLS();
 
 export const maxBidsRelations = relations(maxBids, ({ one }) => ({
   lot: one(lots, {

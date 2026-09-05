@@ -5,8 +5,10 @@ import { formatCurrency } from '@/types';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { BidForm } from '@/components/lots/BidForm';
 import { getMinNextBid } from '@/lib/bidding/bid-increments';
+import { useRealtimeTopic } from '@/hooks/useRealtimeTopic';
 
 interface LiveLotPanelProps {
+  lotId: string; // uuid — realtime topic
   lotRef: string; // slug or id used for the state endpoint
   initialCurrentBidAmount: number;
   initialBidCount: number;
@@ -19,7 +21,10 @@ interface LiveLotPanelProps {
   initialIsHighBidder: boolean;
 }
 
+// Polling is the fallback; while the realtime channel is connected every bid
+// arrives as a push and the poll only reconciles (clock drift, missed events).
 const POLL_MS = 6000;
+const POLL_MS_REALTIME = 30000;
 
 /**
  * Live-updating price + countdown for a lot. Polls the lightweight lot-state
@@ -29,6 +34,7 @@ const POLL_MS = 6000;
  * for device clock skew via the server clock (see AuctionCountdown).
  */
 export function LiveLotPanel({
+  lotId,
   lotRef,
   initialCurrentBidAmount,
   initialBidCount,
@@ -88,13 +94,20 @@ export function LiveLotPanel({
     [poll, startingBid],
   );
 
+  // Push updates: the bids route and the settlement cron broadcast on
+  // `lot:<id>` (receive-only private channel). Every event is just a cue to
+  // refetch authoritative state — the payload itself is never rendered.
+  const onRealtimeEvent = useCallback(() => { poll(); }, [poll]);
+  const { connected } = useRealtimeTopic(isBiddable ? `lot:${lotId}` : null, onRealtimeEvent);
+  const pollMs = connected ? POLL_MS_REALTIME : POLL_MS;
+
   useEffect(() => {
     if (!isBiddable) return;
     let timer: ReturnType<typeof setInterval> | null = null;
 
     const start = () => {
       if (timer) return;
-      timer = setInterval(poll, POLL_MS);
+      timer = setInterval(poll, pollMs);
     };
     const stop = () => {
       if (timer) { clearInterval(timer); timer = null; }
@@ -108,7 +121,7 @@ export function LiveLotPanel({
     if (document.visibilityState === 'visible') start();
     document.addEventListener('visibilitychange', onVisibility);
     return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
-  }, [isBiddable, poll]);
+  }, [isBiddable, poll, pollMs]);
 
   const hasBid = currentBidAmount > 0;
 

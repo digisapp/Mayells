@@ -38,7 +38,7 @@ export const webhookLogs = pgTable('webhook_logs', {
   uniqueIndex('whl_provider_event_unique_idx')
     .on(t.provider, t.eventId)
     .where(sql`${t.eventId} is not null`),
-]);
+]).enableRLS();
 
 export type WebhookLog = typeof webhookLogs.$inferSelect;
 export type NewWebhookLog = typeof webhookLogs.$inferInsert;

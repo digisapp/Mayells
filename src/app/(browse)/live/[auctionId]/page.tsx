@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { auctions, auctionLots, lots } from '@/db/schema';
 import { eq, asc } from 'drizzle-orm';
 import { LiveAuctionViewer } from '@/components/live/LiveAuctionViewer';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 export default async function LiveAuctionPage({
   params,
@@ -12,6 +13,7 @@ export default async function LiveAuctionPage({
   params: Promise<{ auctionId: string }>;
 }) {
   const { auctionId } = await params;
+  if (!UUID_RE.test(auctionId)) notFound();
 
   const [auction] = await db
     .select()

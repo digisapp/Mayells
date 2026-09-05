@@ -12,7 +12,7 @@ export const auctionReminders = pgTable('auction_reminders', {
 }, (table) => [
   index('reminder_user_idx').on(table.userId),
   uniqueIndex('reminder_unique_idx').on(table.userId, table.lotId),
-]);
+]).enableRLS();
 
 export const auctionReminderRelations = relations(auctionReminders, ({ one }) => ({
   user: one(users, {

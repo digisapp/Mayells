@@ -204,8 +204,10 @@ function EditAuctionContent() {
       loadAssignedLots();
       loadAvailableLots();
     } else {
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       toast.error(data.error || 'Failed to assign lot');
+      // A 409 means our "next lot number" was stale — pull the fresh list.
+      if (res.status === 409) loadAssignedLots();
     }
   }
 
@@ -220,7 +222,8 @@ function EditAuctionContent() {
       loadAssignedLots();
       loadAvailableLots();
     } else {
-      toast.error('Failed to remove lot');
+      const data = await res.json().catch(() => ({}));
+      toast.error(data.error || 'Failed to remove lot');
     }
   }
 

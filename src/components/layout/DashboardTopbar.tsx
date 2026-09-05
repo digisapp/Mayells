@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, ShieldCheck } from 'lucide-react';
 import { adminLinks } from '@/components/layout/AdminSidebar';
 
 export function DashboardTopbar() {
@@ -36,6 +36,12 @@ export function DashboardTopbar() {
         <Link href="/admin/emails">
           <Button variant="ghost" size="sm" className="text-muted-foreground text-xs">
             Inbox
+          </Button>
+        </Link>
+        <Link href="/admin/security" aria-label="Security settings">
+          <Button variant="ghost" size="sm" className="text-muted-foreground text-xs">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Security
           </Button>
         </Link>
       </div>

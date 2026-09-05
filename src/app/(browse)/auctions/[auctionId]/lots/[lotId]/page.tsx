@@ -228,6 +228,7 @@ export default async function LotDetailPage({
           <div className="bg-card border border-border/50 rounded-xl p-6 space-y-5 shadow-luxury">
             {/* Live-updating estimate / current bid + countdown + on-site bidding */}
             <LiveLotPanel
+              lotId={lot.id}
               lotRef={lot.slug || lot.id}
               initialCurrentBidAmount={lot.currentBidAmount}
               initialBidCount={lot.bidCount}

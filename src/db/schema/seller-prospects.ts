@@ -74,7 +74,7 @@ export const sellerProspects = pgTable('seller_prospects', {
   index('seller_prospects_status_idx').on(table.status),
   index('seller_prospects_email_idx').on(table.email),
   index('seller_prospects_created_idx').on(table.createdAt),
-]);
+]).enableRLS();
 
 export const sellerProspectsRelations = relations(sellerProspects, ({ many }) => ({
   uploadLinks: many(uploadLinks),
@@ -106,7 +106,7 @@ export const uploadLinks = pgTable('upload_links', {
 }, (table) => [
   index('upload_links_token_idx').on(table.token),
   index('upload_links_prospect_idx').on(table.prospectId),
-]);
+]).enableRLS();
 
 export const uploadLinksRelations = relations(uploadLinks, ({ one, many }) => ({
   prospect: one(sellerProspects, {
@@ -192,7 +192,7 @@ export const uploadItems = pgTable('upload_items', {
   index('upload_items_link_idx').on(table.uploadLinkId),
   index('upload_items_prospect_idx').on(table.prospectId),
   index('upload_items_status_idx').on(table.status),
-]);
+]).enableRLS();
 
 export const uploadItemsRelations = relations(uploadItems, ({ one }) => ({
   uploadLink: one(uploadLinks, {

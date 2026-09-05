@@ -112,7 +112,7 @@ export const lots = pgTable('lots', {
   // Default "newest" ordering on public browse + admin lots lists, and the
   // saved-search watermark predicate.
   index('lots_created_at_idx').on(table.createdAt),
-]);
+]).enableRLS();
 
 export const lotsRelations = relations(lots, ({ one, many }) => ({
   category: one(categories, {

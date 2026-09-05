@@ -10,6 +10,6 @@ export const aiChatSettings = pgTable('ai_chat_settings', {
   greetingMessage: text('greeting_message'),
   enabled: boolean('enabled').default(true).notNull(),
   updatedAt: timestamp('updated_at').default(sql`now()`),
-});
+}).enableRLS();
 
 export type AiChatSettings = typeof aiChatSettings.$inferSelect;
