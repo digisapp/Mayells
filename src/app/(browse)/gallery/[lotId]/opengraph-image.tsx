@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { lots } from '@/db/schema';
 import { eq, or } from 'drizzle-orm';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { loadOgImage } from '@/lib/seo/og-image';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
@@ -11,17 +12,23 @@ export const contentType = 'image/png';
 async function getLot(lotId: string) {
   // Slug or UUID; only compare against the uuid column when the param looks
   // like one (a non-UUID cast throws in Postgres and would break the image).
-  const [lot] = await db
-    .select()
-    .from(lots)
-    .where(UUID_RE.test(lotId) ? or(eq(lots.id, lotId), eq(lots.slug, lotId)) : eq(lots.slug, lotId))
-    .limit(1);
-  return lot;
+  // A DB hiccup degrades to the generic branded card rather than a 500.
+  try {
+    const [lot] = await db
+      .select()
+      .from(lots)
+      .where(UUID_RE.test(lotId) ? or(eq(lots.id, lotId), eq(lots.slug, lotId)) : eq(lots.slug, lotId))
+      .limit(1);
+    return lot;
+  } catch {
+    return undefined;
+  }
 }
 
 export default async function OGImage({ params }: { params: Promise<{ lotId: string }> }) {
   const { lotId } = await params;
   const lot = await getLot(lotId);
+  const cover = await loadOgImage(lot?.primaryImageUrl);
 
   return new ImageResponse(
     (
@@ -35,9 +42,9 @@ export default async function OGImage({ params }: { params: Promise<{ lotId: str
         }}
       >
         {/* Lot image as background */}
-        {lot?.primaryImageUrl && (
+        {cover && (
           <img
-            src={lot.primaryImageUrl}
+            src={cover}
             alt=""
             style={{
               position: 'absolute',

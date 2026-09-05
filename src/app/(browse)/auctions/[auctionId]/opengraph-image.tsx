@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { auctions } from '@/db/schema';
 import { eq, or } from 'drizzle-orm';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { loadOgImage } from '@/lib/seo/og-image';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
@@ -11,21 +12,27 @@ export const contentType = 'image/png';
 async function getAuction(auctionId: string) {
   // Slug or UUID; only compare against the uuid column when the param looks
   // like one (a non-UUID cast throws in Postgres and would break the image).
-  const [auction] = await db
-    .select()
-    .from(auctions)
-    .where(
-      UUID_RE.test(auctionId)
-        ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId))
-        : eq(auctions.slug, auctionId),
-    )
-    .limit(1);
-  return auction;
+  // A DB hiccup degrades to the generic branded card rather than a 500.
+  try {
+    const [auction] = await db
+      .select()
+      .from(auctions)
+      .where(
+        UUID_RE.test(auctionId)
+          ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId))
+          : eq(auctions.slug, auctionId),
+      )
+      .limit(1);
+    return auction;
+  } catch {
+    return undefined;
+  }
 }
 
 export default async function OGImage({ params }: { params: Promise<{ auctionId: string }> }) {
   const { auctionId } = await params;
   const auction = await getAuction(auctionId);
+  const cover = await loadOgImage(auction?.coverImageUrl);
 
   const dateText = auction?.biddingStartsAt
     ? new Date(auction.biddingStartsAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
@@ -43,9 +50,9 @@ export default async function OGImage({ params }: { params: Promise<{ auctionId:
         }}
       >
         {/* Cover image */}
-        {auction?.coverImageUrl && (
+        {cover && (
           <img
-            src={auction.coverImageUrl}
+            src={cover}
             alt=""
             style={{
               position: 'absolute',
