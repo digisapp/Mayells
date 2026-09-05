@@ -404,6 +404,7 @@ export default function ConsignPage() {
                     <div className="flex gap-2 mb-3 flex-wrap">
                       {photos.map((photo, i) => (
                         <div key={i} className="relative group">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
                           <img
                             src={photo.preview}
                             alt={`Photo ${i + 1}`}

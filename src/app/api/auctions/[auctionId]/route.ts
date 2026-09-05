@@ -3,10 +3,12 @@ import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { auctions, users } from '@/db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, or } from 'drizzle-orm';
 import { auctionUpdateSchema } from '@/lib/validation/schemas';
 import { openAuctionLots } from '@/lib/bidding/lifecycle';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { isPubliclyVisibleAuction, toPublicAuction } from '@/lib/auctions/visibility';
 import { logger } from '@/lib/logger';
 
 export async function GET(
@@ -16,26 +18,49 @@ export async function GET(
   try {
     const { auctionId } = await params;
 
-    // Try by ID first, then by slug
-    let [auction] = await db
+    // Accept a UUID or a slug (a non-UUID string compared against the uuid
+    // column throws 22P02 in Postgres, so only match on id when it looks like one).
+    const [auction] = await db
       .select()
       .from(auctions)
-      .where(eq(auctions.id, auctionId))
+      .where(
+        UUID_RE.test(auctionId)
+          ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId))
+          : eq(auctions.slug, auctionId),
+      )
       .limit(1);
-
-    if (!auction) {
-      [auction] = await db
-        .select()
-        .from(auctions)
-        .where(eq(auctions.slug, auctionId))
-        .limit(1);
-    }
 
     if (!auction) {
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ data: auction });
+    // Only admins may see draft/cancelled auctions or internal fields
+    // (livekitRoomName, createdById, auctioneerId). Everyone else gets the
+    // same public projection as the list endpoint.
+    let isAdmin = false;
+    try {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const [profile] = await db
+          .select({ role: users.role, isAdmin: users.isAdmin })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .limit(1);
+        isAdmin = isAdminProfile(profile);
+      }
+    } catch {
+      isAdmin = false;
+    }
+
+    const noStore = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
+    if (isAdmin) {
+      return NextResponse.json({ data: auction }, { headers: noStore });
+    }
+    if (!isPubliclyVisibleAuction(auction.status)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
+    return NextResponse.json({ data: toPublicAuction(auction) }, { headers: noStore });
   } catch (error) {
     logger.error('Get auction error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -59,6 +84,9 @@ export async function PATCH(
     }
 
     const { auctionId } = await params;
+    if (!UUID_RE.test(auctionId)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
     const body = await req.json();
     const parsed = auctionUpdateSchema.safeParse(body);
     if (!parsed.success) {
@@ -143,6 +171,9 @@ export async function DELETE(
     }
 
     const { auctionId } = await params;
+    if (!UUID_RE.test(auctionId)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
 
     const [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
     if (!auction) {

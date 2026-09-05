@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { AuctionForm, type AuctionFormData } from '@/components/admin/AuctionForm';
 import { Button } from '@/components/ui/button';
@@ -81,6 +81,25 @@ function EditAuctionContent() {
   const [deleting, setDeleting] = useState(false);
   const [nextLotNumber, setNextLotNumber] = useState(1);
 
+  const loadAssignedLots = useCallback(() => {
+    fetch(`/api/auctions/${auctionId}/lots`)
+      .then((r) => r.json())
+      .then((d) => {
+        const items = d.data || [];
+        setAssignedLots(items);
+        const maxNum = items.reduce((max: number, l: AssignedLot) => Math.max(max, l.lotNumber || 0), 0);
+        setNextLotNumber(maxNum + 1);
+      })
+      .catch(() => toast.error('Failed to load assigned lots'));
+  }, [auctionId]);
+
+  const loadAvailableLots = useCallback(() => {
+    fetch('/api/lots?status=approved&limit=100')
+      .then((r) => r.json())
+      .then((d) => setAvailableLots(d.data || []))
+      .catch(() => toast.error('Failed to load available lots'));
+  }, []);
+
   useEffect(() => {
     fetch(`/api/auctions/${auctionId}`)
       .then((r) => r.json())
@@ -91,24 +110,7 @@ function EditAuctionContent() {
       .catch(() => setLoadError(true));
     loadAssignedLots();
     loadAvailableLots();
-  }, [auctionId]);
-
-  function loadAssignedLots() {
-    fetch(`/api/auctions/${auctionId}/lots`)
-      .then((r) => r.json())
-      .then((d) => {
-        const items = d.data || [];
-        setAssignedLots(items);
-        const maxNum = items.reduce((max: number, l: AssignedLot) => Math.max(max, l.lotNumber || 0), 0);
-        setNextLotNumber(maxNum + 1);
-      });
-  }
-
-  function loadAvailableLots() {
-    fetch('/api/lots?status=approved&limit=100')
-      .then((r) => r.json())
-      .then((d) => setAvailableLots(d.data || []));
-  }
+  }, [auctionId, loadAssignedLots, loadAvailableLots]);
 
   if (loadError) {
     return (
@@ -310,6 +312,7 @@ function EditAuctionContent() {
                   {assignedLots.map((lot) => (
                     <div key={lot.id} className="flex items-center gap-3 p-3 rounded-md border">
                       {lot.primaryImageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview
                         <img src={lot.primaryImageUrl} alt={lot.title} className="w-12 h-12 object-cover rounded" />
                       ) : (
                         <div className="w-12 h-12 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">No img</div>
@@ -342,6 +345,7 @@ function EditAuctionContent() {
                   {unassignedLots.map((lot) => (
                     <div key={lot.id} className="flex items-center gap-3 p-3 rounded-md border">
                       {lot.primaryImageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview
                         <img src={lot.primaryImageUrl} alt={lot.title} className="w-12 h-12 object-cover rounded" />
                       ) : (
                         <div className="w-12 h-12 bg-muted rounded flex items-center justify-center text-xs text-muted-foreground">No img</div>

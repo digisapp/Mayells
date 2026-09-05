@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { uploadItems, sellerProspects, users } from '@/db/schema';
 import { eq, and, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 const itemReviewSchema = z.object({
   items: z.array(z.object({
@@ -33,6 +34,9 @@ export async function GET(
     if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { prospectId } = await params;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
 
     const items = await db
       .select()
@@ -59,6 +63,9 @@ export async function PATCH(
     if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { prospectId } = await params;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
     const parsed = itemReviewSchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });

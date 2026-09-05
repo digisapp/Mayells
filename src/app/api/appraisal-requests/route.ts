@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
           // unauthenticated endpoint writing to a public bucket).
           .filter((p) => p.size > 0 && p.size <= MAX_FILE_SIZE && ALLOWED_TYPES.includes(p.type))
           .map(async (photo) => {
-            const ext = photo.name.split('.').pop()?.toLowerCase() || 'jpg';
+            const ext = photo.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'jpg';
             const path = `submissions/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
             const stripped = await stripImageMetadata(await photo.arrayBuffer());
             const { data, error } = await admin.storage

@@ -6,21 +6,8 @@ import { eq, desc, and, inArray } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { auctionSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import { PUBLIC_AUCTION_STATUSES, toPublicAuction, type AuctionStatus } from '@/lib/auctions/visibility';
 
-// Auction statuses the public may see. draft (unannounced plans) and
-// cancelled stay internal.
-const PUBLIC_AUCTION_STATUSES = [
-  'scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed',
-] as const;
-
-type AuctionStatus = (typeof auctions.status.enumValues)[number];
-
-/** Public-safe auction shape: no livekitRoomName or admin user ids. */
-function toPublicAuction(a: typeof auctions.$inferSelect) {
-  const { livekitRoomName, createdById, auctioneerId, ...publicFields } = a;
-  void livekitRoomName; void createdById; void auctioneerId;
-  return publicFields;
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -47,7 +34,11 @@ export async function GET(req: NextRequest) {
 
     const conditions = [];
     if (status) {
-      const requested = status.split(',') as AuctionStatus[];
+      const validStatuses = auctions.status.enumValues as readonly string[];
+      const requested = status
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => validStatuses.includes(s)) as AuctionStatus[];
       const allowed = isAdmin
         ? requested
         : requested.filter((s) => (PUBLIC_AUCTION_STATUSES as readonly string[]).includes(s));

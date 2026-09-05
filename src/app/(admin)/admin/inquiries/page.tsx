@@ -108,6 +108,7 @@ export default function AdminInquiriesPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
                     {row.lot.primaryImageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview
                       <img
                         src={row.lot.primaryImageUrl}
                         alt={row.lot.title}

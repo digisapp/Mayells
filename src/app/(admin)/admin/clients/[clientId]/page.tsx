@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowLeft, Mail, Package, Image, DollarSign, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Mail, Package, Image as ImageIcon, DollarSign, CheckCircle } from 'lucide-react';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
 
@@ -213,7 +213,7 @@ export default function AdminClientDetailPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Image className="h-4 w-4" /> Lots
+              <ImageIcon className="h-4 w-4" /> Lots
             </div>
             <p className="text-2xl font-semibold">{clientLots.length}</p>
           </CardContent>

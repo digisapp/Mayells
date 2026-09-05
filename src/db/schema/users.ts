@@ -1,5 +1,5 @@
 import { pgTable, uuid, text, timestamp, boolean, pgEnum, index } from 'drizzle-orm/pg-core';
-import { relations, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 export const userRoleEnum = pgEnum('user_role', ['buyer', 'seller', 'admin', 'auctioneer']);
 export const accountStatusEnum = pgEnum('account_status', ['active', 'suspended', 'banned']);

@@ -1,7 +1,7 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/db';
-import { auctions, lots, categories, auctionLots } from '@/db/schema';
+import { auctions, lots, categories } from '@/db/schema';
 import { eq, and, gte, ilike, or, desc, asc, sql } from 'drizzle-orm';
 
 function formatPrice(cents: number | null): string {
@@ -84,11 +84,12 @@ export const chatTools = {
     }),
     execute: async ({ query, category, maxPrice, saleType }) => {
       try {
+        // Public chat surface: only lots that are actually listed. 'approved'
+        // is a pre-publication state and must not be discoverable here.
         const conditions = [
           or(
             eq(lots.status, 'for_sale'),
             eq(lots.status, 'in_auction'),
-            eq(lots.status, 'approved'),
           ),
         ];
 

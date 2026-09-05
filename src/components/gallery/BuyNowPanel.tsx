@@ -7,14 +7,13 @@ import { ShoppingBag, Shield, Truck, Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 
 interface BuyNowPanelProps {
-  lotId: string;
   title: string;
   buyNowPrice: number;
   estimateLow?: number | null;
   estimateHigh?: number | null;
 }
 
-export function BuyNowPanel({ lotId, title, buyNowPrice, estimateLow, estimateHigh }: BuyNowPanelProps) {
+export function BuyNowPanel({ title, buyNowPrice, estimateLow, estimateHigh }: BuyNowPanelProps) {
   const [showContact, setShowContact] = useState(false);
 
   return (

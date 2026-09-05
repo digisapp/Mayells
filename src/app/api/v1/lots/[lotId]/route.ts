@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import { db } from '@/db';
 import { lots } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
 import { rateLimit } from '@/lib/rate-limit';
+import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { publicLotPath } from '@/lib/lots/urls';
 
 /**
  * Public Lot Detail API — full lot information for AI agents.
@@ -31,26 +35,19 @@ export async function GET(
   const { lotId } = await params;
 
   try {
-    // Try by slug first, then by ID
-    let lot = await db.query.lots.findFirst({
-      where: eq(lots.slug, lotId),
+    // Accept a slug or a UUID. Only compare against the uuid column when the
+    // param looks like one — Postgres throws (22P02) on a non-UUID cast.
+    const lot = await db.query.lots.findFirst({
+      where: UUID_RE.test(lotId) ? or(eq(lots.id, lotId), eq(lots.slug, lotId)) : eq(lots.slug, lotId),
       with: {
         category: true,
-        images: true,
+        images: { orderBy: (img, { asc }) => [asc(img.sortOrder)] },
       },
     });
 
-    if (!lot) {
-      lot = await db.query.lots.findFirst({
-        where: eq(lots.id, lotId),
-        with: {
-          category: true,
-          images: true,
-        },
-      });
-    }
-
-    if (!lot) {
+    // This is a public, unauthenticated endpoint: unpublished lots (draft,
+    // pending_review, approved-but-not-listed, withdrawn, unsold) are 404.
+    if (!lot || !isPubliclyVisibleLot(lot.status)) {
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 
@@ -97,7 +94,7 @@ export async function GET(
       tags: lot.aiTags,
       isFeatured: lot.isFeatured,
       slug: lot.slug,
-      url: `${process.env.NEXT_PUBLIC_APP_URL}/browse/lots/${lot.slug || lot.id}`,
+      url: `${process.env.NEXT_PUBLIC_APP_URL}${publicLotPath(lot)}`,
       createdAt: lot.createdAt,
     };
 
@@ -116,6 +113,7 @@ export async function GET(
 
     return response;
   } catch (error) {
+    logger.error('v1 lot detail error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

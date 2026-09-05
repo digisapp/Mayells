@@ -11,6 +11,7 @@ const agreementSchema = z.object({
 import { sellerProspects, users, emails } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { getResend } from '@/lib/email/resend';
 import { escapeHtml } from '@/lib/email/escape';
 import { BUSINESS } from '@/lib/config';
@@ -28,6 +29,9 @@ export async function POST(
     if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { prospectId } = await params;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
     const parsed = agreementSchema.safeParse(await req.json());
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
@@ -138,12 +142,28 @@ export async function POST(
     // Send email using sendAndLog pattern
     const resend = getResend();
     const fromEmail = 'notifications@mayells.com';
-    const { data: sent } = await resend.emails.send({
+    const { data: sent, error: sendError } = await resend.emails.send({
       from: `${BUSINESS.name} <${fromEmail}>`,
       to: prospect.email,
       subject: emailSubject,
       html: emailHtml,
     });
+
+    if (sendError) {
+      // Don't leave the prospect marked agreement_sent (nor log a phantom
+      // 'sent' row) when Resend rejected the message — the admin needs to
+      // see the failure and retry.
+      logger.error('Resend agreement send error', sendError, { prospectId });
+      await db
+        .update(sellerProspects)
+        .set({
+          status: prospect.status,
+          agreementSentAt: prospect.agreementSentAt,
+          agreedCommissionPercent: prospect.agreedCommissionPercent,
+        })
+        .where(eq(sellerProspects.id, prospectId));
+      return NextResponse.json({ error: 'Failed to send agreement email' }, { status: 502 });
+    }
 
     await db.insert(emails).values({
       resendId: sent?.id || null,

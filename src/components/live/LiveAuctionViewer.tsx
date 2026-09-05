@@ -6,7 +6,6 @@ import Image from 'next/image';
 import { LiveVideoPlayer } from './LiveVideoPlayer';
 import { LiveChat } from './LiveChat';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/types';
 

@@ -5,6 +5,8 @@ import { lots, categories } from '@/db/schema';
 import { eq, and, gte, lte, ilike, inArray, desc, asc, sql, or } from 'drizzle-orm';
 import { rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
+import { PUBLIC_LOT_STATUSES } from '@/lib/lots/visibility';
+import { publicLotPath } from '@/lib/lots/urls';
 
 /**
  * Public Catalog API — discoverable by AI agents, search engines, and third-party tools.
@@ -24,7 +26,7 @@ import { logger } from '@/lib/logger';
  */
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request);
-  const { success, remaining, resetAt } = await rateLimit(`v1:catalog:${ip}`, {
+  const { success, resetAt } = await rateLimit(`v1:catalog:${ip}`, {
     maxRequests: 200,
     windowSeconds: 3600,
   });
@@ -38,9 +40,13 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
 
   const categorySlug = params.get('category');
-  const query = params.get('query');
-  const minEstimate = params.get('minEstimate') ? parseInt(params.get('minEstimate')!) * 100 : undefined;
-  const maxEstimate = params.get('maxEstimate') ? parseInt(params.get('maxEstimate')!) * 100 : undefined;
+  const query = params.get('query')?.trim().slice(0, 200) || null;
+  const parseDollars = (v: string | null) => {
+    const n = v ? parseInt(v, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n * 100 : undefined;
+  };
+  const minEstimate = parseDollars(params.get('minEstimate'));
+  const maxEstimate = parseDollars(params.get('maxEstimate'));
   // Whitelist all enum params — unknown values fall back to the default
   const VALID_STATUSES = ['available', 'sold', 'all'] as const;
   const VALID_SALE_TYPES = ['auction', 'gallery', 'private', 'all'] as const;
@@ -62,13 +68,15 @@ export async function GET(request: NextRequest) {
   try {
     const conditions = [];
 
-    // Status filter
+    // Status filter. This is a public endpoint: "all" means every PUBLIC
+    // status (listed + sold), never unpublished/withdrawn inventory.
     if (status === 'available') {
-      conditions.push(inArray(lots.status, ['for_sale', 'in_auction', 'approved']));
+      conditions.push(inArray(lots.status, ['for_sale', 'in_auction']));
     } else if (status === 'sold') {
       conditions.push(eq(lots.status, 'sold'));
+    } else {
+      conditions.push(inArray(lots.status, [...PUBLIC_LOT_STATUSES]));
     }
-    // "all" = no status filter
 
     // Sale type
     if (saleType !== 'all') {
@@ -161,7 +169,7 @@ export async function GET(request: NextRequest) {
       buyNowPrice: item.buyNowPrice ? item.buyNowPrice / 100 : null,
       hammerPrice: item.hammerPrice ? item.hammerPrice / 100 : null,
       currency: 'USD',
-      url: `${process.env.NEXT_PUBLIC_APP_URL}/browse/lots/${item.slug || item.id}`,
+      url: `${process.env.NEXT_PUBLIC_APP_URL}${publicLotPath(item)}`,
     }));
 
     const response = NextResponse.json({

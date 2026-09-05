@@ -19,6 +19,14 @@ interface RateLimitResult {
   resetAt: number;
 }
 
+const RATE_LIMIT_SCRIPT = `
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+  redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
+end
+return current
+`;
+
 export async function rateLimit(
   key: string,
   config: RateLimitConfig,
@@ -28,11 +36,12 @@ export async function rateLimit(
   const resetAt = (Math.floor(now / config.windowSeconds) + 1) * config.windowSeconds;
 
   try {
-    const current = await redis.incr(windowKey);
-
-    if (current === 1) {
-      await redis.expire(windowKey, config.windowSeconds);
-    }
+    // INCR + EXPIRE in one atomic script: a crash/timeout between two separate
+    // round-trips would otherwise leave a counter with no TTL (a key that
+    // never expires and keeps counting).
+    const current = Number(
+      await redis.eval(RATE_LIMIT_SCRIPT, [windowKey], [config.windowSeconds]),
+    );
 
     const remaining = Math.max(0, config.maxRequests - current);
 

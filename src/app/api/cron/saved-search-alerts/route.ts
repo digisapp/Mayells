@@ -5,6 +5,7 @@ import { savedSearches, lots, users } from '@/db/schema';
 import { eq, and, gt, inArray, sql, asc, type SQL } from 'drizzle-orm';
 import { sendSavedSearchAlert } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
+import { publicLotPath } from '@/lib/lots/urls';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -33,10 +34,7 @@ function escapeLike(word: string): string {
 }
 
 function lotUrl(lot: { slug: string | null; id: string; saleType: string }): string {
-  const ref = lot.slug || lot.id;
-  return lot.saleType === 'gallery' || lot.saleType === 'private'
-    ? `${BASE_URL}/gallery/${ref}`
-    : `${BASE_URL}/lots/${ref}`;
+  return `${BASE_URL}${publicLotPath(lot)}`;
 }
 
 export async function GET(request: NextRequest) {

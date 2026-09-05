@@ -146,7 +146,6 @@ export default async function GalleryDetailPage({
         <div className="lg:row-span-2">
           {lot.status === 'for_sale' && lot.buyNowPrice ? (
             <BuyNowPanel
-              lotId={lot.id}
               title={lot.title}
               buyNowPrice={lot.buyNowPrice}
               estimateLow={lot.estimateLow}

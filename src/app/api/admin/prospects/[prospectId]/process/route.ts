@@ -7,6 +7,7 @@ import { eq, and } from 'drizzle-orm';
 import { catalogLotFromImages } from '@/lib/ai/cataloging';
 import { appraiseLot } from '@/lib/ai/appraisal';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 export const maxDuration = 120;
 
@@ -26,6 +27,9 @@ export async function POST(
     }
 
     const { prospectId } = await params;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
 
     // Verify prospect exists
     const [prospect] = await db

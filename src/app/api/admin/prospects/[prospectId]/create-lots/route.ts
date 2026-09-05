@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { uploadItems, sellerProspects, users, lots, lotImages, categories, auctionLots, auctions, uploadLinks } from '@/db/schema';
 import { eq, and, inArray, ilike, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { ensureProspectSellerUser, isSentinelEmail } from '@/lib/sellers/shadow';
 import { portalUrl } from '@/lib/sellers/portal';
 import { sendConsignorPortalEmail } from '@/lib/email/notifications';
@@ -46,10 +47,12 @@ export async function POST(
     }
 
     const { prospectId } = await params;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
     const body = await request.json();
     const { auctionId, itemIds } = body as { auctionId?: string; itemIds?: string[] };
 
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (auctionId !== undefined && (typeof auctionId !== 'string' || !UUID_RE.test(auctionId))) {
       return NextResponse.json({ error: 'Invalid auctionId' }, { status: 400 });
     }

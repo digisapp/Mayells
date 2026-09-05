@@ -41,7 +41,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File too large. Max 10MB.' }, { status: 400 });
     }
 
-    const ext = file.name.split('.').pop() || 'jpg';
+    // Only a-z0-9 may reach the storage key — a crafted filename must not be
+    // able to inject path segments or odd characters into the object path.
+    const ext = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'jpg';
     const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
     const stripped = await stripImageMetadata(await file.arrayBuffer());

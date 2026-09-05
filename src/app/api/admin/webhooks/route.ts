@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { webhookLogs, users } from '@/db/schema';
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { parsePagination } from '@/lib/pagination';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,8 +21,7 @@ export async function GET(request: NextRequest) {
     const params = request.nextUrl.searchParams;
     const provider = params.get('provider'); // 'stripe' | 'resend'
     const status = params.get('status');     // 'success' | 'failed' | 'ignored'
-    const limit = Math.min(parseInt(params.get('limit') || '50'), 100);
-    const offset = parseInt(params.get('offset') || '0');
+    const { limit, offset } = parsePagination(params, { defaultLimit: 50, maxLimit: 100 });
 
     const conditions = [];
     if (provider) conditions.push(eq(webhookLogs.provider, provider));

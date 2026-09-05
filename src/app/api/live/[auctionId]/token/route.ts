@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { users, auctions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { isAdminProfile } from '@/lib/auth/admin';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { generateToken } from '@/lib/livekit/config';
 import { logger } from '@/lib/logger';
 
@@ -12,6 +14,9 @@ export async function POST(
 ) {
   try {
     const { auctionId } = await params;
+    if (!UUID_RE.test(auctionId)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -35,7 +40,9 @@ export async function POST(
     const roomName = auction.livekitRoomName || `auction-${auctionId}`;
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    const isAuctioneer = profile?.role === 'auctioneer' || profile?.role === 'admin';
+    // Publisher rights for the auctioneer role and for any admin (role OR the
+    // is_admin flag — isAdminProfile is the single source of that decision).
+    const isAuctioneer = profile?.role === 'auctioneer' || isAdminProfile(profile);
 
     const token = await generateToken({
       roomName,

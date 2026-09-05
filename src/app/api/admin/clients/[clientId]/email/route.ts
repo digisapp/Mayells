@@ -8,6 +8,13 @@ import { getResend } from '@/lib/email/resend';
 import { escapeHtml } from '@/lib/email/escape';
 import { emails } from '@/db/schema';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
+
+const clientEmailSchema = z.object({
+  subject: z.string().trim().max(200).optional(),
+  message: z.string().max(10000).optional(),
+});
 
 function formatCents(cents: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(cents / 100);
@@ -30,7 +37,14 @@ export async function POST(
     }
 
     const { clientId } = await params;
-    const { subject, message } = await request.json();
+    if (!UUID_RE.test(clientId)) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+    const parsed = clientEmailSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+    const { subject, message } = parsed.data;
 
     const [client] = await db.select().from(users).where(eq(users.id, clientId)).limit(1);
     if (!client || !client.email) {

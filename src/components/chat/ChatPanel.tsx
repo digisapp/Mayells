@@ -223,6 +223,7 @@ export function ChatPanel({ visible, onClose, pendingMessage, onPendingConsumed 
           {/* Image Preview */}
           {imagePreview && (
             <div className="px-5 py-3 border-t border-black/5 flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
               <img
                 src={imagePreview}
                 alt="Upload preview"

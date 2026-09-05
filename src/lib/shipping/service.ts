@@ -7,7 +7,7 @@
  */
 
 import { db } from '@/db';
-import { shipments, invoices, lots, users, automationSettings } from '@/db/schema';
+import { shipments, invoices, users, automationSettings } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { getRates, purchaseLabel, getTracking } from './client';
 import type { ShippingAddress, PackageDimensions } from './types';

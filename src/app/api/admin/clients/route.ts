@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { users, consignments, lots } from '@/db/schema';
+import { users } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { parsePagination } from '@/lib/pagination';

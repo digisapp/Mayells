@@ -22,7 +22,7 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  Image,
+  Image as ImageIcon,
   Loader2,
   Copy,
   ExternalLink,
@@ -814,7 +814,7 @@ export default function AdminProspectDetailPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-              <Image className="h-4 w-4" /> Total Items
+              <ImageIcon className="h-4 w-4" /> Total Items
             </div>
             <p className="text-2xl font-semibold">{totalItems}</p>
           </CardContent>
@@ -906,6 +906,7 @@ export default function AdminProspectDetailPage() {
                     {/* Image */}
                     <div className="w-32 h-32 flex-shrink-0 bg-muted relative">
                       {primaryImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview
                         <img
                           src={primaryImage}
                           alt={title}
@@ -914,7 +915,7 @@ export default function AdminProspectDetailPage() {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                          <Image className="h-8 w-8" />
+                          <ImageIcon className="h-8 w-8" />
                         </div>
                       )}
                       {item.images && item.images.length > 1 && (
@@ -1126,6 +1127,7 @@ export default function AdminProspectDetailPage() {
                           <div className="flex gap-2 overflow-x-auto pb-2">
                             {item.images.map((img, idx) => (
                               <div key={idx} className="relative flex-shrink-0 group/lens">
+                                {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
                                 <img
                                   src={img}
                                   alt={`${title} image ${idx + 1}`}

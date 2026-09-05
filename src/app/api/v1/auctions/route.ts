@@ -5,6 +5,8 @@ import { auctions } from '@/db/schema';
 import { inArray, desc, asc, sql, and } from 'drizzle-orm';
 import { rateLimit } from '@/lib/rate-limit';
 import { parsePagination } from '@/lib/pagination';
+import { logger } from '@/lib/logger';
+import { PUBLIC_AUCTION_STATUSES } from '@/lib/auctions/visibility';
 
 /**
  * Public Auctions API — discoverable by AI agents.
@@ -19,7 +21,7 @@ import { parsePagination } from '@/lib/pagination';
  */
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request);
-  const { success, remaining, resetAt } = await rateLimit(`v1:auctions:${ip}`, {
+  const { success, resetAt } = await rateLimit(`v1:auctions:${ip}`, {
     maxRequests: 200,
     windowSeconds: 3600,
   });
@@ -45,6 +47,9 @@ export async function GET(request: NextRequest) {
       conditions.push(inArray(auctions.status, ['open', 'live']));
     } else if (status === 'completed') {
       conditions.push(inArray(auctions.status, ['closed', 'completed']));
+    } else {
+      // "all" (or anything unknown): every PUBLIC status — never draft/cancelled.
+      conditions.push(inArray(auctions.status, [...PUBLIC_AUCTION_STATUSES]));
     }
 
     const orderBy = sort === 'soonest'
@@ -81,7 +86,7 @@ export async function GET(request: NextRequest) {
     const formatted = items.map(item => ({
       ...item,
       buyerPremiumPercent: item.buyerPremiumPercent || 25,
-      url: `${process.env.NEXT_PUBLIC_APP_URL}/browse/auctions/${item.slug || item.id}`,
+      url: `${process.env.NEXT_PUBLIC_APP_URL}/auctions/${item.slug || item.id}`,
     }));
 
     const response = NextResponse.json({
@@ -100,6 +105,7 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (error) {
+    logger.error('v1 auctions error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

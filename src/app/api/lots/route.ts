@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { db } from '@/db';
-import { lots, lotImages, users } from '@/db/schema';
+import { lots, users } from '@/db/schema';
 import { eq, desc, asc, and, ilike, sql, inArray } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { lotSchema } from '@/lib/validation/schemas';
 import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 export async function GET(req: NextRequest) {
   try {
@@ -59,6 +60,10 @@ export async function GET(req: NextRequest) {
     const conditions = [];
 
     if (category) {
+      // categoryId is a uuid column; a non-UUID value would throw (22P02).
+      if (!UUID_RE.test(category)) {
+        return NextResponse.json({ error: 'Invalid category id' }, { status: 400 });
+      }
       conditions.push(eq(lots.categoryId, category));
     }
     if (!isAdmin) {

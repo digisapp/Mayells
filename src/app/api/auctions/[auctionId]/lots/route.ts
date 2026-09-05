@@ -3,10 +3,12 @@ import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { auctionLots, lots, auctions, users } from '@/db/schema';
-import { eq, asc, sql, and, inArray } from 'drizzle-orm';
+import { eq, asc, sql, and, inArray, or } from 'drizzle-orm';
 import { assignLotSchema } from '@/lib/validation/schemas';
 import { initializeLotBidState } from '@/lib/bidding/bid-engine';
 import { LIVE_FALLBACK_CLOSE_MS } from '@/lib/bidding/lifecycle';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
 import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
@@ -35,20 +37,17 @@ export async function GET(
   try {
     const { auctionId } = await params;
 
-    // Find auction by ID or slug
-    let [auction] = await db
+    // Find auction by ID or slug (only compare against the uuid column when
+    // the param looks like a UUID — otherwise Postgres throws 22P02).
+    const [auction] = await db
       .select()
       .from(auctions)
-      .where(eq(auctions.id, auctionId))
+      .where(
+        UUID_RE.test(auctionId)
+          ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId))
+          : eq(auctions.slug, auctionId),
+      )
       .limit(1);
-
-    if (!auction) {
-      [auction] = await db
-        .select()
-        .from(auctions)
-        .where(eq(auctions.slug, auctionId))
-        .limit(1);
-    }
 
     if (!auction) {
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
@@ -57,8 +56,12 @@ export async function GET(
     // Public callers only see publicly-listable lots and the safe projection;
     // a draft/withdrawn lot assigned to an auction ahead of publication must
     // not be visible (nor its reservePrice) until it goes live. Admin callers
-    // (the auction editor) see everything.
+    // (the auction editor) see everything. A draft/cancelled auction's lot
+    // list is not public at all.
     const isAdmin = await callerIsAdmin();
+    if (!isAdmin && !isPubliclyVisibleAuction(auction.status)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
 
     const result = await db
       .select({
@@ -83,7 +86,10 @@ export async function GET(
       closingAt: auctionLot.closingAt,
     }));
 
-    return NextResponse.json({ data: lotsWithNumbers });
+    return NextResponse.json(
+      { data: lotsWithNumbers },
+      { headers: { 'Cache-Control': 'private, no-store', Vary: 'Cookie' } },
+    );
   } catch (error) {
     logger.error('Auction lots error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -107,6 +113,9 @@ export async function POST(
     }
 
     const { auctionId } = await params;
+    if (!UUID_RE.test(auctionId)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
     const body = await req.json();
     const parsed = assignLotSchema.safeParse(body);
     if (!parsed.success) {
@@ -187,18 +196,24 @@ export async function DELETE(
 
     const { auctionId } = await params;
     const body = await req.json();
-    if (!body?.lotId || typeof body.lotId !== 'string') {
+    if (!body?.lotId || typeof body.lotId !== 'string' || !UUID_RE.test(body.lotId)) {
       return NextResponse.json({ error: 'lotId is required' }, { status: 400 });
+    }
+    if (!UUID_RE.test(auctionId)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
     const { lotId } = body as { lotId: string };
 
+    // A relisted lot can have auction_lots rows in several auctions; match on
+    // BOTH keys so we remove the right one instead of 404ing on whichever row
+    // happened to come back first.
     const [existing] = await db
       .select()
       .from(auctionLots)
-      .where(eq(auctionLots.lotId, lotId))
+      .where(and(eq(auctionLots.lotId, lotId), eq(auctionLots.auctionId, auctionId)))
       .limit(1);
 
-    if (!existing || existing.auctionId !== auctionId) {
+    if (!existing) {
       return NextResponse.json({ error: 'Lot not found in auction' }, { status: 404 });
     }
 

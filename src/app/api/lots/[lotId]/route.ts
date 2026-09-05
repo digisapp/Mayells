@@ -3,9 +3,10 @@ import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lots, lotImages, bids, users } from '@/db/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql, or } from 'drizzle-orm';
 import { lotUpdateSchema } from '@/lib/validation/schemas';
-import { toPublicLot } from '@/lib/lots/visibility';
+import { toPublicLot, isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 import type { Bid } from '@/db/schema';
@@ -36,22 +37,35 @@ export async function GET(
   try {
     const { lotId } = await params;
 
-    let [lot] = await db
+    // Accept a UUID or a slug. Comparing a non-UUID string against the uuid
+    // column throws in Postgres (22P02), so only include the id match when
+    // the param actually looks like one.
+    const [lot] = await db
       .select()
       .from(lots)
-      .where(eq(lots.id, lotId))
+      .where(UUID_RE.test(lotId) ? or(eq(lots.id, lotId), eq(lots.slug, lotId)) : eq(lots.slug, lotId))
       .limit(1);
 
     if (!lot) {
-      // Try by slug
-      [lot] = await db
-        .select()
-        .from(lots)
-        .where(eq(lots.slug, lotId))
-        .limit(1);
+      return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 
-    if (!lot) {
+    // Admins (e.g. the admin lot editor) get the full row including
+    // reservePrice and raw bid data; everyone else gets a public-safe shape,
+    // and can't see unpublished lots (draft / pending_review / withdrawn) at all.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    let isAdmin = false;
+    if (user) {
+      const [profile] = await db
+        .select({ role: users.role, isAdmin: users.isAdmin })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+      isAdmin = isAdminProfile(profile);
+    }
+
+    if (!isAdmin && !isPubliclyVisibleLot(lot.status)) {
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 
@@ -68,19 +82,12 @@ export async function GET(
       .orderBy(desc(bids.createdAt))
       .limit(20);
 
-    // Admins (e.g. the admin lot editor) get the full row including
-    // reservePrice and raw bid data; everyone else gets a public-safe shape.
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
     // This response varies by auth (admins get reservePrice + raw bids), so it
     // must never be stored in a shared/CDN cache keyed only by URL — otherwise
     // an admin-cached full-detail payload could be served to anonymous users.
     const noStore = { 'Cache-Control': 'private, no-store', Vary: 'Cookie' };
-    if (user) {
-      const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-      if (isAdminProfile(profile)) {
-        return NextResponse.json({ data: { ...lot, images, bidHistory: bidRows } }, { headers: noStore });
-      }
+    if (isAdmin) {
+      return NextResponse.json({ data: { ...lot, images, bidHistory: bidRows } }, { headers: noStore });
     }
 
     return NextResponse.json({
@@ -109,6 +116,9 @@ export async function PATCH(
     }
 
     const { lotId } = await params;
+    if (!UUID_RE.test(lotId)) {
+      return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
+    }
     const body = await req.json();
     const parsed = lotUpdateSchema.safeParse(body);
     if (!parsed.success) {
@@ -163,6 +173,9 @@ export async function DELETE(
     }
 
     const { lotId } = await params;
+    if (!UUID_RE.test(lotId)) {
+      return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
+    }
 
     const [lot] = await db.select().from(lots).where(eq(lots.id, lotId)).limit(1);
     if (!lot) {

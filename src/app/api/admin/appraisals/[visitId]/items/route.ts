@@ -29,6 +29,10 @@ const itemPatchSchema = z.object({
   errorMessage: z.string().max(2000).nullable().optional(),
 });
 
+const itemsCreateSchema = z.object({
+  imageUrls: z.array(z.string().url().max(2048)).min(1, 'imageUrls required').max(200),
+});
+
 // Statuses that have been counted in estateVisits.processedCount
 const isProcessedStatus = (status: string) => status === 'completed' || status === 'error';
 
@@ -100,12 +104,11 @@ export async function POST(
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { visitId } = await params;
-    const body = await req.json();
-    const { imageUrls } = body as { imageUrls: string[] };
-
-    if (!imageUrls?.length) {
-      return NextResponse.json({ error: 'imageUrls required' }, { status: 400 });
+    const parsed = itemsCreateSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'imageUrls required' }, { status: 400 });
     }
+    const { imageUrls } = parsed.data;
 
     const [visit] = await db.select().from(estateVisits).where(eq(estateVisits.id, visitId)).limit(1);
     if (!visit) return NextResponse.json({ error: 'Visit not found' }, { status: 404 });

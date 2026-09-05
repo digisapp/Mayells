@@ -23,7 +23,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Trash2, RefreshCw, Save, AlertCircle } from 'lucide-react';
 import { LensButton } from '@/components/admin/LensButton';
-import { formatCurrency } from '@/types';
 
 interface EstateVisitItem {
   id: string;
@@ -109,6 +108,7 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
         <div className="px-4 space-y-5 pb-4">
           {/* Image */}
           <div className="rounded-lg overflow-hidden border relative">
+            {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
             <img
               src={item.imageUrl}
               alt={item.title || 'Item'}

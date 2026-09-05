@@ -5,6 +5,8 @@
  * and search engines can understand lot listings, auctions, and pricing natively.
  */
 
+import { publicLotPath } from '@/lib/lots/urls';
+
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 /**
@@ -50,10 +52,10 @@ export function generateLotJsonLd(lot: {
   saleType: string;
   categoryName?: string | null;
 }) {
-  const url = `${APP_URL}/gallery/${lot.slug || lot.id}`;
+  const url = `${APP_URL}${publicLotPath(lot)}`;
   const imageUrls = lot.images?.map(i => i.url) || (lot.primaryImageUrl ? [lot.primaryImageUrl] : []);
 
-  const isAvailable = ['for_sale', 'in_auction', 'approved'].includes(lot.status);
+  const isAvailable = lot.status === 'for_sale' || lot.status === 'in_auction';
   const isSold = lot.status === 'sold';
 
   // Condition mapping to Schema.org OfferItemCondition

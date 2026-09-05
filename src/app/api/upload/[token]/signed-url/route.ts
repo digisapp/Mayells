@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { uploadLinks } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { z } from 'zod';
 
 const BUCKET = 'lot-images';
 
@@ -26,6 +27,12 @@ const VIDEO_TYPES = [
 const ALLOWED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES];
 const MAX_IMAGE_SIZE = 15 * 1024 * 1024; // 15MB
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+
+const signedUrlSchema = z.object({
+  filename: z.string().min(1).max(512),
+  contentType: z.string().min(1).max(100),
+  fileSize: z.number().int().positive(),
+});
 
 export async function POST(
   request: NextRequest,
@@ -56,12 +63,11 @@ export async function POST(
       return NextResponse.json({ error: 'This upload link is no longer active' }, { status: 410 });
     }
 
-    const body = await request.json();
-    const { filename, contentType, fileSize } = body;
-
-    if (!filename || !contentType || !fileSize) {
+    const parsed = signedUrlSchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
       return NextResponse.json({ error: 'Missing filename, contentType, or fileSize' }, { status: 400 });
     }
+    const { filename, contentType, fileSize } = parsed.data;
 
     if (!ALLOWED_TYPES.includes(contentType)) {
       return NextResponse.json(
@@ -81,7 +87,8 @@ export async function POST(
     }
 
     // Generate storage path
-    const ext = filename.split('.').pop()?.toLowerCase() || (isVideo ? 'mp4' : 'jpg');
+    // Only a-z0-9 may reach the storage key (no path segments / odd chars).
+    const ext = filename.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || (isVideo ? 'mp4' : 'jpg');
     const storagePath = `uploads/${link.prospectId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
     const admin = createAdminClient();

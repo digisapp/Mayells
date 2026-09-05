@@ -11,7 +11,7 @@ import { db } from '@/db';
 import { lots, auctions, users, outreachContacts, consignments, estateVisits } from '@/db/schema';
 import { sql, desc, eq } from 'drizzle-orm';
 import {
-  Gavel, Image, Users as UsersIcon, FileText, BarChart3,
+  Gavel, Image, Users as UsersIcon, BarChart3,
   Mail, Plus, ClipboardCheck, Brain, UserPlus,
 } from 'lucide-react';
 

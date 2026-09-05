@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { sellerProspects, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 export async function GET(
   _request: NextRequest,
@@ -23,6 +24,9 @@ export async function GET(
     }
 
     const { prospectId } = await params;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
 
     const prospect = await db.query.sellerProspects.findFirst({
       where: eq(sellerProspects.id, prospectId),
@@ -63,6 +67,9 @@ export async function DELETE(
     }
 
     const { prospectId } = await params;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
 
     await db.delete(sellerProspects).where(eq(sellerProspects.id, prospectId));
 

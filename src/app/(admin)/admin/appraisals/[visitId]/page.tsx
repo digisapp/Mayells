@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +23,6 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
-  RefreshCw,
   Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -91,7 +90,6 @@ const itemStatusIcons: Record<string, React.ReactNode> = {
 
 export default function AppraisalDetailPage() {
   const { visitId } = useParams<{ visitId: string }>();
-  const router = useRouter();
   const [visit, setVisit] = useState<EstateVisit | null>(null);
   const [items, setItems] = useState<EstateVisitItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -401,6 +399,7 @@ export default function AppraisalDetailPage() {
                 className="text-left border rounded-xl overflow-hidden hover:shadow-md transition-shadow group"
               >
                 <div className="aspect-square relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
                   <img
                     src={item.imageUrl}
                     alt={item.title || 'Item'}

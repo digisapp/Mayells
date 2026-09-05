@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Camera, ArrowRight, Upload, Loader2, X, CheckCircle } from 'lucide-react';
+import { Camera, ArrowRight, Upload, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function NewAppraisalPage() {
@@ -247,6 +247,7 @@ export default function NewAppraisalPage() {
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {previews.map((src, i) => (
                     <div key={i} className="relative group aspect-square">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
                       <img
                         src={src}
                         alt={`Item ${i + 1}`}

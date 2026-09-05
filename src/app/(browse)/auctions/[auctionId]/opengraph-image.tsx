@@ -1,17 +1,25 @@
 import { ImageResponse } from 'next/og';
 import { db } from '@/db';
 import { auctions } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, or } from 'drizzle-orm';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
 async function getAuction(auctionId: string) {
-  let [auction] = await db.select().from(auctions).where(eq(auctions.slug, auctionId)).limit(1);
-  if (!auction) {
-    [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
-  }
+  // Slug or UUID; only compare against the uuid column when the param looks
+  // like one (a non-UUID cast throws in Postgres and would break the image).
+  const [auction] = await db
+    .select()
+    .from(auctions)
+    .where(
+      UUID_RE.test(auctionId)
+        ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId))
+        : eq(auctions.slug, auctionId),
+    )
+    .limit(1);
   return auction;
 }
 

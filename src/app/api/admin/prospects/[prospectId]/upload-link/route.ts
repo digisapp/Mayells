@@ -5,8 +5,16 @@ import { db } from '@/db';
 import { sellerProspects, uploadLinks, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { sendUploadLinkNotification } from '@/lib/email/notifications';
 import crypto from 'crypto';
+import { z } from 'zod';
+
+const uploadLinkSchema = z.object({
+  maxItems: z.number().int().min(1).max(1000).nullable().optional(),
+  expiresInDays: z.number().int().min(1).max(365).nullable().optional(),
+  message: z.string().max(5000).optional(),
+});
 
 export async function POST(
   request: NextRequest,
@@ -25,8 +33,14 @@ export async function POST(
     }
 
     const { prospectId } = await params;
-    const body = await request.json();
-    const { maxItems, expiresInDays } = body;
+    if (!UUID_RE.test(prospectId)) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
+    const parsed = uploadLinkSchema.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+    const { maxItems, expiresInDays, message } = parsed.data;
 
     const token = crypto.randomUUID();
 
@@ -65,7 +79,7 @@ export async function POST(
         prospectEmail: prospect.email,
         prospectName: prospect.fullName,
         uploadUrl,
-        message: body.message,
+        message,
       }).catch((err) => logger.error('Failed to send upload link email', err));
     }
 
