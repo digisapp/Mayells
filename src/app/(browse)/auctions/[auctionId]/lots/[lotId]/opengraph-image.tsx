@@ -104,16 +104,16 @@ export default async function OGImage({ params }: { params: Promise<{ lotId: str
           >
             {lot?.title || 'Fine Art & Antiques'}
           </div>
-          {lot?.artist && (
+          {lot?.artist ? (
             <div style={{ fontSize: 20, color: 'rgba(255,255,255,0.6)' }}>
               {lot.artist}
             </div>
-          )}
-          {estimateText && (
+          ) : null}
+          {estimateText ? (
             <div style={{ fontSize: 20, color: '#c9a96e', marginTop: 4 }}>
               {estimateText}
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Top-right: mayells.com */}

@@ -115,16 +115,18 @@ export default async function OGImage({ params }: { params: Promise<{ auctionId:
               marginTop: 4,
             }}
           >
-            {dateText && (
+            {dateText ? (
               <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.65)' }}>
                 {dateText}
               </div>
-            )}
-            {auction?.lotCount && auction.lotCount > 0 && (
+            ) : null}
+            {/* Single text child: satori rejects a non-flex element with more
+                than one child node, and `{n} lots` is two nodes. */}
+            {!!auction?.lotCount && auction.lotCount > 0 ? (
               <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.65)' }}>
-                {auction.lotCount} lots
+                {`${auction.lotCount} lots`}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
