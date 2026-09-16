@@ -112,6 +112,14 @@ export async function POST(
       );
     }
 
+    // Continue the prospect's sort order across batches. Restarting at 0 for
+    // every batch interleaved later uploads with earlier ones in admin review.
+    const [{ maxSortOrder }] = await db
+      .select({ maxSortOrder: sql<number>`coalesce(max(${uploadItems.sortOrder}), -1)` })
+      .from(uploadItems)
+      .where(eq(uploadItems.prospectId, link.prospectId));
+    const baseOrder = Number(maxSortOrder) + 1;
+
     // Insert all items
     const itemsToInsert = items.map((item, index) => ({
       uploadLinkId: link.id,
@@ -119,7 +127,7 @@ export async function POST(
       images: item.images,
       sellerTitle: item.sellerTitle ?? null,
       sellerNotes: item.sellerNotes ?? null,
-      sortOrder: index,
+      sortOrder: baseOrder + index,
     }));
 
     await db.insert(uploadItems).values(itemsToInsert);

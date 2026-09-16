@@ -10,9 +10,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex min-h-screen">
       <AdminSidebar />
-      <div className="flex-1 flex flex-col">
+      {/* min-w-0 lets wide tables scroll inside their own container instead
+          of forcing the whole page to scroll horizontally. */}
+      <div className="flex-1 min-w-0 flex flex-col">
         <DashboardTopbar />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-4 sm:p-6">{children}</main>
       </div>
     </div>
   );

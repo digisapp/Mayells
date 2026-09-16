@@ -1,66 +1,89 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { eq, sql } from 'drizzle-orm';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { automationSettings, users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { automationSettings, users, AUTOMATION_SETTINGS_ROW_ID } from '@/db/schema';
 import { logger } from '@/lib/logger';
 
-const automationPatchSchema = z.object({
-  autoApproveConsignments: z.boolean().optional(),
-  autoApproveMaxValue: z.number().int().min(0).optional(),
-  autoApproveMinConfidence: z.number().int().min(0).max(100).optional(),
-  autoApproveRequireAddress: z.boolean().optional(),
-  aiAutoCatalog: z.boolean().optional(),
-  aiAutoAppraise: z.boolean().optional(),
-  requireCatalogReview: z.boolean().optional(),
-  autoScheduleAuctions: z.boolean().optional(),
-  autoScheduleMinLots: z.number().int().min(1).optional(),
-  autoScheduleDayOfWeek: z.number().int().min(0).max(6).optional(),
-  autoScheduleHour: z.number().int().min(0).max(23).optional(),
-  autoInvoiceOnClose: z.boolean().optional(),
+/**
+ * The settings something actually reads — the only keys the admin UI sees or
+ * may change. Every other column on automation_settings is inert (see the
+ * schema comment) and is neither returned nor accepted, so a stale client
+ * sending e.g. `autoInvoiceOnClose` gets a 400 naming the key instead of
+ * silently flipping a switch nobody can see.
+ *
+ * Ranges mirror the `min`/`max` attributes on the settings page inputs.
+ */
+const patchSchema = z.strictObject({
+  // Sales & invoicing — read by src/lib/invoicing/generate-invoice.ts
   invoiceDueDays: z.number().int().min(1).max(365).optional(),
+  // Shipping — read by src/lib/payouts/service.ts and src/lib/shipping/service.ts
   autoCreateShipment: z.boolean().optional(),
-  autoGenerateLabel: z.boolean().optional(),
-  defaultCarrier: z.string().max(50).optional(),
   requireSignature: z.boolean().optional(),
-  requireInsurance: z.boolean().optional(),
-  whiteGloveThreshold: z.number().int().min(0).optional(),
+  whiteGloveThreshold: z.number().int().min(0).optional(), // cents
+  // Commission — read by src/lib/payouts/commission.ts
   defaultCommissionPercent: z.number().int().min(0).max(100).optional(),
   highValueCommissionPercent: z.number().int().min(0).max(100).optional(),
-  highValueThreshold: z.number().int().min(0).optional(),
+  highValueThreshold: z.number().int().min(0).optional(), // cents
+  // AI — read by src/lib/ai/email-reply.ts
   aiEmailAutoReply: z.boolean().optional(),
+  // Prospect follow-ups — read by src/app/api/cron/prospect-followup/route.ts
   autoFollowUpProspects: z.boolean().optional(),
-  followUpDelayHours: z.number().int().min(1).optional(),
-  followUpUploadReminderHours: z.number().int().min(1).optional(),
-  notifySellerOnApproval: z.boolean().optional(),
+  followUpDelayHours: z.number().int().min(1).max(720).optional(),
+  followUpUploadReminderHours: z.number().int().min(1).max(720).optional(),
+  // Notifications — read by src/lib/payouts/service.ts (sale) and the shipping flow
   notifySellerOnSale: z.boolean().optional(),
   notifySellerOnShipment: z.boolean().optional(),
   notifyBuyerOnShipment: z.boolean().optional(),
-  sendDailyDigest: z.boolean().optional(),
 });
 
+type LiveKey = keyof z.infer<typeof patchSchema>;
+const LIVE_KEYS = Object.keys(patchSchema.shape) as LiveKey[];
+
+const updatedByName = sql<string | null>`coalesce(${users.fullName}, ${users.displayName}, ${users.email})`;
+
+function selectRow() {
+  return db
+    .select({ settings: automationSettings, updatedByName })
+    .from(automationSettings)
+    .leftJoin(users, eq(users.id, automationSettings.updatedById))
+    // Deterministic even if a pre-singleton database still holds two rows:
+    // the most recently saved one is what the admin last saw.
+    .orderBy(sql`${automationSettings.updatedAt} desc nulls last`, automationSettings.id)
+    .limit(1);
+}
+
 /**
- * GET /api/admin/automation — get current automation settings
+ * The singleton row. Bootstraps with a fixed id + ON CONFLICT DO NOTHING so
+ * two first-ever requests racing can only create one row; the unique index on
+ * the table refuses a second row outright.
  */
+async function loadRow() {
+  let [row] = await selectRow();
+  if (!row) {
+    await db.insert(automationSettings).values({ id: AUTOMATION_SETTINGS_ROW_ID }).onConflictDoNothing();
+    [row] = await selectRow();
+  }
+  return row;
+}
+
+function toResponse(row: Awaited<ReturnType<typeof loadRow>>) {
+  const data = Object.fromEntries(LIVE_KEYS.map((k) => [k, row.settings[k]])) as Pick<typeof row.settings, LiveKey>;
+  return {
+    data,
+    updatedAt: row.settings.updatedAt,
+    updatedBy: row.settings.updatedById ? { id: row.settings.updatedById, name: row.updatedByName } : null,
+  };
+}
+
+/** GET /api/admin/automation — the live settings + who last changed them. */
 export async function GET() {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    const { response } = await requireAdminApi();
+    if (response) return response;
 
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-    let [settings] = await db.select().from(automationSettings).limit(1);
-
-    // Create default settings if none exist
-    if (!settings) {
-      [settings] = await db.insert(automationSettings).values({}).returning();
-    }
-
-    return NextResponse.json({ data: settings });
+    return NextResponse.json(toResponse(await loadRow()));
   } catch (error) {
     logger.error('Get automation settings error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -68,38 +91,44 @@ export async function GET() {
 }
 
 /**
- * PATCH /api/admin/automation — update automation settings
+ * PATCH /api/admin/automation — partial update; send only the keys that
+ * changed. Validation failures answer `{ error, path }` so the page can point
+ * at the field.
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    const { admin, response } = await requireAdminApi();
+    if (response) return response;
 
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
 
-    const parsed = automationPatchSchema.safeParse(await request.json());
+    const parsed = patchSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+      const issue = parsed.error.issues[0];
+      const path = issue.path.length > 0
+        ? issue.path.map(String).join('.')
+        : 'keys' in issue && Array.isArray(issue.keys) ? String(issue.keys[0]) : undefined;
+      return NextResponse.json({ error: issue.message, path }, { status: 400 });
     }
 
-    // Ensure a row exists
-    let [existing] = await db.select().from(automationSettings).limit(1);
-    if (!existing) {
-      [existing] = await db.insert(automationSettings).values({}).returning();
+    if (Object.keys(parsed.data).length === 0) {
+      return NextResponse.json({ error: 'No changes to save' }, { status: 400 });
     }
 
-    // Update
-    const [updated] = await db.update(automationSettings).set({
-      ...parsed.data,
-      updatedAt: new Date(),
-      updatedById: user.id,
-    }).where(eq(automationSettings.id, existing.id)).returning();
+    const row = await loadRow();
+    await db
+      .update(automationSettings)
+      .set({ ...parsed.data, updatedAt: new Date(), updatedById: admin.id })
+      .where(eq(automationSettings.id, row.settings.id));
 
-    logger.info('Automation settings updated', { updatedBy: user.id });
+    logger.info('Automation settings updated', { updatedBy: admin.id, keys: Object.keys(parsed.data) });
 
-    return NextResponse.json({ data: updated });
+    return NextResponse.json(toResponse(await loadRow()));
   } catch (error) {
     logger.error('Update automation settings error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

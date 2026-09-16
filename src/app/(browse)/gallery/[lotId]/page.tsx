@@ -7,6 +7,7 @@ import { db } from '@/db';
 import { lots, lotImages } from '@/db/schema';
 import { eq, or } from 'drizzle-orm';
 import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { isLotInPublicAuction } from '@/lib/lots/placement';
 import { BuyNowPanel } from '@/components/gallery/BuyNowPanel';
 import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { Badge } from '@/components/ui/badge';
@@ -76,7 +77,10 @@ export default async function GalleryDetailPage({
   const lot = await getLot(lotId);
   // Gallery detail serves both gallery buy-now lots and private-sale lots
   // (which render an "Inquire for Price" panel) — LotCard links both here.
-  if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private') || !isPubliclyVisibleLot(lot.status)) notFound();
+  if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private')) notFound();
+  // An `approved` lot is only visible while catalogued in a public sale.
+  const inPublicAuction = lot.status === 'approved' ? await isLotInPublicAuction(lot.id) : false;
+  if (!isPubliclyVisibleLot(lot.status, inPublicAuction)) notFound();
 
   void track('gallery_item_viewed', { lotId: lot.id, status: lot.status });
 

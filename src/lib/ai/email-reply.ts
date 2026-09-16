@@ -1,10 +1,11 @@
 import { generateText } from 'ai';
 import { getModel } from './client';
 import { db } from '@/db';
-import { emails, automationSettings } from '@/db/schema';
+import { emails, automationSettings, type Email } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { BUSINESS } from '@/lib/config';
+import { escapeHtml } from '@/lib/email/escape';
 import { logger } from '@/lib/logger';
 
 // ─── Categories ──────────────────────────────────────────────────────────────
@@ -101,6 +102,13 @@ interface EmailClassification {
   draftText: string | null;
 }
 
+// The model's draft is plain text. Escape it BEFORE turning newlines into
+// <br> so nothing it (or the customer's quoted mail) contains is ever
+// interpreted as markup in the outgoing HTML.
+function textToHtml(text: string): string {
+  return escapeHtml(text).replace(/\n/g, '<br />');
+}
+
 // ─── Branded Email Template ──────────────────────────────────────────────────
 
 function brandedReplyHtml(draftText: string, originalEmail: {
@@ -111,10 +119,10 @@ function brandedReplyHtml(draftText: string, originalEmail: {
   bodyText: string | null;
 }): string {
   const quotedContent = originalEmail.bodyHtml
-    || originalEmail.bodyText?.replace(/\n/g, '<br />')
+    || (originalEmail.bodyText ? escapeHtml(originalEmail.bodyText).replace(/\n/g, '<br />') : '')
     || '';
   const dateStr = new Date(originalEmail.createdAt).toLocaleDateString();
-  const senderName = originalEmail.fromName || originalEmail.fromEmail;
+  const senderName = escapeHtml(originalEmail.fromName || originalEmail.fromEmail);
 
   return `
     <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #272D35;">
@@ -123,7 +131,7 @@ function brandedReplyHtml(draftText: string, originalEmail: {
         <p style="margin: 4px 0 0; font-size: 11px; color: #999; letter-spacing: 1px; text-transform: uppercase;">The Auction House of the Future</p>
       </div>
       <div style="font-size: 15px; line-height: 1.7;">
-        ${draftText.replace(/\n/g, '<br />')}
+        ${textToHtml(draftText)}
       </div>
       <div style="border-left: 2px solid #D4C5A0; padding-left: 12px; margin-top: 32px; color: #666; font-size: 13px;">
         <p style="margin: 0 0 4px; font-style: italic;">On ${dateStr}, ${senderName} wrote:</p>
@@ -145,13 +153,26 @@ export async function classifyAndDraftReply(params: {
   subject: string;
   bodyText: string | null;
   bodyHtml: string | null;
+  /**
+   * Optional operator steering ("offer a Tuesday slot", "be more formal")
+   * from the inbox's "Draft with instructions" control. Trusted input — it
+   * comes from an admin, not from the email — so it outranks the defaults.
+   */
+  instructions?: string | null;
 }): Promise<EmailClassification> {
   const emailContent = params.bodyText || params.bodyHtml?.replace(/<[^>]*>/g, '') || '';
+  const instructions = params.instructions?.trim().slice(0, 1000);
+  const instructionBlock = instructions
+    ? `
+
+Instructions from the Mayells operator for this draft — follow them; they take priority over the default draft guidelines. The operator wants a reply, so "draft" must not be null:
+${instructions}`
+    : '';
 
   const { text: aiResponse } = await generateText({
     model: getModel('fast'),
     system: EMAIL_SYSTEM_PROMPT,
-    prompt: `Classify and draft a reply to this email:
+    prompt: `Classify and draft a reply to this email:${instructionBlock}
 
 From: ${params.fromName ? `${params.fromName} <${params.fromEmail}>` : params.fromEmail}
 Subject: ${params.subject}
@@ -171,7 +192,7 @@ ${emailContent.slice(0, 3000)}`,
     const draftText = parsed.draft ? String(parsed.draft).trim() : null;
 
     const draftHtml = draftText
-      ? `<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">${draftText.replace(/\n/g, '<br />')}</div>`
+      ? `<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">${textToHtml(draftText)}</div>`
       : null;
 
     return { category, confidence, summary, draftHtml, draftText };
@@ -186,10 +207,46 @@ ${emailContent.slice(0, 3000)}`,
       category: 'other',
       confidence: 0.5,
       summary: 'Email classified with low confidence',
-      draftHtml: `<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">${text.replace(/\n/g, '<br />')}</div>`,
+      draftHtml: `<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">${textToHtml(text)}</div>`,
       draftText: text,
     };
   }
+}
+
+/**
+ * (Re)generate the AI draft for a stored inbound email on demand — the
+ * inbox's "Regenerate draft" / "Draft with instructions" controls. Only the
+ * draft fields are rewritten; the classification is filled in just where it
+ * is still missing, so a re-draft never re-files an email. Never sends.
+ * Returns null when the model declined to draft (e.g. it judged it spam).
+ */
+export async function generateAndStoreDraft(
+  email: Email,
+  instructions?: string | null,
+): Promise<{ draftText: string; draftHtml: string; draftedAt: Date } | null> {
+  const result = await classifyAndDraftReply({
+    fromEmail: email.fromEmail,
+    fromName: email.fromName,
+    subject: email.subject || '',
+    bodyText: email.bodyText,
+    bodyHtml: email.bodyHtml,
+    instructions,
+  });
+  if (!result.draftText || !result.draftHtml) return null;
+
+  const draftedAt = new Date();
+  await db.update(emails).set({
+    aiDraftHtml: result.draftHtml,
+    aiDraftText: result.draftText,
+    aiDraftedAt: draftedAt,
+    ...(!email.aiCategory && {
+      aiCategory: result.category,
+      aiConfidence: result.confidence,
+      aiSummary: result.summary,
+    }),
+  }).where(eq(emails.id, email.id));
+
+  return { draftText: result.draftText, draftHtml: result.draftHtml, draftedAt };
 }
 
 /**
@@ -304,13 +361,23 @@ export async function processInboundEmail(emailId: string) {
       bodyText: email.bodyText,
     });
 
-    const { data: sent } = await resend.emails.send({
+    // Thread the reply under the customer's message and route their next
+    // reply back to the address they originally wrote to (the inbox).
+    const { data: sent, error: sendError } = await resend.emails.send({
       from: `Mayells <notifications@mayells.com>`,
       to: email.fromEmail,
+      replyTo: email.toEmail || BUSINESS.email,
       subject: replySubject,
       html: brandedHtml,
       text: `${result.draftText}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(email.bodyText || '').split('\n').join('\n> ')}`,
+      ...(email.messageId && {
+        headers: { 'In-Reply-To': email.messageId, References: email.messageId },
+      }),
     });
+    if (sendError) {
+      logger.error('AI auto-reply send failed', sendError, { emailId });
+      return;
+    }
 
     // Log the sent reply
     await db.insert(emails).values({
@@ -324,16 +391,20 @@ export async function processInboundEmail(emailId: string) {
       bodyHtml: brandedHtml,
       bodyText: result.draftText,
       inReplyToId: emailId,
+      inReplyToMessageId: email.messageId,
       threadId: email.threadId || emailId,
+      userId: email.userId,
       aiAutoSent: true,
       aiCategory: result.category,
     });
 
-    // Mark original as replied
+    // Mark original as replied (and stamp a thread root with its own id so the
+    // inbox shows the conversation control on it).
     await db.update(emails).set({
       status: 'replied',
       aiAutoSent: true,
       repliedAt: new Date(),
+      ...(!email.threadId && { threadId: emailId }),
     }).where(eq(emails.id, emailId));
 
     logger.info('AI auto-replied to email', {

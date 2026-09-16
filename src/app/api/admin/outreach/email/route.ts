@@ -1,41 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { outreachContacts, users } from '@/db/schema';
+import { outreachContacts, emails } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
 import { escapeHtml } from '@/lib/email/escape';
-import { emails } from '@/db/schema';
+import { requireAdminApi } from '@/lib/auth/require-admin';
+import { isSentinelEmail } from '@/lib/sellers/shadow';
+import { OUTREACH_NO_EMAIL_STATUSES } from '@/lib/config/outreach';
+import { BUSINESS } from '@/lib/config';
 import { logger } from '@/lib/logger';
 
+const FROM_EMAIL = 'outreach@mayells.com';
+
 const emailSchema = z.object({
-  to: z.string().email(),
+  contactId: z.string().uuid(),
   subject: z.string().min(1).max(500),
   body: z.string().min(1).max(10000),
-  contactId: z.string().uuid(),
+  // Accepted for older clients but ignored: the recipient is always the
+  // contact's stored address.
+  to: z.string().optional(),
 });
 
+/**
+ * POST /api/admin/outreach/email — send one outreach email to a contact.
+ * Recipient comes from the record, opt-outs are honoured server-side, and the
+ * status only moves forward from `new`; every send stamps lastContactedAt.
+ */
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const parsed = emailSchema.safeParse(await req.json());
+    const parsed = emailSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ error: parsed.error.issues[0].message, details: z.flattenError(parsed.error).fieldErrors }, { status: 400 });
     }
 
-    const { to, subject, body, contactId } = parsed.data;
+    const { subject, body, contactId } = parsed.data;
 
-    // Honor opt-outs server-side regardless of what the client sends
     const [contact] = await db
       .select()
       .from(outreachContacts)
@@ -44,11 +47,15 @@ export async function POST(req: NextRequest) {
     if (!contact) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
-    if (contact.status === 'do_not_contact' || contact.status === 'not_interested') {
+    if (OUTREACH_NO_EMAIL_STATUSES.includes(contact.status)) {
       return NextResponse.json(
         { error: `Contact is marked "${contact.status.replace(/_/g, ' ')}" and cannot be emailed` },
         { status: 422 },
       );
+    }
+    const to = contact.email?.trim();
+    if (!to || isSentinelEmail(to)) {
+      return NextResponse.json({ error: 'Contact has no email address on file' }, { status: 422 });
     }
 
     const resend = getResend();
@@ -59,41 +66,43 @@ export async function POST(req: NextRequest) {
         <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee;">
           <p style="font-size: 12px; color: #999;">
             Mayells — The Auction House of the Future<br />
-            <a href="https://mayells.com" style="color: #D4C5A0;">mayells.com</a>
+            <a href="${BUSINESS.url}" style="color: #D4C5A0;">mayells.com</a>
           </p>
         </div>
       `;
     const { data: sent, error: sendError } = await resend.emails.send({
-      from: 'Mayells <outreach@mayells.com>',
+      from: `Mayells <${FROM_EMAIL}>`,
       to,
+      replyTo: BUSINESS.email,
       subject,
       html: emailHtml,
+      text: body,
     });
 
     if (sendError) {
       // Don't log the email as sent or touch the contact — report the failure
-      logger.error('Outreach Resend send error', sendError);
+      logger.error('Outreach Resend send error', sendError, { contactId });
       return NextResponse.json({ error: `Failed to send email to ${to}` }, { status: 500 });
     }
 
     await db.insert(emails).values({
       resendId: sent?.id || null,
       direction: 'outbound',
-      fromEmail: 'outreach@mayells.com',
+      fromEmail: FROM_EMAIL,
       fromName: 'Mayells',
       toEmail: to,
+      toName: contact.contactName,
       subject,
       bodyHtml: emailHtml,
       bodyText: body,
       status: 'sent',
     });
 
-    // Update contact's lastContactedAt and status
     const [updated] = await db
       .update(outreachContacts)
       .set({
         lastContactedAt: sql`now()`,
-        status: 'contacted',
+        ...(contact.status === 'new' && { status: 'contacted' as const }),
         updatedAt: sql`now()`,
       })
       .where(eq(outreachContacts.id, contactId))

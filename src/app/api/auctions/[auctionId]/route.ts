@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { auctions, users } from '@/db/schema';
+import { auctions, users, bids } from '@/db/schema';
 import { eq, sql, or } from 'drizzle-orm';
 import { auctionUpdateSchema } from '@/lib/validation/schemas';
-import { openAuctionLots } from '@/lib/bidding/lifecycle';
+import {
+  openAuctionLots,
+  forceCloseAuctionLots,
+  cancelAuction,
+  rescheduleAuctionClose,
+} from '@/lib/bidding/lifecycle';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { isPubliclyVisibleAuction, toPublicAuction } from '@/lib/auctions/visibility';
@@ -115,6 +120,89 @@ export async function PATCH(
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    // Status is a state machine shared with the lifecycle cron and the live
+    // console. Only transitions an operator legitimately makes by hand are
+    // accepted here; the rest are either automatic (completed) or owned by a
+    // dedicated route (live start/end).
+    const nextStatus = parsed.data.status;
+    const changesStatus = nextStatus !== undefined && nextStatus !== existing.status;
+    const PRE_OPEN = ['draft', 'scheduled', 'preview'];
+    const BIDDING = ['open', 'live'];
+    const now = new Date();
+
+    if (changesStatus) {
+      if (nextStatus === 'live') {
+        return NextResponse.json(
+          { error: 'Start a live session from the Live Auctions console.' },
+          { status: 409 },
+        );
+      }
+      if (nextStatus === 'completed') {
+        return NextResponse.json(
+          { error: 'An auction completes automatically once every lot has settled.' },
+          { status: 409 },
+        );
+      }
+      if (nextStatus === 'open' && !PRE_OPEN.includes(existing.status)) {
+        return NextResponse.json(
+          { error: `Only a draft, scheduled or preview auction can be opened (this one is ${existing.status}).` },
+          { status: 409 },
+        );
+      }
+      if (PRE_OPEN.includes(nextStatus!) && !PRE_OPEN.includes(existing.status)) {
+        return NextResponse.json(
+          { error: `An auction that is ${existing.status} cannot go back to ${nextStatus}.` },
+          { status: 409 },
+        );
+      }
+      if ((nextStatus === 'closing' || nextStatus === 'closed') && !BIDDING.includes(existing.status)) {
+        return NextResponse.json(
+          { error: `Only an open or live auction can be closed (this one is ${existing.status}).` },
+          { status: 409 },
+        );
+      }
+    }
+
+    // Cancelling has its own side effects (release lots, drop Redis state) and
+    // refuses once bids exist — handled entirely by the lifecycle helper.
+    if (changesStatus && nextStatus === 'cancelled') {
+      const result = await cancelAuction(existing, now);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.reason }, { status: 409 });
+      }
+      delete updateData.status;
+    }
+
+    // Ending bidding early: collapse every lot's close time (Postgres + Redis)
+    // so no further bid can land, then park the sale in 'closing' — the
+    // settlement cron picks it up on its next tick exactly like the live-end
+    // route. A bare flip to 'closed' would leave lots biddable until their
+    // original staggered close times.
+    if (changesStatus && (nextStatus === 'closing' || nextStatus === 'closed')) {
+      await forceCloseAuctionLots(auctionId, now);
+      updateData.status = 'closing';
+      updateData.actualEndedAt = existing.actualEndedAt ?? now;
+    }
+
+    // Moving the close time of a sale that is already open must also move the
+    // per-lot close times and the Redis close gate, or the site would show a
+    // new countdown while bidding still stops at the old time.
+    const newEnd = updateData.biddingEndsAt as Date | undefined;
+    if (
+      newEnd &&
+      BIDDING.includes(existing.status) &&
+      !changesStatus &&
+      newEnd.getTime() !== (existing.biddingEndsAt?.getTime() ?? NaN)
+    ) {
+      if (newEnd.getTime() <= now.getTime()) {
+        return NextResponse.json(
+          { error: 'The new close time must be in the future. Use "End bidding now" to close the sale immediately.' },
+          { status: 400 },
+        );
+      }
+      await rescheduleAuctionClose({ ...existing, ...updateData, biddingEndsAt: newEnd } as typeof existing, newEnd);
+    }
+
     const opensBidding =
       parsed.data.status === 'open' &&
       ['draft', 'scheduled', 'preview'].includes(existing.status);
@@ -178,6 +266,20 @@ export async function DELETE(
     const [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
     if (!auction) {
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
+
+    // bids → auctions is ON DELETE RESTRICT: a sale that took bids is a
+    // financial record and cannot be hard-deleted. Cancelling (pre-bid) or
+    // letting it settle are the supported paths.
+    const [{ bidCount }] = await db
+      .select({ bidCount: sql<number>`count(*)` })
+      .from(bids)
+      .where(eq(bids.auctionId, auctionId));
+    if (Number(bidCount) > 0) {
+      return NextResponse.json(
+        { error: 'This auction has bid history and cannot be deleted.' },
+        { status: 409 },
+      );
     }
 
     if (['open', 'live', 'closing'].includes(auction.status)) {

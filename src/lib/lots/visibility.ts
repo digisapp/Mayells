@@ -14,8 +14,27 @@ export type PublicLotStatus = (typeof PUBLIC_LOT_STATUSES)[number];
 
 type LotStatus = (typeof lots.status.enumValues)[number];
 
-export function isPubliclyVisibleLot(status: LotStatus | string | null | undefined): boolean {
-  return !!status && (PUBLIC_LOT_STATUSES as readonly string[]).includes(status);
+/**
+ * Lot statuses that may be shown when the lot is catalogued in a sale the
+ * public can already see (scheduled / preview / open …). Lots stay `approved`
+ * until bidding opens, so without this the preview catalogue would 404 on
+ * every card. Use only when the enclosing auction's visibility has already
+ * been checked with `isPubliclyVisibleAuction`.
+ */
+export const PUBLIC_CATALOGUE_LOT_STATUSES = ['approved', ...PUBLIC_LOT_STATUSES] as const;
+
+/**
+ * @param inPublicAuction pass `true` when the lot is placed in a publicly
+ * visible auction (see `isLotInPublicAuction`) so an `approved` lot in a
+ * preview catalogue is treated as visible.
+ */
+export function isPubliclyVisibleLot(
+  status: LotStatus | string | null | undefined,
+  inPublicAuction = false,
+): boolean {
+  if (!status) return false;
+  if ((PUBLIC_LOT_STATUSES as readonly string[]).includes(status)) return true;
+  return inPublicAuction && status === 'approved';
 }
 
 /**

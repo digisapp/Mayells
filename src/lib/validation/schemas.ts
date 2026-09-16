@@ -23,12 +23,12 @@ export const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
-export const lotSchema = z.object({
+const lotBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   subtitle: z.string().optional(),
   description: z.string().min(1, 'Description is required'),
   categoryId: z.string().uuid(),
-  subcategoryId: z.string().uuid().optional(),
+  subcategoryId: z.string().uuid().nullable().optional(),
   artist: z.string().optional(),
   maker: z.string().optional(),
   period: z.string().optional(),
@@ -37,16 +37,31 @@ export const lotSchema = z.object({
   medium: z.string().optional(),
   dimensions: z.string().optional(),
   weight: z.string().optional(),
-  condition: z.enum(['mint', 'excellent', 'very_good', 'good', 'fair', 'poor', 'as_is']).optional(),
+  // Nullable so the editor can CLEAR a value (undefined = "leave unchanged"
+  // on partial updates; null = "remove").
+  condition: z.enum(['mint', 'excellent', 'very_good', 'good', 'fair', 'poor', 'as_is']).nullable().optional(),
   conditionNotes: z.string().optional(),
   provenance: z.string().optional(),
-  estimateLow: z.number().int().positive().optional(),
-  estimateHigh: z.number().int().positive().optional(),
-  reservePrice: z.number().int().positive().optional(),
-  startingBid: z.number().int().positive().optional(),
+  literature: z.string().optional(),
+  exhibited: z.string().optional(),
+  // Seller-of-record. Payouts are skipped with a warning at settlement when this
+  // is missing, so the editor exposes it; null clears it.
+  sellerId: z.string().uuid().nullable().optional(),
+  estimateLow: z.number().int().positive().nullable().optional(),
+  estimateHigh: z.number().int().positive().nullable().optional(),
+  reservePrice: z.number().int().positive().nullable().optional(),
+  startingBid: z.number().int().positive().nullable().optional(),
   saleType: z.enum(['auction', 'gallery', 'private']).default('auction'),
-  buyNowPrice: z.number().int().positive().optional(),
+  buyNowPrice: z.number().int().positive().nullable().optional(),
+  isFeatured: z.boolean().optional(),
+  isHighlight: z.boolean().optional(),
 });
+
+const estimatesOrdered = (d: { estimateLow?: number | null; estimateHigh?: number | null }) =>
+  d.estimateLow == null || d.estimateHigh == null || d.estimateHigh >= d.estimateLow;
+const estimatesOrderedMsg = { message: 'High estimate must be at least the low estimate', path: ['estimateHigh'] };
+
+export const lotSchema = lotBaseSchema.refine(estimatesOrdered, estimatesOrderedMsg);
 
 const auctionBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -62,13 +77,24 @@ const auctionBaseSchema = z.object({
   antiSnipeEnabled: z.boolean().default(true),
   antiSnipeMinutes: z.number().int().min(1).max(10).default(2),
   antiSnipeWindowMinutes: z.number().int().min(1).max(15).default(5),
+  // Seconds between consecutive lot closes in a staggered timed sale (0 = all
+  // lots close together).
+  lotClosingIntervalSeconds: z.number().int().min(0).max(3600).optional(),
+  saleNumber: z.string().max(50).optional(),
+  coverImageUrl: z.string().url().max(2000).or(z.literal('')).optional(),
+  isFeatured: z.boolean().optional(),
 });
 
 const endsAfterStart = (d: { biddingStartsAt?: string; biddingEndsAt?: string }) =>
   !d.biddingStartsAt || !d.biddingEndsAt || new Date(d.biddingEndsAt) > new Date(d.biddingStartsAt);
 const endsAfterStartMsg = { message: 'Bidding end must be after bidding start', path: ['biddingEndsAt'] };
+const previewBeforeBidding = (d: { previewStartsAt?: string; biddingStartsAt?: string }) =>
+  !d.previewStartsAt || !d.biddingStartsAt || new Date(d.previewStartsAt) <= new Date(d.biddingStartsAt);
+const previewBeforeBiddingMsg = { message: 'Preview must open before bidding opens', path: ['previewStartsAt'] };
 
-export const auctionSchema = auctionBaseSchema.refine(endsAfterStart, endsAfterStartMsg);
+export const auctionSchema = auctionBaseSchema
+  .refine(endsAfterStart, endsAfterStartMsg)
+  .refine(previewBeforeBidding, previewBeforeBiddingMsg);
 
 // Ceiling for any monetary field stored in an int4 column (cents). int4 maxes
 // at 2,147,483,647; cap well below it ($20,000,000) so a legal higher bid — or
@@ -84,19 +110,17 @@ export const bidSchema = z.object({
   { message: 'Max bid must be at least the bid amount', path: ['maxBidAmount'] },
 );
 
-export const lotUpdateSchema = lotSchema.partial().extend({
+export const lotUpdateSchema = lotBaseSchema.partial().extend({
   status: z.enum(['draft', 'pending_review', 'approved', 'for_sale', 'in_auction', 'sold', 'unsold', 'withdrawn']).optional(),
-  isFeatured: z.boolean().optional(),
-  isHighlight: z.boolean().optional(),
   primaryImageUrl: z.string().optional(),
-});
+}).refine(estimatesOrdered, estimatesOrderedMsg);
 
 export const auctionUpdateSchema = auctionBaseSchema.partial().extend({
   status: z.enum(['draft', 'scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed', 'cancelled']).optional(),
-  isFeatured: z.boolean().optional(),
-  coverImageUrl: z.string().optional(),
-  bannerImageUrl: z.string().optional(),
-}).refine(endsAfterStart, endsAfterStartMsg);
+  bannerImageUrl: z.string().url().max(2000).or(z.literal('')).optional(),
+})
+  .refine(endsAfterStart, endsAfterStartMsg)
+  .refine(previewBeforeBidding, previewBeforeBiddingMsg);
 
 export const assignLotSchema = z.object({
   lotId: z.string().uuid(),

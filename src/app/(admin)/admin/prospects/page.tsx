@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState, useEffect, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import {
   Search,
   Plus,
@@ -82,9 +83,10 @@ interface ProspectRow {
 
 interface ProspectStats {
   total: number;
-  pendingReview: number;
-  itemsReceived: number;
-  agreementSigned: number;
+  newLeads: number;
+  awaitingReview: number;
+  signed: number;
+  byStatus: Partial<Record<ProspectStatus, number>>;
 }
 
 const statusColors: Record<ProspectStatus, string> = {
@@ -99,6 +101,20 @@ const statusColors: Record<ProspectStatus, string> = {
   declined: 'bg-red-100 text-red-700',
   archived: 'bg-gray-100 text-gray-500',
 };
+
+// Funnel order — the chips read left to right as the prospect progresses.
+const STATUS_CHIPS: { value: ProspectStatus; label: string }[] = [
+  { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'upload_sent', label: 'Upload sent' },
+  { value: 'items_received', label: 'Items received' },
+  { value: 'under_review', label: 'Under review' },
+  { value: 'agreement_sent', label: 'Agreement sent' },
+  { value: 'agreement_signed', label: 'Signed' },
+  { value: 'accepted', label: 'Accepted' },
+  { value: 'declined', label: 'Declined' },
+  { value: 'archived', label: 'Archived' },
+];
 
 const sourceLabels: Record<ProspectSource, string> = {
   phone: 'Phone',
@@ -123,8 +139,40 @@ const emptyForm = {
 
 const PAGE_SIZE = 50;
 
+interface PendingConfirm {
+  title: string;
+  description: React.ReactNode;
+  confirmLabel: string;
+  variant?: 'default' | 'destructive';
+  onConfirm: () => Promise<void>;
+}
+
 export default function AdminProspectsPage() {
+  // useSearchParams needs a Suspense boundary for the static shell.
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-16 bg-muted animate-pulse rounded-lg" />
+          ))}
+        </div>
+      }
+    >
+      <ProspectsPageInner />
+    </Suspense>
+  );
+}
+
+function ProspectsPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const statusParam = searchParams.get('status') ?? '';
+  const statusFilter: ProspectStatus | '' = STATUS_CHIPS.some((c) => c.value === statusParam)
+    ? (statusParam as ProspectStatus)
+    : '';
+
   const [rows, setRows] = useState<ProspectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -141,8 +189,9 @@ export default function AdminProspectsPage() {
   const [sendingLinkId, setSendingLinkId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pending, setPending] = useState<PendingConfirm | null>(null);
 
-  const fetchProspects = useCallback(async (pageOffset = 0, searchTerm = '') => {
+  const fetchProspects = useCallback(async (pageOffset = 0, searchTerm = '', status: ProspectStatus | '' = '') => {
     setLoading(true);
     setFetchError(false);
     try {
@@ -151,15 +200,17 @@ export default function AdminProspectsPage() {
         offset: String(pageOffset),
       });
       if (searchTerm) params.set('search', searchTerm);
+      if (status) params.set('status', status);
       const res = await fetch(`/api/admin/prospects?${params.toString()}`);
-      if (!res.ok) throw new Error('Failed to load prospects');
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to load prospects');
       setRows(data.data ?? []);
       setTotalCount(data.pagination?.total ?? 0);
       if (data.stats) setStats(data.stats);
-    } catch {
+    } catch (err) {
       setRows([]);
       setFetchError(true);
+      toast.error(err instanceof Error ? err.message : 'Failed to load prospects');
     } finally {
       setLoading(false);
     }
@@ -174,14 +225,22 @@ export default function AdminProspectsPage() {
 
   useEffect(() => {
     setOffset(0);
-    fetchProspects(0, debouncedSearch);
-  }, [debouncedSearch, fetchProspects]);
+    fetchProspects(0, debouncedSearch, statusFilter);
+  }, [debouncedSearch, statusFilter, fetchProspects]);
+
+  function setStatusFilter(next: ProspectStatus | '') {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set('status', next);
+    else params.delete('status');
+    const qs = params.toString();
+    router.replace(`/admin/prospects${qs ? `?${qs}` : ''}`, { scroll: false });
+  }
 
   // Stats — global counts from the API, not current-page counts
   const total = stats?.total ?? totalCount;
-  const pending = stats?.pendingReview ?? 0;
-  const itemsReceived = stats?.itemsReceived ?? 0;
-  const signed = stats?.agreementSigned ?? 0;
+  const newLeads = stats?.newLeads ?? 0;
+  const awaitingReview = stats?.awaitingReview ?? 0;
+  const signed = stats?.signed ?? 0;
 
   function copyTermsLink() {
     navigator.clipboard.writeText(TERMS_URL);
@@ -238,7 +297,7 @@ export default function AdminProspectsPage() {
       setForm(emptyForm);
       setShowDialog(false);
       setOffset(0);
-      fetchProspects(0, debouncedSearch);
+      fetchProspects(0, debouncedSearch, statusFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create prospect');
     } finally {
@@ -246,7 +305,7 @@ export default function AdminProspectsPage() {
     }
   }
 
-  async function handleSendUploadLink(prospectId: string) {
+  async function doSendUploadLink(prospectId: string) {
     setSendingLinkId(prospectId);
     try {
       const res = await fetch(`/api/admin/prospects/${prospectId}/upload-link`, {
@@ -255,16 +314,24 @@ export default function AdminProspectsPage() {
         body: JSON.stringify({}),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || 'Failed to create upload link');
 
       const url = data.data?.url;
       if (url) {
-        await navigator.clipboard.writeText(url);
-        setCopiedId(prospectId);
-        toast.success('Upload link copied to clipboard');
-        setTimeout(() => setCopiedId(null), 2000);
+        try {
+          await navigator.clipboard.writeText(url);
+          setCopiedId(prospectId);
+          setTimeout(() => setCopiedId(null), 2000);
+        } catch {
+          // Clipboard can be unavailable (insecure context / permissions).
+        }
+        toast.success(
+          data.data?.emailed
+            ? `${data.data?.reused ? 'Existing' : 'New'} upload link emailed and copied to clipboard`
+            : 'Upload link copied to clipboard (no email on file)',
+        );
       }
-      fetchProspects(offset, debouncedSearch);
+      fetchProspects(offset, debouncedSearch, statusFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create upload link');
     } finally {
@@ -272,23 +339,51 @@ export default function AdminProspectsPage() {
     }
   }
 
-  async function handleDelete(prospectId: string, name: string) {
-    if (!confirm(`Delete prospect "${name}"? This action cannot be undone.`)) return;
+  function confirmSendUploadLink(p: Prospect) {
+    setPending({
+      title: 'Send upload link?',
+      description: p.email ? (
+        <>
+          This emails a private upload link to <strong>{p.fullName}</strong> at {p.email}. If an
+          active link already exists it is re-sent rather than replaced.
+        </>
+      ) : (
+        <>
+          <strong>{p.fullName}</strong> has no email on file. A link will be created and copied to
+          your clipboard for you to share.
+        </>
+      ),
+      confirmLabel: p.email ? 'Send link' : 'Create link',
+      onConfirm: () => doSendUploadLink(p.id),
+    });
+  }
 
+  async function doDelete(prospectId: string) {
     setDeletingId(prospectId);
     try {
       const res = await fetch(`/api/admin/prospects/${prospectId}`, { method: 'DELETE' });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to delete prospect');
       }
       toast.success('Prospect deleted');
-      setRows((prev) => prev.filter((r) => r.prospect.id !== prospectId));
+      // Refetch so the stats cards and pagination reflect the removal.
+      fetchProspects(offset, debouncedSearch, statusFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete prospect');
     } finally {
       setDeletingId(null);
     }
+  }
+
+  function confirmDelete(p: Prospect) {
+    setPending({
+      title: `Delete ${p.fullName}?`,
+      description: 'This removes the prospect, their upload links, and every uploaded item. This cannot be undone. Prospects whose items became lots cannot be deleted — archive them instead.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+      onConfirm: () => doDelete(p.id),
+    });
   }
 
   return (
@@ -301,7 +396,7 @@ export default function AdminProspectsPage() {
             Manage consignment leads and upload links
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setShowTermsDialog(true)}>
             <QrCode className="h-4 w-4 mr-2" />
             Terms Link / QR
@@ -328,8 +423,8 @@ export default function AdminProspectsPage() {
           <CardContent className="py-4 px-5 flex items-center gap-3">
             <Clock className="h-5 w-5 text-muted-foreground shrink-0" />
             <div>
-              <p className="text-2xl font-semibold">{pending}</p>
-              <p className="text-xs text-muted-foreground">Pending Review</p>
+              <p className="text-2xl font-semibold">{newLeads}</p>
+              <p className="text-xs text-muted-foreground">New Leads</p>
             </div>
           </CardContent>
         </Card>
@@ -337,8 +432,8 @@ export default function AdminProspectsPage() {
           <CardContent className="py-4 px-5 flex items-center gap-3">
             <Package className="h-5 w-5 text-muted-foreground shrink-0" />
             <div>
-              <p className="text-2xl font-semibold">{itemsReceived}</p>
-              <p className="text-xs text-muted-foreground">Items Received</p>
+              <p className="text-2xl font-semibold">{awaitingReview}</p>
+              <p className="text-xs text-muted-foreground">Awaiting Review</p>
             </div>
           </CardContent>
         </Card>
@@ -354,7 +449,7 @@ export default function AdminProspectsPage() {
       </div>
 
       {/* Search */}
-      <div className="relative mb-6">
+      <div className="relative mb-4">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder="Search by name, email, phone, or company..."
@@ -362,6 +457,42 @@ export default function AdminProspectsPage() {
           onChange={(e) => setSearch(e.target.value)}
           className="pl-10"
         />
+      </div>
+
+      {/* Status filter chips */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <button
+          type="button"
+          onClick={() => setStatusFilter('')}
+          className={cn(
+            'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
+            statusFilter === ''
+              ? 'bg-foreground text-background border-foreground'
+              : 'bg-background text-muted-foreground border-border hover:bg-accent/10',
+          )}
+        >
+          All{stats ? ` (${stats.total})` : ''}
+        </button>
+        {STATUS_CHIPS.map((chip) => {
+          const count = stats?.byStatus?.[chip.value] ?? 0;
+          const active = statusFilter === chip.value;
+          return (
+            <button
+              key={chip.value}
+              type="button"
+              onClick={() => setStatusFilter(active ? '' : chip.value)}
+              className={cn(
+                'px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
+                active
+                  ? cn(statusColors[chip.value], 'border-transparent ring-2 ring-offset-1 ring-foreground/30')
+                  : 'bg-background text-muted-foreground border-border hover:bg-accent/10',
+              )}
+            >
+              {chip.label}
+              {stats ? <span className="ml-1 opacity-70">{count}</span> : null}
+            </button>
+          );
+        })}
       </div>
 
       {/* Table */}
@@ -378,7 +509,7 @@ export default function AdminProspectsPage() {
             <p className="text-muted-foreground mb-4">
               Failed to load prospects. Please check your connection and try again.
             </p>
-            <Button variant="outline" onClick={() => fetchProspects(offset, debouncedSearch)}>
+            <Button variant="outline" onClick={() => fetchProspects(offset, debouncedSearch, statusFilter)}>
               Retry
             </Button>
           </CardContent>
@@ -388,7 +519,7 @@ export default function AdminProspectsPage() {
           <CardContent className="py-12 text-center">
             <Users2 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">
-              {debouncedSearch ? 'No prospects match your search.' : 'No prospects yet.'}
+              {debouncedSearch || statusFilter ? 'No prospects match your filters.' : 'No prospects yet.'}
             </p>
           </CardContent>
         </Card>
@@ -412,11 +543,13 @@ export default function AdminProspectsPage() {
                 const estLow = p.totalEstimateLow || 0;
                 const estHigh = p.totalEstimateHigh || 0;
                 const hasEstimate = estLow > 0 || estHigh > 0;
+                const href = `/admin/prospects/${p.id}`;
 
                 return (
                   <tr
                     key={p.id}
-                    className="border-t hover:bg-accent/5 transition-colors"
+                    onClick={() => router.push(href)}
+                    className="border-t hover:bg-accent/5 transition-colors cursor-pointer"
                   >
                     <td className="px-4 py-3">
                       <div className="font-medium">{p.fullName}</div>
@@ -464,13 +597,17 @@ export default function AdminProspectsPage() {
                       {new Date(p.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
+                      {/* Action buttons must not trigger the row navigation. */}
+                      <div
+                        className="flex items-center justify-end gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
                           title="View details"
-                          onClick={() => router.push(`/admin/prospects/${p.id}`)}
+                          onClick={() => router.push(href)}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -480,7 +617,7 @@ export default function AdminProspectsPage() {
                           className="h-8 w-8"
                           title="Send upload link"
                           disabled={sendingLinkId === p.id}
-                          onClick={() => handleSendUploadLink(p.id)}
+                          onClick={() => confirmSendUploadLink(p)}
                         >
                           {sendingLinkId === p.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -496,7 +633,7 @@ export default function AdminProspectsPage() {
                           className="h-8 w-8 text-destructive hover:text-destructive"
                           title="Delete prospect"
                           disabled={deletingId === p.id}
-                          onClick={() => handleDelete(p.id, p.fullName)}
+                          onClick={() => confirmDelete(p)}
                         >
                           {deletingId === p.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -515,7 +652,7 @@ export default function AdminProspectsPage() {
       )}
 
       {totalCount > PAGE_SIZE && !fetchError && (
-        <div className="flex items-center justify-between mt-4 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 mt-4 text-sm">
           <p className="text-muted-foreground">
             {offset + 1}–{Math.min(offset + PAGE_SIZE, totalCount)} of {totalCount}
           </p>
@@ -527,7 +664,7 @@ export default function AdminProspectsPage() {
               onClick={() => {
                 const next = Math.max(0, offset - PAGE_SIZE);
                 setOffset(next);
-                fetchProspects(next, debouncedSearch);
+                fetchProspects(next, debouncedSearch, statusFilter);
               }}
               className="gap-1"
             >
@@ -540,7 +677,7 @@ export default function AdminProspectsPage() {
               onClick={() => {
                 const next = offset + PAGE_SIZE;
                 setOffset(next);
-                fetchProspects(next, debouncedSearch);
+                fetchProspects(next, debouncedSearch, statusFilter);
               }}
               className="gap-1"
             >
@@ -548,6 +685,19 @@ export default function AdminProspectsPage() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Confirm (send link / delete) */}
+      {pending && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setPending(null)}
+          title={pending.title}
+          description={pending.description}
+          confirmLabel={pending.confirmLabel}
+          variant={pending.variant}
+          onConfirm={pending.onConfirm}
+        />
       )}
 
       {/* Terms Link / QR Dialog (replaces the retired /admin/agreements page) */}

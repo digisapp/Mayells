@@ -1,44 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
-import { createClient } from '@/lib/supabase/server';
-import { db } from '@/db';
-import { users, lots } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { z } from 'zod';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { catalogLotFromImages } from '@/lib/ai/cataloging';
 import { logger } from '@/lib/logger';
 
+const bodySchema = z.object({
+  imageUrls: z
+    .array(z.string().url('Each image must be a valid URL').max(2000))
+    .min(1, 'At least one image URL is required')
+    .max(10, 'At most 10 images per request'),
+});
+
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
+
+    const parsed = bodySchema.safeParse(await request.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? 'imageUrls array required' },
+        { status: 400 },
+      );
     }
 
-    // Admin only
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { imageUrls, lotId } = await request.json();
-    if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
-      return NextResponse.json({ error: 'imageUrls array required' }, { status: 400 });
-    }
-
-    const result = await catalogLotFromImages(imageUrls);
-
-    // If lotId provided, update the lot with AI-generated data
-    if (lotId) {
-      await db
-        .update(lots)
-        .set({
-          aiDescription: result.description,
-          aiTags: result.tags,
-          updatedAt: new Date(),
-        })
-        .where(eq(lots.id, lotId));
-    }
+    const result = await catalogLotFromImages(parsed.data.imageUrls);
 
     return NextResponse.json({ data: result });
   } catch (error) {

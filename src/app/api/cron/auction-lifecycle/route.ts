@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { db } from '@/db';
-import { auctions, auctionLots, lots, bids, maxBids, consignments, users, invoices, automationSettings } from '@/db/schema';
+import { auctions, auctionLots, lots, bids, maxBids, users, invoices, consignments, automationSettings } from '@/db/schema';
 import { eq, lte, and, or, inArray, desc, asc, isNull, gt } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
+import { relistUnsoldLot } from '@/lib/lots/relist';
 import { openAuctionLots } from '@/lib/bidding/lifecycle';
 import { sealLotForSettlement, settlingKeyFor } from '@/lib/bidding/bid-engine';
 import { notifyWatchersOfEndingLots } from '@/lib/bidding/ending-soon';
 import { sendInvoiceNotification } from '@/lib/email/notifications';
+import { sendOverdueInvoiceReminders } from '@/lib/invoicing/reminders';
 import { redis } from '@/lib/redis';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { broadcastLotEvent, broadcastLiveAuctionEvent } from '@/lib/realtime/broadcast';
@@ -76,6 +78,7 @@ async function runLifecycle() {
     returnedToSeller: 0,
     markedOverdue: 0,
     invoiceEmailsRetried: 0,
+    invoiceRemindersSent: 0,
     endingSoonEmailed: 0,
     errors: [] as string[],
   };
@@ -204,6 +207,19 @@ async function runLifecycle() {
             // crash mid-settlement can no longer leave a lot 'sold' with no
             // invoice (which the idempotent skip above would never retry).
             const settlement = await db.transaction(async (tx) => {
+              // Re-check under a row lock: the snapshot above was read before
+              // this transaction, and an admin withdrawal or an invoice unwind
+              // may have moved the lot since. Never settle a lot that is no
+              // longer in the sale.
+              const [fresh] = await tx
+                .select({ status: lots.status })
+                .from(lots)
+                .where(eq(lots.id, al.lotId))
+                .for('update');
+              if (!fresh || fresh.status !== 'in_auction') {
+                return { outcome: 'skipped' as const, invoice: null, winnerId: undefined };
+              }
+
               // Highest active bid wins; earliest bid wins amount ties
               const [winningBid] = await tx
                 .select()
@@ -233,6 +249,15 @@ async function runLifecycle() {
                     updatedAt: now,
                   })
                   .where(eq(lots.id, al.lotId));
+
+                // The legacy consignment record is still what the seller's
+                // account page shows — keep it in step with the lot.
+                if (lot.consignmentId) {
+                  await tx
+                    .update(consignments)
+                    .set({ status: 'sold', updatedAt: now })
+                    .where(eq(consignments.id, lot.consignmentId));
+                }
 
                 if (autoInvoiceOnClose) {
                   invoice = await generateInvoiceForWonLot(
@@ -266,6 +291,10 @@ async function runLifecycle() {
 
               return { outcome, invoice, winnerId: winningBid?.bidderId };
             });
+
+            // Lot left the sale between snapshot and lock (withdrawn / unwound):
+            // nothing to settle, nothing to clean up — its own path did that.
+            if (settlement.outcome === 'skipped') continue;
 
             if (settlement.outcome === 'sold' && settlement.invoice) results.invoicesGenerated++;
             if (settlement.outcome === 'relisted') results.relistedToGallery++;
@@ -431,6 +460,16 @@ async function runLifecycle() {
       results.errors.push(`Failed to sweep unsent invoice emails: ${err}`);
     }
 
+    // 3c. One payment reminder per overdue invoice (stamped only after a
+    // successful send; capped per run). See src/lib/invoicing/reminders.ts.
+    try {
+      const reminders = await sendOverdueInvoiceReminders(now);
+      results.invoiceRemindersSent = reminders.sent;
+      results.errors.push(...reminders.errors);
+    } catch (err) {
+      results.errors.push(`Failed to send overdue invoice reminders: ${err}`);
+    }
+
     // 4. Email watchlist "closing soon" alerts (once per watched lot).
     try {
       const endingSoon = await notifyWatchersOfEndingLots(now, 60);
@@ -465,75 +504,3 @@ async function runLifecycle() {
 
 // Vercel cron invokes with GET; keep POST for manual/legacy triggers
 export { handler as GET, handler as POST };
-
-/**
- * Handle unsold lots after auction closes:
- * - Relist in gallery/shop at low estimate or reserve price (buy-now)
- * - Or return to seller if no estimate available
- * - Update consignment status accordingly
- */
-type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
-
-async function relistUnsoldLot(
-  lot: { id: string; estimateLow?: number | null; reservePrice?: number | null; consignmentId?: string | null },
-  now: Date,
-  executor: Executor = db,
-): Promise<'relisted' | 'returned'> {
-  const buyNowPrice = lot.reservePrice || lot.estimateLow;
-
-  if (buyNowPrice && buyNowPrice > 0) {
-    // Relist as gallery item (buy-now) at reserve or low estimate
-    await executor.update(lots).set({
-      status: 'for_sale',
-      saleType: 'gallery',
-      buyNowPrice: buyNowPrice,
-      currentBidAmount: 0,
-      currentBidderId: null,
-      bidCount: 0,
-      winnerId: null,
-      hammerPrice: null,
-      updatedAt: now,
-    }).where(eq(lots.id, lot.id));
-
-    logger.info('Unsold lot relisted in gallery', {
-      lotId: lot.id,
-      buyNowPrice,
-    });
-
-    // Update consignment if linked
-    if (lot.consignmentId) {
-      await executor.update(consignments).set({
-        status: 'listed',
-        reviewNotes: `Unsold at auction — relisted in gallery at $${(buyNowPrice / 100).toLocaleString()}`,
-        updatedAt: now,
-      }).where(eq(consignments.id, lot.consignmentId));
-    }
-
-    return 'relisted';
-  } else {
-    // No price to relist at — mark as unsold, return to seller. Zero the
-    // denormalized bid state like the relist branch does: a later re-auction
-    // of this lot must not display the old sale's current bid / bidder, and
-    // the upward-only guard in the bid engine would otherwise block a lower
-    // fresh start from ever correcting it.
-    await executor.update(lots).set({
-      status: 'unsold',
-      currentBidAmount: 0,
-      currentBidderId: null,
-      bidCount: 0,
-      winnerId: null,
-      hammerPrice: null,
-      updatedAt: now,
-    }).where(eq(lots.id, lot.id));
-
-    if (lot.consignmentId) {
-      await executor.update(consignments).set({
-        status: 'returned',
-        reviewNotes: 'Unsold at auction — returned to seller',
-        updatedAt: now,
-      }).where(eq(consignments.id, lot.consignmentId));
-    }
-
-    return 'returned';
-  }
-}

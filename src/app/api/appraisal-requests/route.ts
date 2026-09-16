@@ -124,11 +124,14 @@ export async function POST(req: NextRequest) {
           .filter((p): p is string => typeof p === 'string' && PHOTO_PATH_RE.test(p))
           .slice(0, 50);
         if (candidates.length > 0) {
-          const rows = await db.execute(
+          const result = await db.execute(
             // drizzle expands a JS array param to ($1, $2, ...) — IN-list form
             sql`select name from storage.objects where bucket_id = ${BUCKET} and name in ${candidates}`,
           );
-          const existingNames = new Set((rows as unknown as { name: string }[]).map((r) => r.name));
+          // node-postgres returns a QueryResult (rows on `.rows`); guard the
+          // bare-array shape too so a driver swap doesn't break verification.
+          const rows = (Array.isArray(result) ? result : (result as { rows?: unknown[] }).rows ?? []) as { name: string }[];
+          const existingNames = new Set(rows.map((r) => r.name));
           const verified = candidates.filter((p) => existingNames.has(p));
           photoUrls = verified.map(publicUrl);
           aiImageUrls = verified.map(aiRenditionUrl);
@@ -200,10 +203,11 @@ export async function POST(req: NextRequest) {
  * Turn a website consign/appraisal submission into a seller prospect.
  *
  * Photos are attached the way the prospects funnel expects: a synthetic
- * (already-completed, never-shared) upload link owned by the prospect, with a
- * single upload item holding all submitted photos in 'uploaded' status — so
- * the admin detail page shows the photos and offers "Run AI Processing"
- * exactly as it does for items sent through /upload/[token].
+ * (already-completed, never-shared) upload link owned by the prospect, with
+ * ONE upload item per photo in 'uploaded' status — the website form gives no
+ * way to group photos by piece, and one item per photo lets the admin
+ * catalog, accept, or decline each piece independently (exactly as items
+ * sent through /upload/[token] are handled).
  */
 async function createProspectFromSubmission(
   form: {
@@ -244,7 +248,7 @@ async function createProspectFromSubmission(
       // With photos the prospect goes straight to the needs-review state the
       // admin list surfaces; without photos it starts as a fresh lead.
       status: hasPhotos ? 'items_received' : 'new',
-      totalItems: hasPhotos ? 1 : 0,
+      totalItems: photoUrls.length,
     })
     .returning({ id: sellerProspects.id });
 
@@ -259,16 +263,21 @@ async function createProspectFromSubmission(
       // 'completed' so the token can never be used on /upload/[token] — it
       // exists purely as the join the prospects funnel expects.
       status: 'completed',
-      itemCount: 1,
+      itemCount: photoUrls.length,
       lastUploadAt: now,
     })
     .returning({ id: uploadLinks.id });
 
-  await db.insert(uploadItems).values({
-    uploadLinkId: link.id,
-    prospectId: prospect.id,
-    images: photoUrls,
-    sellerNotes: form.items || null,
-    status: 'uploaded',
-  });
+  await db.insert(uploadItems).values(
+    photoUrls.map((url, index) => ({
+      uploadLinkId: link.id,
+      prospectId: prospect.id,
+      images: [url],
+      // The form's free-text item description applies to the whole
+      // submission; keep it on every item so the reviewer sees it in context.
+      sellerNotes: form.items || null,
+      sortOrder: index,
+      status: 'uploaded' as const,
+    })),
+  );
 }

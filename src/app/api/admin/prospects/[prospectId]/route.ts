@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { sellerProspects, users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { sellerProspects, uploadItems } from '@/db/schema';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { getDefaultCommissionPercent } from '@/lib/settings/commission';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 export async function GET(
@@ -12,16 +12,8 @@ export async function GET(
   { params }: { params: Promise<{ prospectId: string }> }
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { prospectId } = await params;
     if (!UUID_RE.test(prospectId)) {
@@ -43,7 +35,10 @@ export async function GET(
       return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ data: prospect });
+    // The commission the agreement should propose when this consignor has no
+    // agreed rate yet — same source settlement uses, so the two can't drift.
+    const defaultCommissionPercent = await getDefaultCommissionPercent();
+    return NextResponse.json({ data: prospect, defaultCommissionPercent });
   } catch (error) {
     logger.error('Admin prospect detail error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -55,23 +50,34 @@ export async function DELETE(
   { params }: { params: Promise<{ prospectId: string }> }
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { prospectId } = await params;
     if (!UUID_RE.test(prospectId)) {
       return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
     }
 
-    await db.delete(sellerProspects).where(eq(sellerProspects.id, prospectId));
+    // Once any item has become a lot the prospect is part of the sale record
+    // (seller-of-record, consignor portal, payouts). Archive it instead.
+    const [{ lotCount }] = await db
+      .select({ lotCount: sql<number>`count(*)::int` })
+      .from(uploadItems)
+      .where(and(eq(uploadItems.prospectId, prospectId), isNotNull(uploadItems.lotId)));
+    if (lotCount > 0) {
+      return NextResponse.json(
+        { error: `This prospect has ${lotCount} lot${lotCount === 1 ? '' : 's'} in the catalog and can't be deleted. Archive it instead.` },
+        { status: 409 },
+      );
+    }
+
+    const deleted = await db
+      .delete(sellerProspects)
+      .where(eq(sellerProspects.id, prospectId))
+      .returning({ id: sellerProspects.id });
+    if (deleted.length === 0) {
+      return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

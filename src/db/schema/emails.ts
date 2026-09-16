@@ -54,6 +54,9 @@ export const emails = pgTable('emails', {
   // Timestamps
   readAt: timestamp('read_at'),
   repliedAt: timestamp('replied_at'),
+  // Archived messages leave the default inbox/sent lists but stay in threads
+  // and search results under the "Archived" filter. Null = not archived.
+  archivedAt: timestamp('archived_at'),
   createdAt: timestamp('created_at').default(sql`now()`).notNull(),
 }, (table) => [
   index('emails_direction_idx').on(table.direction),
@@ -67,6 +70,7 @@ export const emails = pgTable('emails', {
   // Email delete re-parents replies by in_reply_to_id — without this it's a
   // table scan per delete.
   index('emails_in_reply_to_idx').on(table.inReplyToId),
+  index('emails_archived_at_idx').on(table.archivedAt),
 ]).enableRLS();
 
 export type Email = typeof emails.$inferSelect;

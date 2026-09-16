@@ -34,6 +34,9 @@ export const users = pgTable('users', {
   companyName: text('company_name'),
   bio: text('bio'),
 
+  // Free-form internal notes shown only on the admin person page.
+  adminNotes: text('admin_notes'),
+
   // Unguessable key for the no-login consignor portal (/consignor/[token]),
   // same pattern as invoices.access_token. The page 404s unless the user is
   // actually a seller-of-record, so buyer tokens expose nothing.

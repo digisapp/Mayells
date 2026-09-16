@@ -1,22 +1,52 @@
+import { cache } from 'react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, CheckCircle2, Mail } from 'lucide-react';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { BUSINESS } from '@/lib/config';
 import { db } from '@/db';
-import { sellerProspects, type SellerProspect } from '@/db/schema';
+import { sellerProspects, uploadItems, type SellerProspect } from '@/db/schema';
 import { formatCurrency } from '@/types';
 import { logger } from '@/lib/logger';
+import { getDefaultCommissionPercent } from '@/lib/settings/commission';
 import { SignAgreementForm } from './SignAgreementForm';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
-
-export const metadata = {
-  title: 'Consignment Agreement',
-  description: 'Mayells consignment terms: 35% seller commission, payment within 35 business days, 90-day consignment period. View our full agreement.',
-  alternates: { canonical: `${BASE_URL}/consignment-agreement` },
-};
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Shared between generateMetadata and the page render (React dedupes within
+// one request) so the personalized lookup runs once.
+const loadProspect = cache(async (prospectParam: string | undefined): Promise<SellerProspect | null> => {
+  if (!prospectParam || !UUID_RE.test(prospectParam)) return null;
+  try {
+    const [row] = await db
+      .select()
+      .from(sellerProspects)
+      .where(eq(sellerProspects.id, prospectParam))
+      .limit(1);
+    return row ?? null;
+  } catch (error) {
+    logger.error('Consignment agreement prospect lookup failed', error);
+    return null;
+  }
+});
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ prospect?: string }>;
+}): Promise<Metadata> {
+  const { prospect: prospectParam } = await searchParams;
+  const prospect = await loadProspect(prospectParam);
+  const commission = prospect?.agreedCommissionPercent ?? (await getDefaultCommissionPercent());
+  return {
+    title: 'Consignment Agreement',
+    description: `Mayells consignment terms: ${commission}% seller commission, payment within 35 business days, 90-day consignment period. View our full agreement.`,
+    alternates: { canonical: `${BASE_URL}/consignment-agreement` },
+    // A personalized signing link is private to its consignor.
+    ...(prospect ? { robots: { index: false, follow: false } } : {}),
+  };
+}
 
 export default async function ConsignmentAgreementPage({
   searchParams,
@@ -27,25 +57,37 @@ export default async function ConsignmentAgreementPage({
 
   // Personalized signing mode: the agreement email links here with
   // ?prospect=<uuid>. Anything invalid falls back to the plain terms page.
-  let prospect: SellerProspect | null = null;
-  if (prospectParam && UUID_RE.test(prospectParam)) {
-    try {
-      const [row] = await db
-        .select()
-        .from(sellerProspects)
-        .where(eq(sellerProspects.id, prospectParam))
-        .limit(1);
-      prospect = row ?? null;
-    } catch (error) {
-      logger.error('Consignment agreement prospect lookup failed', error);
-    }
-  }
+  const prospect = await loadProspect(prospectParam);
 
   // Only prospects that were actually sent an agreement get the signing UI.
   const agreementOffered = prospect != null && prospect.agreementSentAt != null;
   const alreadySigned = agreementOffered && prospect!.agreementSignedAt != null;
   const canSign = agreementOffered && !alreadySigned;
-  const commission = prospect?.agreedCommissionPercent ?? 35;
+  const commission = prospect?.agreedCommissionPercent ?? (await getDefaultCommissionPercent());
+
+  // The summary is computed from the accepted items themselves (items that
+  // have since become lots were accepted too) — never from the prospect's
+  // cached counters, which can lag behind the last review action.
+  let accepted = {
+    count: prospect?.acceptedItems ?? 0,
+    low: prospect?.totalEstimateLow ?? 0,
+    high: prospect?.totalEstimateHigh ?? 0,
+  };
+  if (agreementOffered) {
+    try {
+      const [row] = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+          low: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})), 0)::int`,
+          high: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})), 0)::int`,
+        })
+        .from(uploadItems)
+        .where(and(eq(uploadItems.prospectId, prospect!.id), inArray(uploadItems.status, ['accepted', 'lot_created'])));
+      if (row) accepted = { count: row.count, low: row.low, high: row.high };
+    } catch (error) {
+      logger.error('Consignment agreement totals lookup failed', error);
+    }
+  }
 
   return (
     <div>
@@ -81,13 +123,13 @@ export default async function ConsignmentAgreementPage({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Accepted Items</p>
-                <p className="font-medium mt-0.5">{prospect!.acceptedItems}</p>
+                <p className="font-medium mt-0.5">{accepted.count}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Estimated Value</p>
                 <p className="font-medium mt-0.5">
-                  {prospect!.totalEstimateLow > 0 || prospect!.totalEstimateHigh > 0
-                    ? `${formatCurrency(prospect!.totalEstimateLow)} – ${formatCurrency(prospect!.totalEstimateHigh)}`
+                  {accepted.low > 0 || accepted.high > 0
+                    ? `${formatCurrency(accepted.low)} – ${formatCurrency(accepted.high)}`
                     : 'To be determined'}
                 </p>
               </div>
@@ -119,7 +161,7 @@ export default async function ConsignmentAgreementPage({
             <h2 className="font-display text-xl mb-4">Commission</h2>
             <div className="border border-border/60 rounded-xl p-6 space-y-3 text-[15px] text-muted-foreground leading-relaxed">
               <p>
-                Mayells charges a seller&apos;s commission of <strong className="text-foreground">35%</strong> of
+                Mayells charges a seller&apos;s commission of <strong className="text-foreground">{commission}%</strong> of
                 the hammer price. This covers cataloging, photography, marketing, platform
                 listing fees, and auction management.
               </p>

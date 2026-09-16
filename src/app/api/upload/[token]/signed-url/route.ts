@@ -26,7 +26,10 @@ const VIDEO_TYPES = [
 
 const ALLOWED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES];
 const MAX_IMAGE_SIZE = 15 * 1024 * 1024; // 15MB
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+// Matches the `lot-images` bucket's own 25MB limit. Promising more here
+// just moved the failure to the storage PUT, where the consignor saw a
+// bare rejection after waiting through the whole upload.
+const MAX_VIDEO_SIZE = 25 * 1024 * 1024; // 25MB
 
 const signedUrlSchema = z.object({
   filename: z.string().min(1).max(512),
@@ -81,7 +84,7 @@ export async function POST(
 
     if (fileSize > maxSize) {
       return NextResponse.json(
-        { error: `File too large. Max ${isVideo ? '100MB' : '15MB'}.` },
+        { error: `File too large. Max ${isVideo ? '25MB' : '15MB'}.` },
         { status: 400 }
       );
     }

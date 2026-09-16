@@ -7,6 +7,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { isLotInPublicAuction } from '@/lib/lots/placement';
 import { publicLotPath } from '@/lib/lots/urls';
 
 /**
@@ -46,8 +47,13 @@ export async function GET(
     });
 
     // This is a public, unauthenticated endpoint: unpublished lots (draft,
-    // pending_review, approved-but-not-listed, withdrawn, unsold) are 404.
-    if (!lot || !isPubliclyVisibleLot(lot.status)) {
+    // pending_review, approved-but-not-catalogued, withdrawn, unsold) are 404.
+    // An `approved` lot is visible only while it sits in a public sale.
+    if (!lot) {
+      return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
+    }
+    const inPublicAuction = lot.status === 'approved' ? await isLotInPublicAuction(lot.id) : false;
+    if (!isPubliclyVisibleLot(lot.status, inPublicAuction)) {
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 

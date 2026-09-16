@@ -7,7 +7,16 @@ import { createClient } from '@/lib/supabase/server';
 import { auctionSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { PUBLIC_AUCTION_STATUSES, toPublicAuction, type AuctionStatus } from '@/lib/auctions/visibility';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 
+/**
+ * True for a Postgres unique violation (23505). Drizzle wraps the driver
+ * error, so the code can sit on the error itself or on `cause`.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  const candidates = [err, (err as { cause?: unknown })?.cause];
+  return candidates.some((c) => (c as { code?: string } | undefined)?.code === '23505');
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -65,15 +74,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (response) return response;
 
     const body = await req.json();
     const parsed = auctionSchema.safeParse(body);
@@ -82,13 +84,23 @@ export async function POST(req: NextRequest) {
     }
 
     const { previewStartsAt, biddingStartsAt, biddingEndsAt, ...rest } = parsed.data;
-    const [auction] = await db.insert(auctions).values({
-      ...rest,
-      previewStartsAt: previewStartsAt ? new Date(previewStartsAt) : undefined,
-      biddingStartsAt: biddingStartsAt ? new Date(biddingStartsAt) : undefined,
-      biddingEndsAt: biddingEndsAt ? new Date(biddingEndsAt) : undefined,
-      createdById: user.id,
-    }).returning();
+    let auction: typeof auctions.$inferSelect;
+    try {
+      [auction] = await db.insert(auctions).values({
+        ...rest,
+        previewStartsAt: previewStartsAt ? new Date(previewStartsAt) : undefined,
+        biddingStartsAt: biddingStartsAt ? new Date(biddingStartsAt) : undefined,
+        biddingEndsAt: biddingEndsAt ? new Date(biddingEndsAt) : undefined,
+        createdById: admin.id,
+      }).returning();
+    } catch (err) {
+      // auctions.slug is unique; the form derives it from the title, so a
+      // second "Spring Sale" collides. Tell the operator instead of 500ing.
+      if (isUniqueViolation(err)) {
+        return NextResponse.json({ error: 'That URL slug is already in use' }, { status: 409 });
+      }
+      throw err;
+    }
 
     return NextResponse.json({ data: auction }, { status: 201 });
   } catch (error) {

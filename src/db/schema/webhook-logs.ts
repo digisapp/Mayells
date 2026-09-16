@@ -21,9 +21,13 @@ export const webhookLogs = pgTable('webhook_logs', {
   relatedType: varchar('related_type', { length: 50 }), // 'invoice' | 'payment' | 'lot' | 'email'
   relatedId: varchar('related_id', { length: 255 }),
 
-  // Replay tracking
+  // Replay tracking. A replay writes its own row (so its outcome is
+  // auditable) pointing back at the original via replayOfId; the original
+  // keeps the running count. Replay rows carry no eventId — the original
+  // owns the (provider, eventId) identity and the dedup index below.
   replayCount: integer('replay_count').notNull().default(0),
   lastReplayedAt: timestamp('last_replayed_at'),
+  replayOfId: uuid('replay_of_id'),
 
   createdAt: timestamp('created_at').notNull().default(sql`now()`),
 }, (t) => [
@@ -32,6 +36,7 @@ export const webhookLogs = pgTable('webhook_logs', {
   index('whl_event_type_idx').on(t.eventType),
   index('whl_created_at_idx').on(t.createdAt),
   index('whl_event_id_idx').on(t.eventId),
+  index('whl_replay_of_idx').on(t.replayOfId).where(sql`${t.replayOfId} is not null`),
   // Atomic dedup: a provider+eventId can only be logged once, so a concurrent
   // duplicate webhook delivery loses the insert race instead of both being
   // processed. Partial (eventId may be null for events that lack an id).

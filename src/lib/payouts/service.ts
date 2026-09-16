@@ -2,12 +2,13 @@
  * Seller-side settlement for a paid invoice: record the payout we owe the
  * consignor, kick off the shipment, and send the seller their statement.
  *
- * Called from the Stripe payment-intent handler. Every step is individually
- * guarded and idempotent (payout: partial-unique on lot; shipment: existence
- * check; statement: statement_sent_at stamp) so webhook redeliveries and admin
- * replays can safely re-run it — and a step that failed mid-way self-heals on
- * the next delivery. It never throws: seller-side failures must not fail the
- * buyer's payment webhook.
+ * Called from the Stripe payment-intent handler and the admin manual
+ * mark-paid path. Every step is individually guarded and idempotent (payout:
+ * partial-unique on lot; shipment: existence check; statement:
+ * statement_sent_at stamp) so webhook redeliveries and admin replays can
+ * safely re-run it — and a step that failed mid-way self-heals on the next
+ * delivery. It never throws: seller-side failures must not fail the buyer's
+ * payment webhook.
  */
 
 import { db } from '@/db';
@@ -20,13 +21,17 @@ import {
   automationSettings,
   type Payout,
 } from '@/db/schema';
-import { eq, and, ne, isNotNull, isNull, desc } from 'drizzle-orm';
-import { resolveCommissionPercent, computePayoutAmounts } from './commission';
+import { eq, and, ne, notInArray, isNotNull, isNull, desc, sql } from 'drizzle-orm';
+import type { Executor } from '@/lib/lots/relist';
+import { resolveCommission, computePayoutAmounts } from './commission';
 import { createShipmentForInvoice } from '@/lib/shipping/service';
 import { sendSellerStatementNotification, sendPaymentConfirmation } from '@/lib/email/notifications';
 import { isSentinelEmail } from '@/lib/sellers/shadow';
 import { portalUrl } from '@/lib/sellers/portal';
 import { logger } from '@/lib/logger';
+
+/** Payout statuses that still represent money owed / paid for a live sale. */
+export const DEAD_PAYOUT_STATUSES = ['cancelled', 'reversed'] as const;
 
 export async function processPaidInvoice(
   invoiceId: string,
@@ -61,10 +66,14 @@ export async function processPaidInvoice(
 
   try {
     if (settings?.autoCreateShipment ?? true) {
+      // Only a returned-to-sender shipment may be re-attempted. A cancelled one
+      // stays as the record for this invoice — otherwise a benign webhook
+      // redelivery would resurrect a shipment an admin deliberately cancelled
+      // (and email the seller again). Matches the partial unique index.
       const [existing] = await db
         .select({ id: shipments.id })
         .from(shipments)
-        .where(eq(shipments.invoiceId, invoiceId))
+        .where(and(eq(shipments.invoiceId, invoiceId), ne(shipments.status, 'returned')))
         .limit(1);
       if (!existing) await createShipmentForInvoice(invoiceId);
     }
@@ -73,7 +82,7 @@ export async function processPaidInvoice(
   }
 
   try {
-    if (opts.sendBuyerConfirmation && invoice.buyer?.email) {
+    if (opts.sendBuyerConfirmation && invoice.buyer?.email && !isSentinelEmail(invoice.buyer.email)) {
       await sendPaymentConfirmation({
         email: invoice.buyer.email,
         lotTitle: invoice.lot.title,
@@ -165,7 +174,7 @@ export async function ensurePayoutForInvoice(invoice: LoadedInvoice): Promise<Pa
   }
 
   const settings = await getSettings();
-  const commissionPercent = resolveCommissionPercent({
+  const { percent: commissionPercent, source: commissionSource } = resolveCommission({
     hammerPrice,
     consignmentPercent,
     prospectAgreedPercent,
@@ -182,6 +191,7 @@ export async function ensurePayoutForInvoice(invoice: LoadedInvoice): Promise<Pa
       hammerPrice,
       commissionPercent,
       commissionAmount,
+      commissionSource,
       netAmount,
     })
     .onConflictDoNothing()
@@ -192,6 +202,7 @@ export async function ensurePayoutForInvoice(invoice: LoadedInvoice): Promise<Pa
       invoiceId: invoice.id,
       payoutId: created.id,
       netAmount,
+      commissionSource,
     });
     return created;
   }
@@ -200,41 +211,70 @@ export async function ensurePayoutForInvoice(invoice: LoadedInvoice): Promise<Pa
   const [existing] = await db
     .select()
     .from(payouts)
-    .where(and(eq(payouts.lotId, invoice.lotId), ne(payouts.status, 'cancelled')))
+    .where(and(eq(payouts.lotId, invoice.lotId), notInArray(payouts.status, [...DEAD_PAYOUT_STATUSES])))
     .limit(1);
   return existing ?? null;
 }
 
 /**
  * A refunded sale is unwound — the seller must not be paid for it. Cancels a
- * pending payout; if the payout was already paid out, raises a loud alert for
- * manual clawback. Used by both the Stripe refund handler and the admin
- * manual-refund transition. Never throws.
+ * pending payout; if the payout was already paid out, marks it `reversed`
+ * (the money must be clawed back) and raises a loud alert. Used by the
+ * invoicing unwind path for both Stripe and manual refunds. Never throws.
  */
-export async function cancelPayoutForRefundedInvoice(invoiceId: string): Promise<void> {
+export async function cancelPayoutForRefundedInvoice(
+  invoiceId: string,
+  reason = 'invoice refunded',
+  executor: Executor = db,
+): Promise<'cancelled' | 'reversed' | 'none'> {
+  const note = `${new Date().toISOString().slice(0, 10)}: ${reason}`;
+  // Inside a caller's transaction (the invoicing unwind) a failure must roll
+  // the whole unwind back, so only the standalone form swallows errors.
+  if (executor !== db) return runPayoutCancellation(executor, invoiceId, note);
   try {
-    const cancelled = await db
-      .update(payouts)
-      .set({ status: 'cancelled', updatedAt: new Date() })
-      .where(and(eq(payouts.invoiceId, invoiceId), eq(payouts.status, 'pending')))
-      .returning({ id: payouts.id });
-    if (cancelled.length > 0) return;
-
-    const [paidPayout] = await db
-      .select({ id: payouts.id, netAmount: payouts.netAmount })
-      .from(payouts)
-      .where(and(eq(payouts.invoiceId, invoiceId), eq(payouts.status, 'paid')))
-      .limit(1);
-    if (paidPayout) {
-      logger.error('REFUND on an invoice whose payout was already PAID — manual clawback required', undefined, {
-        invoiceId,
-        payoutId: paidPayout.id,
-        netAmount: paidPayout.netAmount,
-      });
-    }
+    return await runPayoutCancellation(db, invoiceId, note);
   } catch (err) {
     logger.error('Failed to cancel payout for refunded invoice', err, { invoiceId });
   }
+  return 'none';
+}
+
+async function runPayoutCancellation(
+  executor: Executor,
+  invoiceId: string,
+  note: string,
+): Promise<'cancelled' | 'reversed' | 'none'> {
+  {
+    const cancelled = await executor
+      .update(payouts)
+      .set({
+        status: 'cancelled',
+        notes: sql`concat_ws(chr(10), ${payouts.notes}, ${`Cancelled — ${note}`})`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(payouts.invoiceId, invoiceId), eq(payouts.status, 'pending')))
+      .returning({ id: payouts.id });
+    if (cancelled.length > 0) return 'cancelled';
+
+    const reversed = await executor
+      .update(payouts)
+      .set({
+        status: 'reversed',
+        notes: sql`concat_ws(chr(10), ${payouts.notes}, ${`Reversed — ${note}. Consignor was already paid: clawback required.`})`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(payouts.invoiceId, invoiceId), eq(payouts.status, 'paid')))
+      .returning({ id: payouts.id, netAmount: payouts.netAmount });
+    if (reversed.length > 0) {
+      logger.error('REFUND on an invoice whose payout was already PAID — payout reversed, manual clawback required', undefined, {
+        invoiceId,
+        payoutId: reversed[0].id,
+        netAmount: reversed[0].netAmount,
+      });
+      return 'reversed';
+    }
+  }
+  return 'none';
 }
 
 async function sendStatementIfNeeded(payout: Payout, lotTitle: string, notifySellerOnSale: boolean) {

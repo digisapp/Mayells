@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
@@ -6,6 +6,7 @@ import { db } from '@/db';
 import { estateVisits, estateVisitItems, users } from '@/db/schema';
 import { eq, sql, and, asc, sum } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { sanitizeStoredImages, storagePathFromPublicUrl } from '@/lib/images/sanitize';
 
 // All fields except status are nullable in the DB — null clears the column.
 const itemPatchSchema = z.object({
@@ -113,7 +114,13 @@ export async function POST(
     const [visit] = await db.select().from(estateVisits).where(eq(estateVisits.id, visitId)).limit(1);
     if (!visit) return NextResponse.json({ error: 'Visit not found' }, { status: 404 });
 
-    const startOrder = visit.itemCount;
+    // itemCount shrinks on delete while existing sort orders don't, so
+    // "count" as the next order collides; continue from the current max.
+    const [{ maxSortOrder }] = await db
+      .select({ maxSortOrder: sql<number>`coalesce(max(${estateVisitItems.sortOrder}), -1)` })
+      .from(estateVisitItems)
+      .where(eq(estateVisitItems.visitId, visitId));
+    const startOrder = Number(maxSortOrder) + 1;
 
     const newItems = imageUrls.map((url, i) => ({
       visitId,
@@ -122,6 +129,16 @@ export async function POST(
     }));
 
     const inserted = await db.insert(estateVisitItems).values(newItems).returning();
+
+    // Photos went straight to storage via signed URLs, so EXIF (incl. GPS of
+    // the client's home) is scrubbed here in the background — same paths, so
+    // the stored URLs keep working.
+    const storagePaths = imageUrls
+      .map(storagePathFromPublicUrl)
+      .filter((p): p is string => p !== null);
+    if (storagePaths.length > 0) {
+      after(() => sanitizeStoredImages(storagePaths));
+    }
 
     await db
       .update(estateVisits)

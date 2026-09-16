@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import { db } from '@/db';
-import { users, lots, auctionLots, auctions, payouts } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
-import { formatCurrency } from '@/types';
+import { users, lots, auctionLots, auctions, payouts, invoices } from '@/db/schema';
+import { eq, desc, inArray, notInArray, and } from 'drizzle-orm';
+import { formatCurrency, formatCurrencyWithCents } from '@/types';
 import { BUSINESS } from '@/lib/config';
 import { isValidPortalToken, consignorStatusLabel, summarizeConsignor } from '@/lib/sellers/portal';
 
@@ -18,6 +18,28 @@ export const metadata: Metadata = {
 function formatDate(d: Date | null): string | null {
   if (!d) return null;
   return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+interface LotSettlement {
+  invoiceStatus: string | null;
+  payoutStatus: string | null;
+  payoutPaidAt: Date | null;
+}
+
+/**
+ * Consignor-facing status that follows the money after the hammer:
+ * sold → awaiting buyer payment → settlement pending → paid on DATE.
+ */
+function settlementLabel(lot: { status: string; saleType: string; buyNowPrice: number | null }, s: LotSettlement): string {
+  if (lot.status === 'sold') {
+    if (s.payoutStatus === 'paid') return `Paid${s.payoutPaidAt ? ` on ${formatDate(s.payoutPaidAt)}` : ''}`;
+    if (s.payoutStatus === 'reversed') return 'Sale refunded — we will be in touch';
+    if (s.invoiceStatus === 'pending' || s.invoiceStatus === 'overdue') return 'Sold — awaiting buyer payment';
+    if (s.invoiceStatus === 'paid' || s.payoutStatus === 'pending') return 'Sold — settlement pending';
+    return 'Sold';
+  }
+  if (lot.status === 'for_sale' && lot.saleType === 'gallery' && lot.buyNowPrice) return 'Relisted in gallery';
+  return consignorStatusLabel(lot.status);
 }
 
 export default async function ConsignorPortalPage({
@@ -41,6 +63,8 @@ export default async function ConsignorPortalPage({
       title: lots.title,
       artist: lots.artist,
       status: lots.status,
+      saleType: lots.saleType,
+      buyNowPrice: lots.buyNowPrice,
       estimateLow: lots.estimateLow,
       estimateHigh: lots.estimateHigh,
       currentBidAmount: lots.currentBidAmount,
@@ -90,6 +114,25 @@ export default async function ConsignorPortalPage({
   // record. 404 for everyone else so the URL reveals nothing about buyers.
   if (sellerLots.length === 0 && payoutRows.length === 0) notFound();
 
+  // Live buyer invoices for sold lots → "awaiting buyer payment" vs settled.
+  const soldLotIds = sellerLots.filter((l) => l.status === 'sold').map((l) => l.id);
+  const invoiceRows = soldLotIds.length
+    ? await db
+        .select({ lotId: invoices.lotId, status: invoices.status })
+        .from(invoices)
+        .where(and(inArray(invoices.lotId, soldLotIds), notInArray(invoices.status, ['cancelled', 'refunded'])))
+    : [];
+
+  const settlementByLot = new Map<string, LotSettlement>();
+  for (const inv of invoiceRows) {
+    settlementByLot.set(inv.lotId, { invoiceStatus: inv.status, payoutStatus: null, payoutPaidAt: null });
+  }
+  for (const p of payoutRows) {
+    if (p.status === 'cancelled') continue;
+    const current = settlementByLot.get(p.lotId) ?? { invoiceStatus: null, payoutStatus: null, payoutPaidAt: null };
+    settlementByLot.set(p.lotId, { ...current, payoutStatus: p.status, payoutPaidAt: p.paidAt });
+  }
+
   const activePayouts = payoutRows.filter((p) => p.status !== 'cancelled');
   const summary = summarizeConsignor(sellerLots, activePayouts);
   const name = seller.fullName || seller.displayName || 'Consignor';
@@ -118,11 +161,11 @@ export default async function ConsignorPortalPage({
           <p className="text-sm text-muted-foreground mt-1">Sold</p>
         </div>
         <div className="text-center border rounded-xl p-5">
-          <p className="text-xl font-display">{formatCurrency(summary.pendingNet)}</p>
+          <p className="text-xl font-display">{formatCurrencyWithCents(summary.pendingNet)}</p>
           <p className="text-sm text-muted-foreground mt-1">Proceeds Pending</p>
         </div>
         <div className="text-center border rounded-xl p-5">
-          <p className="text-xl font-display text-champagne">{formatCurrency(summary.paidNet)}</p>
+          <p className="text-xl font-display text-champagne">{formatCurrencyWithCents(summary.paidNet)}</p>
           <p className="text-sm text-muted-foreground mt-1">Proceeds Paid</p>
         </div>
       </div>
@@ -130,58 +173,67 @@ export default async function ConsignorPortalPage({
       {/* Items */}
       <h2 className="font-display text-display-sm mb-6">Your Items</h2>
       <div className="space-y-6 mb-16">
-        {sellerLots.map((lot) => (
-          <div key={lot.id} className="border rounded-xl overflow-hidden">
-            <div className="grid sm:grid-cols-[200px_1fr]">
-              <div className="relative aspect-square sm:aspect-auto sm:h-full bg-muted">
-                {lot.primaryImageUrl && (
-                  <Image
-                    src={lot.primaryImageUrl}
-                    alt={lot.title}
-                    fill
-                    sizes="(max-width: 640px) 100vw, 200px"
-                    className="object-cover"
-                  />
-                )}
-              </div>
-              <div className="p-6">
-                <div className="flex items-start justify-between gap-4 mb-2">
-                  <div>
-                    <h3 className="font-display text-lg">{lot.title}</h3>
-                    {lot.artist && <p className="text-sm text-muted-foreground">{lot.artist}</p>}
-                  </div>
-                  <span className="shrink-0 text-xs uppercase tracking-wider border rounded-full px-3 py-1 text-muted-foreground">
-                    {consignorStatusLabel(lot.status)}
-                  </span>
+        {sellerLots.map((lot) => {
+          const settlement = settlementByLot.get(lot.id) ?? { invoiceStatus: null, payoutStatus: null, payoutPaidAt: null };
+          const relisted = lot.status === 'for_sale' && lot.saleType === 'gallery' && !!lot.buyNowPrice;
+          return (
+            <div key={lot.id} className="border rounded-xl overflow-hidden">
+              <div className="grid sm:grid-cols-[200px_1fr]">
+                <div className="relative aspect-square sm:aspect-auto sm:h-full bg-muted">
+                  {lot.primaryImageUrl && (
+                    <Image
+                      src={lot.primaryImageUrl}
+                      alt={lot.title}
+                      fill
+                      sizes="(max-width: 640px) 100vw, 200px"
+                      className="object-cover"
+                    />
+                  )}
                 </div>
+                <div className="p-6">
+                  <div className="flex items-start justify-between gap-4 mb-2">
+                    <div>
+                      <h3 className="font-display text-lg">{lot.title}</h3>
+                      {lot.artist && <p className="text-sm text-muted-foreground">{lot.artist}</p>}
+                    </div>
+                    <span className="shrink-0 text-xs uppercase tracking-wider border rounded-full px-3 py-1 text-muted-foreground text-right">
+                      {settlementLabel(lot, settlement)}
+                    </span>
+                  </div>
 
-                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground mt-3">
-                  {lot.estimateLow != null && lot.estimateHigh != null && (
-                    <span>
-                      Estimate: {formatCurrency(lot.estimateLow)} – {formatCurrency(lot.estimateHigh)}
-                    </span>
-                  )}
-                  {lot.auctionTitle && lot.status !== 'sold' && (
-                    <span>
-                      {lot.auctionTitle}
-                      {lot.auctionEndsAt ? ` · ends ${formatDate(lot.auctionEndsAt)}` : ''}
-                    </span>
-                  )}
-                  {lot.status === 'in_auction' && lot.bidCount > 0 && (
-                    <span className="text-foreground">
-                      Current bid: {formatCurrency(lot.currentBidAmount)} ({lot.bidCount} bid{lot.bidCount === 1 ? '' : 's'})
-                    </span>
-                  )}
-                  {lot.status === 'sold' && lot.hammerPrice != null && (
-                    <span className="text-foreground font-medium">
-                      Hammer price: {formatCurrency(lot.hammerPrice)}
-                    </span>
-                  )}
+                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground mt-3">
+                    {lot.estimateLow != null && lot.estimateHigh != null && (
+                      <span>
+                        Estimate: {formatCurrency(lot.estimateLow)} – {formatCurrency(lot.estimateHigh)}
+                      </span>
+                    )}
+                    {lot.auctionTitle && lot.status !== 'sold' && !relisted && (
+                      <span>
+                        {lot.auctionTitle}
+                        {lot.auctionEndsAt ? ` · ends ${formatDate(lot.auctionEndsAt)}` : ''}
+                      </span>
+                    )}
+                    {lot.status === 'in_auction' && lot.bidCount > 0 && (
+                      <span className="text-foreground">
+                        Current bid: {formatCurrency(lot.currentBidAmount)} ({lot.bidCount} bid{lot.bidCount === 1 ? '' : 's'})
+                      </span>
+                    )}
+                    {lot.status === 'sold' && lot.hammerPrice != null && (
+                      <span className="text-foreground font-medium">
+                        Hammer price: {formatCurrencyWithCents(lot.hammerPrice)}
+                      </span>
+                    )}
+                    {relisted && lot.buyNowPrice && (
+                      <span className="text-foreground font-medium">
+                        Buy-now price: {formatCurrency(lot.buyNowPrice)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Payouts */}
@@ -203,15 +255,17 @@ export default async function ConsignorPortalPage({
                 {activePayouts.map((p) => (
                   <tr key={p.id} className="border-b last:border-b-0">
                     <td className="p-4">{p.lotTitle}</td>
-                    <td className="p-4 text-right">{formatCurrency(p.hammerPrice)}</td>
-                    <td className="p-4 text-right text-muted-foreground">
-                      −{formatCurrency(p.commissionAmount)} ({p.commissionPercent}%)
+                    <td className="p-4 text-right tabular-nums">{formatCurrencyWithCents(p.hammerPrice)}</td>
+                    <td className="p-4 text-right text-muted-foreground tabular-nums">
+                      −{formatCurrencyWithCents(p.commissionAmount)} ({p.commissionPercent}%)
                     </td>
-                    <td className="p-4 text-right font-medium">{formatCurrency(p.netAmount)}</td>
+                    <td className="p-4 text-right font-medium tabular-nums">{formatCurrencyWithCents(p.netAmount)}</td>
                     <td className="p-4 text-right">
                       {p.status === 'paid'
-                        ? `Paid${p.paidAt ? ` ${formatDate(p.paidAt)}` : ''}`
-                        : 'Payment on the way'}
+                        ? `Paid${p.paidAt ? ` ${formatDate(p.paidAt)}` : ''}${p.method ? ` by ${p.method}` : ''}`
+                        : p.status === 'reversed'
+                          ? 'Sale refunded — we will be in touch'
+                          : 'Settlement pending'}
                     </td>
                   </tr>
                 ))}

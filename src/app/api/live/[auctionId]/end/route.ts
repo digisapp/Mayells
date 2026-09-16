@@ -6,6 +6,7 @@ import { users, auctions } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { deleteAuctionRoom } from '@/lib/livekit/config';
 import { forceCloseAuctionLots } from '@/lib/bidding/lifecycle';
+import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 
 export async function POST(
@@ -70,6 +71,9 @@ export async function POST(
         updatedAt: endedAt,
       })
       .where(eq(auctions.id, auctionId));
+
+    // Public pages stop showing the sale as live / lots as biddable.
+    revalidatePublicCatalog(auction.slug);
 
     return NextResponse.json({ status: 'closing' });
   } catch (error) {

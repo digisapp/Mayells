@@ -42,7 +42,8 @@ export default async function AppraisalReportPage({
         <h1 className="font-display text-display-md mb-2">{visit.clientName}</h1>
         <p className="text-muted-foreground">
           {[visit.clientCity, visit.clientState].filter(Boolean).join(', ')}
-          {visit.visitDate && ` · ${new Date(visit.visitDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`}
+          {/* visit_date is date-only; format in UTC so it never shows a day early. */}
+          {visit.visitDate && ` · ${new Date(visit.visitDate).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })}`}
         </p>
       </div>
 

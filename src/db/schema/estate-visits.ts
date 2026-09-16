@@ -34,6 +34,9 @@ export const estateVisits = pgTable('estate_visits', {
   totalEstimateLow: integer('total_estimate_low').default(0).notNull(),
   totalEstimateHigh: integer('total_estimate_high').default(0).notNull(),
   sentAt: timestamp('sent_at'),
+  // Set when the visit is converted into a seller prospect (admin
+  // "Convert to prospect"); links the appraisal to the consignment funnel.
+  prospectId: uuid('prospect_id'),
   createdAt: timestamp('created_at').default(sql`now()`),
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [

@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Shield, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { UploadImagesButton } from './upload-images-button';
 
 export default function AuthenticateTab() {
   const [imageUrls, setImageUrls] = useState('');
@@ -16,6 +17,10 @@ export default function AuthenticateTab() {
   const [artist, setArtist] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+
+  function appendUrls(urls: string[]) {
+    setImageUrls((prev) => [prev.trim(), ...urls].filter(Boolean).join('\n'));
+  }
 
   async function handleAuth() {
     const urls = imageUrls.split('\n').map((u) => u.trim()).filter(Boolean);
@@ -52,6 +57,10 @@ export default function AuthenticateTab() {
           <div className="space-y-2">
             <Label>Image URLs (one per line)</Label>
             <Textarea rows={3} placeholder="https://example.com/front.jpg&#10;https://example.com/back.jpg&#10;https://example.com/detail.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
+            <div className="flex items-center gap-2 pt-1">
+              <UploadImagesButton onUploaded={appendUrls} disabled={loading} />
+              <span className="text-xs text-muted-foreground">Uploaded photos are added to the list above.</span>
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2"><Label>Title</Label><Input placeholder="Item title" value={title} onChange={(e) => setTitle(e.target.value)} /></div>

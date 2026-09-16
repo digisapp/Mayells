@@ -7,7 +7,9 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
 import { auctions, auctionLots, lots } from '@/db/schema';
-import { eq, asc, or } from 'drizzle-orm';
+import type { Lot } from '@/db/schema/lots';
+import { eq, asc, or, and, inArray } from 'drizzle-orm';
+import { PUBLIC_CATALOGUE_LOT_STATUSES, publicLotColumns } from '@/lib/lots/visibility';
 import { Badge } from '@/components/ui/badge';
 import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
@@ -79,17 +81,25 @@ export default async function AuctionDetailPage({
   // revalidation, not per view, and report misleading counts. Vercel Analytics'
   // client script already records these page views.
 
+  // Only catalogue-visible lots (approved / for_sale / in_auction / sold), and
+  // only their public columns: a draft or withdrawn placement, and every lot's
+  // reserve, seller and bidder ids, must never reach the RSC payload.
   const auctionLotsResult = await db
-    .select({ lot: lots, auctionLot: auctionLots })
+    .select({ lot: publicLotColumns, auctionLot: auctionLots })
     .from(auctionLots)
     .innerJoin(lots, eq(auctionLots.lotId, lots.id))
-    .where(eq(auctionLots.auctionId, auction.id))
+    .where(and(
+      eq(auctionLots.auctionId, auction.id),
+      inArray(lots.status, [...PUBLIC_CATALOGUE_LOT_STATUSES]),
+    ))
     .orderBy(asc(auctionLots.lotNumber));
 
+  // LotGrid is typed on the full Lot row but LotCard only reads public
+  // fields; the projection above is the public subset of that row.
   const lotsData = auctionLotsResult.map(({ lot, auctionLot }) => ({
     ...lot,
     lotNumber: auctionLot.lotNumber,
-  }));
+  })) as Lot[];
 
   // Rich JSON-LD for AI agents + search engines
   const jsonLd = generateAuctionJsonLd({

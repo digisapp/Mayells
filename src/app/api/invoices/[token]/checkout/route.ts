@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
+import type Stripe from 'stripe';
 import { stripe } from '@/lib/stripe/config';
 import { db } from '@/db';
 import { invoices, lots, users } from '@/db/schema';
@@ -9,6 +10,11 @@ import { rateLimit } from '@/lib/rate-limit';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
+// Where we will ship. Keep in step with the carriers configured in Shippo.
+const SHIPPING_COUNTRIES: Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[] = [
+  'US', 'CA', 'GB', 'FR', 'DE', 'IT', 'CH',
+];
 
 /**
  * Create a Stripe Checkout session to pay an invoice.
@@ -88,7 +94,7 @@ export async function POST(
       .limit(1);
 
     const [buyer] = await db
-      .select({ email: users.email })
+      .select({ email: users.email, stripeCustomerId: users.stripeCustomerId })
       .from(users)
       .where(eq(users.id, invoice.buyerId))
       .limit(1);
@@ -128,7 +134,15 @@ export async function POST(
           metadata: { invoiceId: invoice.id, lotId: invoice.lotId },
         },
         metadata: { invoiceId: invoice.id, lotId: invoice.lotId },
-        customer_email: buyer?.email || undefined,
+        // Reuse the bidder's Stripe customer (saved card from verification)
+        // when we have one; Stripe rejects customer + customer_email together.
+        ...(buyer?.stripeCustomerId
+          ? { customer: buyer.stripeCustomerId }
+          : { customer_email: buyer?.email || undefined }),
+        // Collect the ship-to address on Stripe's page — the webhook copies it
+        // onto the invoice so the shipment is created with a real destination.
+        shipping_address_collection: { allowed_countries: SHIPPING_COUNTRIES },
+        phone_number_collection: { enabled: true },
         success_url: `${APP_URL}/invoices/${token}?paid=1`,
         cancel_url: `${APP_URL}/invoices/${token}`,
         expires_at: expiresAt,

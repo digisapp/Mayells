@@ -1,3 +1,41 @@
+/**
+ * Outreach (referral-partner CRM) vocab shared by the API routes, the list
+ * table, and both forms. One label map per enum — the table and the forms
+ * used to carry their own copies with different wording.
+ */
+
+export const OUTREACH_CATEGORIES = [
+  'estate_attorney',
+  'trust_estate_planning',
+  'elder_law',
+  'wealth_management',
+  'family_office',
+  'cpa_tax',
+  'divorce_attorney',
+  'insurance',
+  'estate_liquidator',
+  'real_estate',
+  'art_advisor',
+  'bank_trust',
+  'other',
+] as const;
+export type OutreachCategory = (typeof OUTREACH_CATEGORIES)[number];
+
+export const OUTREACH_STATUSES = [
+  'new',
+  'contacted',
+  'follow_up',
+  'interested',
+  'converted',
+  'not_interested',
+  'do_not_contact',
+] as const;
+export type OutreachStatus = (typeof OUTREACH_STATUSES)[number];
+
+/** Statuses that must never be emailed and never show as "due". */
+export const OUTREACH_CLOSED_STATUSES: readonly OutreachStatus[] = ['converted', 'not_interested', 'do_not_contact'];
+export const OUTREACH_NO_EMAIL_STATUSES: readonly OutreachStatus[] = ['do_not_contact', 'not_interested'];
+
 export const statusColors: Record<string, string> = {
   new: 'bg-blue-100 text-blue-800',
   contacted: 'bg-yellow-100 text-yellow-800',
@@ -8,47 +46,48 @@ export const statusColors: Record<string, string> = {
   do_not_contact: 'bg-red-100 text-red-600',
 };
 
-export const categoryLabels: Record<string, string> = {
+export const categoryLabels: Record<OutreachCategory, string> = {
   estate_attorney: 'Estate Attorney',
-  trust_estate_planning: 'Trust & Estate',
+  trust_estate_planning: 'Trust & Estate Planning',
   elder_law: 'Elder Law',
-  wealth_management: 'Wealth Mgmt',
+  wealth_management: 'Wealth Management',
   family_office: 'Family Office',
   cpa_tax: 'CPA / Tax',
   divorce_attorney: 'Divorce Attorney',
   insurance: 'Insurance',
-  estate_liquidator: 'Liquidator',
+  estate_liquidator: 'Estate Liquidator',
   real_estate: 'Real Estate',
   art_advisor: 'Art Advisor',
   bank_trust: 'Bank Trust',
   other: 'Other',
 };
 
-export const categoryOptions = [
-  { value: 'estate_attorney', label: 'Estate Attorney' },
-  { value: 'trust_estate_planning', label: 'Trust & Estate Planning' },
-  { value: 'elder_law', label: 'Elder Law' },
-  { value: 'wealth_management', label: 'Wealth Management' },
-  { value: 'family_office', label: 'Family Office' },
-  { value: 'cpa_tax', label: 'CPA / Tax Specialist' },
-  { value: 'divorce_attorney', label: 'Divorce Attorney' },
-  { value: 'insurance', label: 'Insurance' },
-  { value: 'estate_liquidator', label: 'Estate Liquidator' },
-  { value: 'real_estate', label: 'Real Estate (Luxury)' },
-  { value: 'art_advisor', label: 'Art Advisor' },
-  { value: 'bank_trust', label: 'Bank Trust Department' },
-  { value: 'other', label: 'Other' },
-];
+export const statusLabels: Record<OutreachStatus, string> = {
+  new: 'New',
+  contacted: 'Contacted',
+  follow_up: 'Follow Up',
+  interested: 'Interested',
+  converted: 'Converted',
+  not_interested: 'Not Interested',
+  do_not_contact: 'Do Not Contact',
+};
 
-export const statusOptions = [
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'follow_up', label: 'Follow Up' },
-  { value: 'interested', label: 'Interested' },
-  { value: 'converted', label: 'Converted' },
-  { value: 'not_interested', label: 'Not Interested' },
-  { value: 'do_not_contact', label: 'Do Not Contact' },
-];
+export const categoryOptions = OUTREACH_CATEGORIES.map((value) => ({ value, label: categoryLabels[value] }));
+export const statusOptions = OUTREACH_STATUSES.map((value) => ({ value, label: statusLabels[value] }));
+
+/** Resolve a free-text category (CSV import) to an enum value, else 'other'. */
+export function parseOutreachCategory(raw: string | null | undefined): OutreachCategory {
+  if (!raw) return 'other';
+  const norm = raw.trim().toLowerCase().replace(/[\s/&-]+/g, '_');
+  const direct = OUTREACH_CATEGORIES.find((c) => c === norm);
+  if (direct) return direct;
+  const byLabel = OUTREACH_CATEGORIES.find((c) => categoryLabels[c].toLowerCase() === raw.trim().toLowerCase());
+  if (byLabel) return byLabel;
+  // loose contains match on the label ("attorney" → estate_attorney is too
+  // ambiguous, so only match when the label is contained in the input)
+  const loose = OUTREACH_CATEGORIES.find((c) => raw.toLowerCase().includes(categoryLabels[c].toLowerCase()));
+  return loose ?? 'other';
+}
 
 export const EMAIL_TEMPLATES = [
   {
@@ -99,3 +138,18 @@ Best regards,
 Mayells Team`,
   },
 ];
+
+/**
+ * Fill the personalisation placeholders. A missing contact name falls back to
+ * "Dear Colleague" for the salutation and "there" elsewhere.
+ */
+export function personalizeTemplate(
+  text: string,
+  contact: { contactName?: string | null; companyName: string },
+): string {
+  const name = contact.contactName?.trim();
+  return text
+    .replace(/Dear\s+\{contactName\}/g, name ? `Dear ${name}` : 'Dear Colleague')
+    .replace(/\{contactName\}/g, name || 'there')
+    .replace(/\{companyName\}/g, contact.companyName);
+}

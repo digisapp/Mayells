@@ -1,11 +1,20 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, ChevronLeft, ChevronRight, Users, Shield, Ban } from 'lucide-react';
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
+import { Search, ChevronLeft, ChevronRight, Users, Shield, Ban, ShieldCheck, EyeOff, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatCurrency } from '@/types';
+import { isSentinelEmail } from '@/lib/sellers/sentinel';
+import {
+  verificationLabel, roleColors, accountStatusColors as statusColors, USER_ROLES, ACCOUNT_STATUSES, readError,
+} from './user-badges';
 
 interface UserRow {
   id: string;
@@ -13,17 +22,18 @@ interface UserRow {
   fullName: string | null;
   displayName: string | null;
   role: string;
+  isAdmin: boolean;
   accountStatus: string;
   cardVerifiedAt: string | null;
   identityVerifiedAt: string | null;
   paddleNumber: string | null;
+  companyName: string | null;
   createdAt: string;
-}
-
-function verificationLabel(u: UserRow): { label: string; className: string } {
-  if (u.identityVerifiedAt) return { label: 'ID verified', className: 'bg-green-100 text-green-800' };
-  if (u.cardVerifiedAt) return { label: 'Card', className: 'bg-blue-100 text-blue-800' };
-  return { label: 'Registered', className: 'bg-gray-100 text-gray-600' };
+  lotCount: number;
+  soldCount: number;
+  consignmentCount: number;
+  bidCount: number;
+  salesTotalCents: number;
 }
 
 interface Pagination {
@@ -33,54 +43,97 @@ interface Pagination {
   totalPages: number;
 }
 
-const roleColors: Record<string, string> = {
-  admin: 'bg-red-100 text-red-800',
-  auctioneer: 'bg-purple-100 text-purple-800',
-  seller: 'bg-blue-100 text-blue-800',
-  buyer: 'bg-green-100 text-green-800',
-};
+type Filter = 'all' | 'consignors' | 'bidders' | 'admins' | 'suspended' | 'shadow';
 
-const statusColors: Record<string, string> = {
-  active: 'bg-green-100 text-green-800',
-  suspended: 'bg-yellow-100 text-yellow-800',
-  banned: 'bg-red-100 text-red-800',
-};
+const FILTERS: Array<{ value: Filter; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: 'consignors', label: 'Consignors' },
+  { value: 'bidders', label: 'Bidders' },
+  { value: 'admins', label: 'Admins' },
+  { value: 'suspended', label: 'Suspended / Banned' },
+  { value: 'shadow', label: 'Shadow' },
+];
 
-const roles = ['buyer', 'seller', 'auctioneer', 'admin'];
-const statuses = ['active', 'suspended', 'banned'];
+function isFilter(v: string | null): v is Filter {
+  return !!v && FILTERS.some((f) => f.value === v);
+}
 
-export default function AdminUsersPage() {
+function displayName(u: UserRow): string {
+  return u.fullName || u.displayName || (isSentinelEmail(u.email) ? 'Shadow consignor' : u.email);
+}
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <Badge className={statusColors[status] || ''}>
+      {status === 'banned' && <Ban className="h-2.5 w-2.5 mr-1" />}
+      {status === 'active' && <Shield className="h-2.5 w-2.5 mr-1" />}
+      {status}
+    </Badge>
+  );
+}
+
+function AdminUsersPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlFilter = searchParams.get('filter');
+
   const [userList, setUserList] = useState<UserRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 50, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState<Filter>(isFilter(urlFilter) ? urlFilter : 'all');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ user: UserRow; updates: { role?: string; accountStatus?: string }; title: string; description: string } | null>(null);
 
-  const fetchUsers = useCallback((page: number, search: string) => {
+  // Keep the chip in sync when the URL changes (sidebar link, back button)
+  useEffect(() => {
+    if (isFilter(urlFilter) && urlFilter !== filter) setFilter(urlFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlFilter]);
+
+  const fetchUsers = useCallback((page: number, search: string, currentFilter: Filter) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
     if (search) params.set('search', search);
+    if (currentFilter !== 'all') params.set('filter', currentFilter);
 
     fetch(`/api/admin/users?${params}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) throw new Error(await readError(r, 'Failed to load users'));
+        return r.json();
+      })
       .then((d) => {
+        setLoadError(null);
         setUserList(d.data ?? []);
         if (d.pagination) setPagination(d.pagination);
       })
-      .catch(() => toast.error('Failed to load users'))
+      .catch((err: Error) => {
+        setLoadError(err.message);
+        toast.error(err.message || 'Failed to load users');
+      })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
-    fetchUsers(pagination.page, searchQuery);
+    fetchUsers(pagination.page, searchQuery, filter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagination.page, searchQuery]);
+  }, [pagination.page, searchQuery, filter]);
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     setSearchQuery(searchInput);
     setPagination((p) => ({ ...p, page: 1 }));
+  }
+
+  function switchFilter(next: Filter) {
+    setFilter(next);
+    setPagination((p) => ({ ...p, page: 1 }));
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'all') params.delete('filter');
+    else params.set('filter', next);
+    router.replace(`/admin/users${params.size ? `?${params}` : ''}`);
   }
 
   async function updateUser(id: string, updates: { role?: string; accountStatus?: string }) {
@@ -96,129 +149,252 @@ export default function AdminUsersPage() {
         toast.success('User updated');
         setEditingId(null);
       } else {
-        const err = await res.json();
-        toast.error(err.error || 'Failed to update user');
+        toast.error(await readError(res, 'Failed to update user'));
       }
     } catch {
       toast.error('Network error');
     }
   }
 
+  /** Destructive or privilege-raising changes go through the confirm dialog. */
+  function requestUpdate(user: UserRow, updates: { role?: string; accountStatus?: string }) {
+    const name = displayName(user);
+    if (updates.role === 'admin' && user.role !== 'admin') {
+      setPending({
+        user, updates,
+        title: `Make ${name} an admin?`,
+        description: 'Admins can see and change everything in this panel, including money, users, and other admins.',
+      });
+      return;
+    }
+    if (updates.accountStatus && ['banned', 'suspended'].includes(updates.accountStatus) && updates.accountStatus !== user.accountStatus) {
+      setPending({
+        user, updates,
+        title: `${updates.accountStatus === 'banned' ? 'Ban' : 'Suspend'} ${name}?`,
+        description: updates.accountStatus === 'banned'
+          ? 'They will be blocked from bidding and buying. Existing invoices and payouts are unaffected.'
+          : 'They will be blocked from bidding until reactivated.',
+      });
+      return;
+    }
+    void updateUser(user.id, updates);
+  }
+
+  const chips = (
+    <div className="flex flex-wrap items-center gap-2">
+      {FILTERS.map((f) => (
+        <button
+          key={f.value}
+          type="button"
+          onClick={() => switchFilter(f.value)}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+            filter === f.value
+              ? 'border-champagne bg-champagne/15 text-foreground'
+              : 'border-border text-muted-foreground hover:text-foreground hover:border-champagne/50'
+          }`}
+        >
+          {f.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="font-display text-display-sm flex items-center gap-3">
             <Users className="h-6 w-6" />
             Users
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {pagination.total} total users
+            {pagination.total} {filter === 'all' ? 'total users' : `${FILTERS.find((f) => f.value === filter)?.label.toLowerCase()}`}
           </p>
         </div>
 
-        <form onSubmit={handleSearch} className="flex gap-2">
+        <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Search name or email..."
+              placeholder="Search name, email, company, paddle..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="pl-8 pr-3 py-1.5 border rounded-md text-sm bg-background w-64"
+              className="pl-8 pr-3 py-1.5 border rounded-md text-sm bg-background w-64 max-w-full"
             />
           </div>
           <Button type="submit" size="sm" variant="outline">Search</Button>
           {searchQuery && (
-            <Button type="button" size="sm" variant="ghost" onClick={() => { setSearchInput(''); setSearchQuery(''); }}>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setSearchInput(''); setSearchQuery(''); setPagination((p) => ({ ...p, page: 1 })); }}>
               Clear
             </Button>
           )}
         </form>
       </div>
 
+      <div className="mb-4">{chips}</div>
+
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}
         </div>
+      ) : loadError ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertTriangle className="h-10 w-10 text-red-500 mx-auto mb-3" />
+            <p className="text-muted-foreground mb-4">{loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => fetchUsers(pagination.page, searchQuery, filter)}>Try again</Button>
+          </CardContent>
+        </Card>
       ) : (
         <>
-          <div className="border rounded-lg">
+          {/* Mobile: cards */}
+          <div className="md:hidden space-y-2">
+            {userList.map((user) => {
+              const shadow = isSentinelEmail(user.email);
+              const v = verificationLabel(user);
+              return (
+                <Link key={user.id} href={`/admin/users/${user.id}`} className="block">
+                  <Card className="hover:border-champagne/60 transition-colors">
+                    <CardContent className="p-4 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{displayName(user)}</p>
+                          {shadow ? (
+                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><EyeOff className="h-3 w-3" />no email on file</span>
+                          ) : (
+                            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                          )}
+                        </div>
+                        <StatusBadge status={user.accountStatus} />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge className={roleColors[user.role] || ''}>{user.role}</Badge>
+                        {user.isAdmin && user.role !== 'admin' && <Badge className="bg-red-100 text-red-800"><ShieldCheck className="h-2.5 w-2.5 mr-1" />admin flag</Badge>}
+                        <Badge className={v.className}>{v.label}</Badge>
+                        {user.paddleNumber && <Badge variant="outline">#{user.paddleNumber}</Badge>}
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <span>Consigned {user.lotCount + user.consignmentCount} · Sold {user.soldCount}{user.salesTotalCents > 0 ? ` (${formatCurrency(user.salesTotalCents)})` : ''}</span>
+                        <span>Bids {user.bidCount}</span>
+                        <span>Joined {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
+            {userList.length === 0 && (
+              <Card><CardContent className="py-8 text-center text-muted-foreground">
+                {searchQuery ? `No users matching "${searchQuery}"` : 'No users match this filter.'}
+              </CardContent></Card>
+            )}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden md:block border rounded-lg overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Verification</TableHead>
                   <TableHead>Paddle</TableHead>
-                  <TableHead>Registered</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <TableHead>Consigned / Sold</TableHead>
+                  <TableHead>Bids</TableHead>
+                  <TableHead>Joined</TableHead>
+                  <TableHead className="w-[90px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {userList.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.fullName || user.displayName || '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                    <TableCell>
-                      {editingId === user.id ? (
-                        <select
-                          value={user.role}
-                          onChange={(e) => updateUser(user.id, { role: e.target.value })}
-                          className="text-xs border rounded px-2 py-1 bg-background"
+                {userList.map((user) => {
+                  const shadow = isSentinelEmail(user.email);
+                  const v = verificationLabel(user);
+                  const editing = editingId === user.id;
+                  return (
+                    <TableRow
+                      key={user.id}
+                      className="cursor-pointer"
+                      onClick={() => { if (!editing) router.push(`/admin/users/${user.id}`); }}
+                    >
+                      <TableCell>
+                        <Link href={`/admin/users/${user.id}`} className="font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                          {displayName(user)}
+                        </Link>
+                        <div className="text-xs text-muted-foreground">
+                          {shadow ? (
+                            <span className="inline-flex items-center gap-1"><EyeOff className="h-3 w-3" />no email on file</span>
+                          ) : user.email}
+                          {user.companyName && <span> · {user.companyName}</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell onClick={(e) => editing && e.stopPropagation()}>
+                        {editing ? (
+                          <select
+                            value={user.role}
+                            onChange={(e) => requestUpdate(user, { role: e.target.value })}
+                            className="text-xs border rounded px-2 py-1 bg-background"
+                          >
+                            {USER_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            <Badge className={roleColors[user.role] || ''}>{user.role}</Badge>
+                            {user.isAdmin && user.role !== 'admin' && (
+                              <Badge className="bg-red-100 text-red-800" title="is_admin flag"><ShieldCheck className="h-2.5 w-2.5 mr-1" />admin</Badge>
+                            )}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell onClick={(e) => editing && e.stopPropagation()}>
+                        {editing ? (
+                          <select
+                            value={user.accountStatus}
+                            onChange={(e) => requestUpdate(user, { accountStatus: e.target.value })}
+                            className="text-xs border rounded px-2 py-1 bg-background"
+                          >
+                            {ACCOUNT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        ) : (
+                          <StatusBadge status={user.accountStatus} />
+                        )}
+                      </TableCell>
+                      <TableCell><Badge className={v.className}>{v.label}</Badge></TableCell>
+                      <TableCell className="text-muted-foreground tabular-nums">
+                        {user.paddleNumber ? `#${user.paddleNumber}` : '—'}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {user.lotCount + user.consignmentCount > 0 ? (
+                          <>
+                            {user.lotCount + user.consignmentCount} / {user.soldCount}
+                            {user.salesTotalCents > 0 && (
+                              <span className="text-xs text-muted-foreground ml-1">({formatCurrency(user.salesTotalCents)})</span>
+                            )}
+                          </>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell className="tabular-nums">{user.bidCount > 0 ? user.bidCount : '—'}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs"
+                          onClick={() => setEditingId(editing ? null : user.id)}
                         >
-                          {roles.map((r) => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      ) : (
-                        <Badge className={roleColors[user.role] || ''}>{user.role}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {editingId === user.id ? (
-                        <select
-                          value={user.accountStatus}
-                          onChange={(e) => updateUser(user.id, { accountStatus: e.target.value })}
-                          className="text-xs border rounded px-2 py-1 bg-background"
-                        >
-                          {statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      ) : (
-                        <Badge className={statusColors[user.accountStatus] || ''}>
-                          {user.accountStatus === 'banned' && <Ban className="h-2.5 w-2.5 mr-1" />}
-                          {user.accountStatus === 'active' && <Shield className="h-2.5 w-2.5 mr-1" />}
-                          {user.accountStatus}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {(() => { const v = verificationLabel(user); return (
-                        <Badge className={v.className}>{v.label}</Badge>
-                      ); })()}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground tabular-nums">
-                      {user.paddleNumber ? `#${user.paddleNumber}` : '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-xs"
-                        onClick={() => setEditingId(editingId === user.id ? null : user.id)}
-                      >
-                        {editingId === user.id ? 'Done' : 'Edit'}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {editing ? 'Done' : 'Edit'}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
                 {userList.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                      {searchQuery ? `No users matching "${searchQuery}"` : 'No users yet.'}
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                      {searchQuery ? `No users matching "${searchQuery}"` : 'No users match this filter.'}
                     </TableCell>
                   </TableRow>
                 )}
@@ -227,7 +403,7 @@ export default function AdminUsersPage() {
           </div>
 
           {pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-6">
               <p className="text-sm text-muted-foreground">
                 Page {pagination.page} of {pagination.totalPages}
               </p>
@@ -245,6 +421,25 @@ export default function AdminUsersPage() {
           )}
         </>
       )}
+
+      <ConfirmDialog
+        open={!!pending}
+        onOpenChange={(open) => { if (!open) setPending(null); }}
+        title={pending?.title ?? ''}
+        description={pending?.description}
+        confirmLabel={pending?.updates.accountStatus === 'banned' ? 'Ban user' : pending?.updates.accountStatus === 'suspended' ? 'Suspend' : 'Make admin'}
+        variant={pending?.updates.accountStatus ? 'destructive' : 'default'}
+        onConfirm={async () => { if (pending) await updateUser(pending.user.id, pending.updates); }}
+      />
     </div>
+  );
+}
+
+export default function AdminUsersPage() {
+  // useSearchParams (?filter=) requires a Suspense boundary
+  return (
+    <Suspense fallback={<div className="h-24 bg-muted animate-pulse rounded-lg" />}>
+      <AdminUsersPageInner />
+    </Suspense>
   );
 }

@@ -1,83 +1,92 @@
 import { NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { eq, sql } from 'drizzle-orm';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { users, aiChatSettings } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { aiChatSettings } from '@/db/schema';
+import { logger } from '@/lib/logger';
 
-const aiChatSettingsSchema = z.object({
-  personality: z.string().max(5000).optional().nullable(),
-  customKnowledge: z.string().max(20000).optional().nullable(),
-  upsellItems: z.string().max(5000).optional().nullable(),
-  disallowedTopics: z.string().max(5000).optional().nullable(),
-  greetingMessage: z.string().max(1000).optional().nullable(),
+// Free-text fields: an empty (or whitespace-only) string means "unset" and is
+// stored as NULL so the concierge prompt builder falls back to its defaults
+// instead of injecting a blank section.
+const optionalText = (max: number) =>
+  z.string().max(max).nullable().optional().transform((v) => (v && v.trim() !== '' ? v : null));
+
+const aiChatSettingsSchema = z.strictObject({
+  personality: optionalText(5000),
+  customKnowledge: optionalText(20000),
+  upsellItems: optionalText(5000),
+  disallowedTopics: optionalText(5000),
+  greetingMessage: optionalText(1000),
   enabled: z.boolean().optional(),
 });
 
-async function requireAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-  if (!profile || !isAdminProfile(profile)) return null;
-  return profile;
+function selectRow() {
+  return db
+    .select()
+    .from(aiChatSettings)
+    .orderBy(sql`${aiChatSettings.updatedAt} desc nulls last`)
+    .limit(1);
 }
 
+/** GET /api/admin/ai-chat-settings — `data` is null until first saved. */
 export async function GET() {
   try {
-    const admin = await requireAdmin();
-    if (!admin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { response } = await requireAdminApi();
+    if (response) return response;
 
-    const [settings] = await db.select().from(aiChatSettings).limit(1);
-    return NextResponse.json({ data: settings || null });
-  } catch {
+    const [settings] = await selectRow();
+    return NextResponse.json({ data: settings ?? null });
+  } catch (error) {
+    logger.error('Get AI chat settings error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
+/** PUT /api/admin/ai-chat-settings — full replace of the concierge settings. */
 export async function PUT(req: Request) {
   try {
-    const admin = await requireAdmin();
-    if (!admin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { response } = await requireAdminApi();
+    if (response) return response;
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const parsed = aiChatSettingsSchema.safeParse(await req.json());
+    const parsed = aiChatSettingsSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+      const issue = parsed.error.issues[0];
+      return NextResponse.json(
+        { error: issue.message, path: issue.path.map(String).join('.') || undefined },
+        { status: 400 },
+      );
     }
 
     const { personality, customKnowledge, upsellItems, disallowedTopics, greetingMessage, enabled } = parsed.data;
+    const values = {
+      personality,
+      customKnowledge,
+      upsellItems,
+      disallowedTopics,
+      greetingMessage,
+      enabled: enabled ?? true,
+      updatedAt: new Date(),
+    };
 
-    const [existing] = await db.select({ id: aiChatSettings.id }).from(aiChatSettings).limit(1);
-
+    const [existing] = await selectRow();
     if (existing) {
-      await db.update(aiChatSettings).set({
-        personality: personality ?? null,
-        customKnowledge: customKnowledge ?? null,
-        upsellItems: upsellItems ?? null,
-        disallowedTopics: disallowedTopics ?? null,
-        greetingMessage: greetingMessage ?? null,
-        enabled: enabled ?? true,
-        updatedAt: new Date(),
-      }).where(eq(aiChatSettings.id, existing.id));
+      await db.update(aiChatSettings).set(values).where(eq(aiChatSettings.id, existing.id));
     } else {
-      await db.insert(aiChatSettings).values({
-        personality: personality ?? null,
-        customKnowledge: customKnowledge ?? null,
-        upsellItems: upsellItems ?? null,
-        disallowedTopics: disallowedTopics ?? null,
-        greetingMessage: greetingMessage ?? null,
-        enabled: enabled ?? true,
-      });
+      await db.insert(aiChatSettings).values(values);
     }
 
-    const [updated] = await db.select().from(aiChatSettings).limit(1);
+    const [updated] = await selectRow();
     return NextResponse.json({ data: updated });
-  } catch {
+  } catch (error) {
+    logger.error('Update AI chat settings error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

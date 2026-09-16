@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
-import { sellerProspects } from '@/db/schema';
+import { sellerProspects, uploadItems } from '@/db/schema';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-ip';
+import { isSentinelEmail } from '@/lib/sellers/shadow';
+import {
+  sendAgreementSignedAdminNotification,
+  sendAgreementSignedConfirmation,
+} from '@/lib/email/notifications';
 
 // Public, unauthenticated endpoint. The prospect UUID acts as the capability
 // token: it is only ever delivered in the agreement email sent by
@@ -102,6 +107,48 @@ export async function POST(req: NextRequest) {
     }
 
     logger.info('Consignment agreement signed', { prospectId, ip });
+
+    // Notifications are best-effort: the signature is already recorded, and
+    // an email outage must not tell the consignor their signing failed.
+    try {
+      const [totals] = await db
+        .select({
+          acceptedCount: sql<number>`count(*)::int`,
+          totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})), 0)::int`,
+          totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})), 0)::int`,
+        })
+        .from(uploadItems)
+        .where(and(eq(uploadItems.prospectId, prospectId), inArray(uploadItems.status, ['accepted', 'lot_created'])));
+
+      const commissionPercent = prospect.agreedCommissionPercent ?? 35;
+      const summary = {
+        commissionPercent,
+        acceptedCount: totals?.acceptedCount ?? 0,
+        totalEstimateLow: totals?.totalEstimateLow ?? 0,
+        totalEstimateHigh: totals?.totalEstimateHigh ?? 0,
+      };
+
+      await sendAgreementSignedAdminNotification({
+        prospectId,
+        prospectName: prospect.fullName,
+        prospectEmail: prospect.email && !isSentinelEmail(prospect.email) ? prospect.email : null,
+        signedName,
+        ...summary,
+      });
+
+      if (prospect.email && !isSentinelEmail(prospect.email)) {
+        await sendAgreementSignedConfirmation({
+          prospectEmail: prospect.email,
+          prospectName: prospect.fullName,
+          signedName,
+          signedAt,
+          agreementUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com'}/consignment-agreement?prospect=${prospectId}`,
+          ...summary,
+        });
+      }
+    } catch (emailError) {
+      logger.error('Agreement signed notification failed', emailError, { prospectId });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

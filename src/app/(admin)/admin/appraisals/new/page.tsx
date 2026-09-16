@@ -1,14 +1,16 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Camera, ArrowRight, Upload, Loader2, X } from 'lucide-react';
+import { Camera, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PhotoUploadPanel } from '../_components/PhotoUploadPanel';
 
 export default function NewAppraisalPage() {
   const router = useRouter();
@@ -28,13 +30,6 @@ export default function NewAppraisalPage() {
     notes: '',
   });
 
-  // Step 2: Photo upload
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 });
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handleCreateVisit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -44,70 +39,15 @@ export default function NewAppraisalPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error('Failed to create');
-      const { data } = await res.json();
-      setVisitId(data.id);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || 'Failed to create appraisal');
+      setVisitId(json.data.id);
       setStep('upload');
       toast.success('Visit created — now upload photos');
-    } catch {
-      toast.error('Failed to create appraisal');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to create appraisal');
     } finally {
       setSubmitting(false);
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
-    setFiles((prev) => [...prev, ...selected]);
-    selected.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPreviews((prev) => [...prev, ev.target?.result as string]);
-      reader.readAsDataURL(file);
-    });
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-    setPreviews((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleUploadAndProcess = async () => {
-    if (!visitId || files.length === 0) return;
-    setUploading(true);
-    setUploadProgress({ current: 0, total: files.length });
-
-    try {
-      const imageUrls: string[] = [];
-
-      // Upload each file
-      for (let i = 0; i < files.length; i++) {
-        setUploadProgress({ current: i + 1, total: files.length });
-        const formData = new FormData();
-        formData.append('file', files[i]);
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error(`Upload failed for file ${i + 1}`);
-        const { url } = await res.json();
-        imageUrls.push(url);
-      }
-
-      // Create items
-      const itemsRes = await fetch(`/api/admin/appraisals/${visitId}/items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrls }),
-      });
-      if (!itemsRes.ok) throw new Error('Failed to create items');
-
-      // Start processing
-      await fetch(`/api/admin/appraisals/${visitId}/process`, { method: 'POST' });
-
-      toast.success('Photos uploaded — AI analysis started');
-      router.push(`/admin/appraisals/${visitId}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -132,7 +72,7 @@ export default function NewAppraisalPage() {
                   required
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="clientEmail">Email</Label>
                   <Input
@@ -219,7 +159,7 @@ export default function NewAppraisalPage() {
         </form>
       )}
 
-      {step === 'upload' && (
+      {step === 'upload' && visitId && (
         <div className="space-y-6">
           <Card>
             <CardHeader>
@@ -230,91 +170,26 @@ export default function NewAppraisalPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Upload photos of each item. Each photo will be analyzed by AI to generate
-                title, description, condition, and price estimate.
+                Upload one photo per item. Each photo is analyzed by AI to generate a
+                title, description, condition, and price estimate. Analysis starts on the
+                visit page as soon as the upload finishes.
               </p>
-
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                multiple
-                onChange={handleFileSelect}
-                className="hidden"
+              <PhotoUploadPanel
+                visitId={visitId}
+                ctaLabel="Upload & Start AI Analysis"
+                // Navigate straight away; the detail page kicks off (and polls)
+                // the AI batches, so the admin isn't stuck here for a minute.
+                onComplete={() => router.push(`/admin/appraisals/${visitId}`)}
               />
-
-              {previews.length > 0 && (
-                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                  {previews.map((src, i) => (
-                    <div key={i} className="relative group aspect-square">
-                      {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
-                      <img
-                        src={src}
-                        alt={`Item ${i + 1}`}
-                        className="w-full h-full object-cover rounded-lg border"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeFile(i)}
-                        className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-muted-foreground/20 hover:border-champagne/50 rounded-xl px-4 py-8 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <Upload className="h-5 w-5" />
-                {files.length > 0
-                  ? `${files.length} photo${files.length !== 1 ? 's' : ''} selected — click to add more`
-                  : 'Click to select photos or drag and drop'}
-              </button>
             </CardContent>
           </Card>
-
-          {uploading && (
-            <Card>
-              <CardContent className="py-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <Loader2 className="h-5 w-5 animate-spin text-champagne" />
-                  <span className="text-sm font-medium">
-                    Uploading {uploadProgress.current} of {uploadProgress.total}...
-                  </span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className="bg-champagne h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <Button
-            onClick={handleUploadAndProcess}
-            disabled={files.length === 0 || uploading}
-            className="w-full bg-champagne text-charcoal hover:bg-champagne/90"
-            size="lg"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <ArrowRight className="h-4 w-4 mr-2" />
-                Upload {files.length} Photo{files.length !== 1 ? 's' : ''} & Start AI Analysis
-              </>
-            )}
-          </Button>
+          <p className="text-center text-xs text-muted-foreground">
+            No photos yet?{' '}
+            <Link href={`/admin/appraisals/${visitId}`} className="underline hover:text-foreground">
+              Open the visit
+            </Link>{' '}
+            — you can add photos there any time.
+          </p>
         </div>
       )}
     </div>

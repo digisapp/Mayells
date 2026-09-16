@@ -1,40 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { estateVisits, estateVisitItems, users } from '@/db/schema';
-import { eq, and, asc, sql, sum } from 'drizzle-orm';
+import { estateVisits, estateVisitItems } from '@/db/schema';
+import { eq, and, sql, sum, inArray } from 'drizzle-orm';
 import { catalogLotFromImages } from '@/lib/ai/cataloging';
 import { appraiseLot } from '@/lib/ai/appraisal';
 import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 export const maxDuration = 60;
 
-async function requireAdmin() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-  if (!profile || !isAdminProfile(profile)) return null;
-  return profile;
+const BATCH_SIZE = 5;
+
+interface ClaimedRow {
+  id: string;
+  image_url: string;
 }
 
-const BATCH_SIZE = 5;
+/** Sum completed estimates and move the visit to review. */
+async function finalizeVisit(visitId: string) {
+  const [totals] = await db
+    .select({
+      totalLow: sum(estateVisitItems.estimateLow),
+      totalHigh: sum(estateVisitItems.estimateHigh),
+    })
+    .from(estateVisitItems)
+    .where(and(eq(estateVisitItems.visitId, visitId), eq(estateVisitItems.status, 'completed')));
+
+  await db
+    .update(estateVisits)
+    .set({
+      status: 'review',
+      totalEstimateLow: Number(totals?.totalLow) || 0,
+      totalEstimateHigh: Number(totals?.totalHigh) || 0,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(estateVisits.id, visitId));
+}
+
+/** Items still waiting on (or inside) an AI run. */
+async function remainingCount(visitId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(estateVisitItems)
+    .where(and(eq(estateVisitItems.visitId, visitId), inArray(estateVisitItems.status, ['pending', 'processing'])));
+  return row?.n ?? 0;
+}
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ visitId: string }> },
 ) {
   try {
-    const admin = await requireAdmin();
-    if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { visitId } = await params;
+    if (!UUID_RE.test(visitId)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
     const [visit] = await db.select().from(estateVisits).where(eq(estateVisits.id, visitId)).limit(1);
     if (!visit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    // Set visit to processing
     if (visit.status !== 'processing') {
       await db
         .update(estateVisits)
@@ -42,58 +70,64 @@ export async function POST(
         .where(eq(estateVisits.id, visitId));
     }
 
-    // Get next batch of pending items
-    const pendingItems = await db
-      .select()
-      .from(estateVisitItems)
-      .where(and(eq(estateVisitItems.visitId, visitId), eq(estateVisitItems.status, 'pending')))
-      .orderBy(asc(estateVisitItems.sortOrder))
-      .limit(BATCH_SIZE);
+    // Claim the next batch atomically. Two concurrent requests (the detail
+    // page's auto-trigger racing a manual re-run, or two admins) each get a
+    // disjoint set of rows: SKIP LOCKED steps over rows another transaction
+    // is claiming, and the UPDATE flips them to 'processing' in the same
+    // statement so a later SELECT can't see them as pending. An item left in
+    // 'processing' for 15+ minutes belonged to a run that died and is
+    // reclaimed.
+    const claimed = await db.execute(sql`
+      update estate_visit_items
+         set status = 'processing', updated_at = now()
+       where id in (
+         select id
+           from estate_visit_items
+          where visit_id = ${visitId}
+            and (
+              status = 'pending'
+              or (status = 'processing' and updated_at < now() - interval '15 minutes')
+            )
+          order by sort_order
+          limit ${BATCH_SIZE}
+          for update skip locked
+       )
+       returning id, image_url
+    `);
+    // node-postgres: db.execute() resolves to a pg QueryResult whose `rows` carry
+    // the RETURNING columns.
+    const batch = ((claimed as unknown as { rows?: ClaimedRow[] }).rows ?? []);
 
-    if (pendingItems.length === 0) {
-      // All done — recalculate totals and set review
-      const [totals] = await db
-        .select({
-          totalLow: sum(estateVisitItems.estimateLow),
-          totalHigh: sum(estateVisitItems.estimateHigh),
-        })
-        .from(estateVisitItems)
-        .where(and(eq(estateVisitItems.visitId, visitId), eq(estateVisitItems.status, 'completed')));
-
-      await db
-        .update(estateVisits)
-        .set({
-          status: 'review',
-          totalEstimateLow: Number(totals?.totalLow) || 0,
-          totalEstimateHigh: Number(totals?.totalHigh) || 0,
-          updatedAt: sql`now()`,
-        })
-        .where(eq(estateVisits.id, visitId));
-
+    if (batch.length === 0) {
+      const remaining = await remainingCount(visitId);
+      if (remaining > 0) {
+        // Another run holds the rest; report progress and let the caller poll.
+        return NextResponse.json({
+          processedCount: visit.processedCount,
+          itemCount: visit.itemCount,
+          done: false,
+          batchProcessed: 0,
+          waiting: true,
+        });
+      }
+      await finalizeVisit(visitId);
+      const [fresh] = await db.select().from(estateVisits).where(eq(estateVisits.id, visitId)).limit(1);
       return NextResponse.json({
-        processedCount: visit.itemCount,
-        itemCount: visit.itemCount,
+        processedCount: fresh?.processedCount ?? visit.processedCount,
+        itemCount: fresh?.itemCount ?? visit.itemCount,
         done: true,
+        batchProcessed: 0,
       });
     }
 
-    // Process each item in the batch
     let batchProcessed = 0;
 
-    for (const item of pendingItems) {
+    for (const item of batch) {
       try {
-        // Mark as processing
-        await db
-          .update(estateVisitItems)
-          .set({ status: 'processing', updatedAt: sql`now()` })
-          .where(eq(estateVisitItems.id, item.id));
+        const catalog = await catalogLotFromImages([item.image_url]);
 
-        // Step 1: Catalog
-        const catalog = await catalogLotFromImages([item.imageUrl]);
-
-        // Step 2: Appraise (using catalog results as context)
         const appraisal = await appraiseLot({
-          imageUrls: [item.imageUrl],
+          imageUrls: [item.image_url],
           title: catalog.title,
           description: catalog.description,
           artist: catalog.artist,
@@ -103,11 +137,11 @@ export async function POST(
           condition: catalog.condition,
         });
 
-        // Save results
         await db
           .update(estateVisitItems)
           .set({
             status: 'completed',
+            errorMessage: null,
             title: catalog.title,
             description: catalog.description,
             artist: catalog.artist,
@@ -125,8 +159,6 @@ export async function POST(
             updatedAt: sql`now()`,
           })
           .where(eq(estateVisitItems.id, item.id));
-
-        batchProcessed++;
       } catch (err) {
         logger.error(`AI processing failed for item ${item.id}`, err);
         await db
@@ -137,10 +169,10 @@ export async function POST(
             updatedAt: sql`now()`,
           })
           .where(eq(estateVisitItems.id, item.id));
-        batchProcessed++;
       }
+      batchProcessed++;
 
-      // Increment visit processedCount
+      // Live progress for the detail page's poll.
       await db
         .update(estateVisits)
         .set({
@@ -150,34 +182,26 @@ export async function POST(
         .where(eq(estateVisits.id, visitId));
     }
 
-    // Get updated visit
+    // Reconcile the counter with the rows themselves so a reclaimed item or a
+    // crashed run can't leave it drifted.
+    const [{ processed }] = await db
+      .select({ processed: sql<number>`count(*)::int` })
+      .from(estateVisitItems)
+      .where(and(eq(estateVisitItems.visitId, visitId), inArray(estateVisitItems.status, ['completed', 'error'])));
+    await db
+      .update(estateVisits)
+      .set({ processedCount: processed, updatedAt: sql`now()` })
+      .where(eq(estateVisits.id, visitId));
+
+    const remaining = await remainingCount(visitId);
+    const done = remaining === 0;
+    if (done) await finalizeVisit(visitId);
+
     const [updatedVisit] = await db.select().from(estateVisits).where(eq(estateVisits.id, visitId)).limit(1);
-    const done = updatedVisit.processedCount >= updatedVisit.itemCount;
-
-    if (done) {
-      // Recalculate totals
-      const [totals] = await db
-        .select({
-          totalLow: sum(estateVisitItems.estimateLow),
-          totalHigh: sum(estateVisitItems.estimateHigh),
-        })
-        .from(estateVisitItems)
-        .where(and(eq(estateVisitItems.visitId, visitId), eq(estateVisitItems.status, 'completed')));
-
-      await db
-        .update(estateVisits)
-        .set({
-          status: 'review',
-          totalEstimateLow: Number(totals?.totalLow) || 0,
-          totalEstimateHigh: Number(totals?.totalHigh) || 0,
-          updatedAt: sql`now()`,
-        })
-        .where(eq(estateVisits.id, visitId));
-    }
 
     return NextResponse.json({
-      processedCount: updatedVisit.processedCount,
-      itemCount: updatedVisit.itemCount,
+      processedCount: updatedVisit?.processedCount ?? processed,
+      itemCount: updatedVisit?.itemCount ?? visit.itemCount,
       done,
       batchProcessed,
     });

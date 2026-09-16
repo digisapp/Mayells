@@ -11,6 +11,7 @@ import { DollarSign, Loader2 } from 'lucide-react';
 import { LensButton } from '@/components/admin/LensButton';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
+import { UploadImagesButton } from './upload-images-button';
 
 export default function AppraiseTab() {
   const [imageUrls, setImageUrls] = useState('');
@@ -23,6 +24,10 @@ export default function AppraiseTab() {
     .split('\n')
     .map((u) => u.trim())
     .filter((u) => /^https?:\/\//.test(u));
+
+  function appendUrls(urls: string[]) {
+    setImageUrls((prev) => [prev.trim(), ...urls].filter(Boolean).join('\n'));
+  }
 
   async function handleAppraise() {
     const urls = imageUrls.split('\n').map((u) => u.trim()).filter(Boolean);
@@ -53,6 +58,10 @@ export default function AppraiseTab() {
           <div className="space-y-2">
             <Label>Image URLs (one per line)</Label>
             <Textarea rows={3} placeholder="https://example.com/image.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
+            <div className="flex items-center gap-2 pt-1">
+              <UploadImagesButton onUploaded={appendUrls} disabled={loading} />
+              <span className="text-xs text-muted-foreground">Uploaded photos are added to the list above.</span>
+            </div>
             {enteredUrls.length > 0 && (
               <div className="flex flex-wrap gap-2 pt-1">
                 {enteredUrls.map((url, i) => (

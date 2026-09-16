@@ -18,6 +18,7 @@ import { createClient } from '@/lib/supabase/server';
 import { watchlist, users } from '@/db/schema';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { isLotInPublicAuction } from '@/lib/lots/placement';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
@@ -132,8 +133,11 @@ export default async function LotDetailPage({
   }
 
   // Never expose unpublished lots (draft / pending_review / withdrawn / unsold)
-  // to the public at their direct URL — admins may still preview them.
-  if (!isPubliclyVisibleLot(lot.status) && !viewerIsAdmin) {
+  // to the public at their direct URL — admins may still preview them. A lot
+  // catalogued in a scheduled/preview sale stays `approved` until bidding
+  // opens, so it counts as visible when its sale is public.
+  const inPublicAuction = lot.status === 'approved' ? await isLotInPublicAuction(lot.id) : false;
+  if (!isPubliclyVisibleLot(lot.status, inPublicAuction) && !viewerIsAdmin) {
     notFound();
   }
 

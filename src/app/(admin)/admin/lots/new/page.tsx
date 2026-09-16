@@ -22,13 +22,13 @@ export default function NewLotPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(lotData),
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error);
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || 'Failed to create lot');
 
-      // Attach images uploaded before the lot existed. The lot is already
-      // created at this point, so a failed attach must not throw (re-submitting
-      // would create a duplicate lot); surface it as a warning instead.
-      const lotId = result.data?.id;
+      // The lot exists from here on, so nothing below may throw — a re-submit
+      // would create a duplicate. Follow-up failures are surfaced as warnings.
+      const lotId = result.data?.id as string | undefined;
+
       if (lotId && images?.length) {
         const hasPrimary = images.some((img) => img.isPrimary);
         let failed = 0;
@@ -48,7 +48,8 @@ export default function NewLotPage() {
           toast.warning(`Lot created, but ${failed} image${failed === 1 ? '' : 's'} failed to attach. Edit the lot to re-add.`);
         }
       }
-      router.push('/admin/lots');
+      toast.success('Lot created');
+      router.push(lotId ? `/admin/lots/${lotId}` : '/admin/lots');
     } finally {
       setIsLoading(false);
     }

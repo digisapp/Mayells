@@ -19,14 +19,10 @@ import { logger } from '@/lib/logger';
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type DbOrTx = typeof db | Tx;
 
-// Prospects can be created without an email (phone/walk-in). The users table
-// requires a unique email, so shadow rows for them get a sentinel address.
-// Anything under this domain must never be emailed.
-export const SHADOW_EMAIL_DOMAIN = 'no-email.mayells.invalid';
-
-export function isSentinelEmail(email: string | null | undefined): boolean {
-  return !!email && email.toLowerCase().endsWith(`@${SHADOW_EMAIL_DOMAIN}`);
-}
+// Sentinel-email rules live in ./sentinel.ts (dependency-free, safe for
+// client bundles); re-exported here so server callers keep one import.
+import { SHADOW_EMAIL_DOMAIN, isSentinelEmail } from './sentinel';
+export { SHADOW_EMAIL_DOMAIN, isSentinelEmail };
 
 /**
  * Resolve (or create) the seller-of-record users row for a prospect and link

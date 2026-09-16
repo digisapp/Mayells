@@ -8,7 +8,7 @@ export const paymentStatusEnum = pgEnum('payment_status', [
 ]);
 
 export const paymentMethodEnum = pgEnum('payment_method', [
-  'credit_card', 'bank_transfer', 'wire',
+  'credit_card', 'bank_transfer', 'wire', 'check', 'other',
 ]);
 
 export const payments = pgTable('payments', {
@@ -20,6 +20,8 @@ export const payments = pgTable('payments', {
   status: paymentStatusEnum('status').default('pending').notNull(),
   stripePaymentIntentId: text('stripe_payment_intent_id'),
   stripeChargeId: text('stripe_charge_id'),
+  // Wire / check reference recorded by an admin on a manual payment.
+  reference: text('reference'),
   failureReason: text('failure_reason'),
   idempotencyKey: text('idempotency_key').unique(),
   createdAt: timestamp('created_at').default(sql`now()`),

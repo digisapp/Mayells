@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { uploadItems, sellerProspects, users } from '@/db/schema';
-import { eq, and, asc, sql } from 'drizzle-orm';
+import { uploadItems, sellerProspects } from '@/db/schema';
+import { eq, and, asc, sql, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 const itemReviewSchema = z.object({
   items: z.array(z.object({
     id: z.string().uuid('Valid item ID required'),
-    action: z.enum(['accept', 'decline']),
+    // reset: send an accepted/declined item back to the review queue.
+    action: z.enum(['accept', 'decline', 'reset']),
     adminNotes: z.string().max(5000).optional(),
     finalTitle: z.string().max(500).optional(),
-    finalDescription: z.string().max(10000).optional(),
+    finalDescription: z.string().max(10000).nullable().optional(),
     finalEstimateLow: z.number().int().min(0).optional(),
     finalEstimateHigh: z.number().int().min(0).optional(),
     finalReserve: z.number().int().min(0).optional(),
@@ -22,16 +22,29 @@ const itemReviewSchema = z.object({
   })).min(1, 'At least one item is required').max(200),
 });
 
+// Which current statuses each action may be applied to. Accept needs the AI
+// pass to have run (or a prior accept being re-saved with overrides); a
+// decline can short-circuit an item that never needs cataloging. Nothing
+// touches an item that has already become a lot.
+const ALLOWED_FROM: Record<'accept' | 'decline' | 'reset', readonly string[]> = {
+  accept: ['cataloged', 'accepted'],
+  decline: ['uploaded', 'cataloged', 'accepted', 'declined'],
+  reset: ['accepted', 'declined'],
+};
+
+const NEXT_STATUS = {
+  accept: 'accepted',
+  decline: 'declined',
+  reset: 'cataloged',
+} as const;
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ prospectId: string }> },
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { prospectId } = await params;
     if (!UUID_RE.test(prospectId)) {
@@ -42,7 +55,7 @@ export async function GET(
       .select()
       .from(uploadItems)
       .where(eq(uploadItems.prospectId, prospectId))
-      .orderBy(asc(uploadItems.sortOrder));
+      .orderBy(asc(uploadItems.sortOrder), asc(uploadItems.createdAt));
 
     return NextResponse.json({ items });
   } catch (error) {
@@ -56,11 +69,8 @@ export async function PATCH(
   { params }: { params: Promise<{ prospectId: string }> },
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { prospectId } = await params;
     if (!UUID_RE.test(prospectId)) {
@@ -73,15 +83,37 @@ export async function PATCH(
 
     const { items } = parsed.data;
 
-    // Process each item
-    for (const item of items) {
-      const status = item.action === 'accept' ? 'accepted' : 'declined';
+    // Validate every transition before writing any of them so a bad item in
+    // a bulk request doesn't half-apply.
+    const current = await db
+      .select({ id: uploadItems.id, status: uploadItems.status, title: uploadItems.aiTitle, sellerTitle: uploadItems.sellerTitle })
+      .from(uploadItems)
+      .where(and(eq(uploadItems.prospectId, prospectId), inArray(uploadItems.id, items.map((i) => i.id))));
+    const byId = new Map(current.map((c) => [c.id, c]));
 
+    for (const item of items) {
+      const row = byId.get(item.id);
+      if (!row) {
+        return NextResponse.json({ error: 'Item not found on this prospect' }, { status: 404 });
+      }
+      if (!ALLOWED_FROM[item.action].includes(row.status)) {
+        const label = row.title || row.sellerTitle || 'This item';
+        const why =
+          item.action === 'accept' && row.status === 'uploaded'
+            ? `${label} hasn't been cataloged yet — run AI processing before accepting it.`
+            : row.status === 'lot_created'
+              ? `${label} is already a lot and can't be changed here.`
+              : `${label} is ${row.status.replace(/_/g, ' ')} and can't be ${item.action === 'reset' ? 'reset' : `${item.action}ed`}.`;
+        return NextResponse.json({ error: why, itemId: item.id }, { status: 409 });
+      }
+    }
+
+    for (const item of items) {
       await db
         .update(uploadItems)
         .set({
-          status,
-          reviewedAt: new Date(),
+          status: NEXT_STATUS[item.action],
+          reviewedAt: item.action === 'reset' ? null : new Date(),
           updatedAt: new Date(),
           ...(item.adminNotes !== undefined && { adminNotes: item.adminNotes }),
           ...(item.finalTitle !== undefined && { finalTitle: item.finalTitle }),
@@ -100,10 +132,10 @@ export async function PATCH(
     // item so the agreement email never reports "$0 – $0".
     const [counts] = await db
       .select({
-        reviewedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'declined'))`.as('reviewed_items'),
-        acceptedItems: sql<number>`count(*) filter (where ${uploadItems.status} = 'accepted')`.as('accepted_items'),
-        totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})) filter (where ${uploadItems.status} != 'declined'), 0)`.as('total_estimate_low'),
-        totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})) filter (where ${uploadItems.status} != 'declined'), 0)`.as('total_estimate_high'),
+        reviewedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'declined', 'lot_created'))::int`,
+        acceptedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'lot_created'))::int`,
+        totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})) filter (where ${uploadItems.status} != 'declined'), 0)::int`,
+        totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})) filter (where ${uploadItems.status} != 'declined'), 0)::int`,
       })
       .from(uploadItems)
       .where(eq(uploadItems.prospectId, prospectId));

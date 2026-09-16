@@ -1,17 +1,17 @@
+import { Suspense } from 'react';
+import { OutreachClient } from './outreach-client';
+
 export const dynamic = 'force-dynamic';
 
-import { db } from '@/db';
-import { outreachContacts } from '@/db/schema';
-import { desc, asc } from 'drizzle-orm';
-import { OutreachClient } from './outreach-client';
-import type { OutreachContact } from '@/db/schema/outreach';
-
-export default async function AdminOutreachPage() {
-  const contacts: OutreachContact[] = await db
-    .select()
-    .from(outreachContacts)
-    .orderBy(asc(outreachContacts.nextFollowUpAt), desc(outreachContacts.createdAt))
-    .limit(500);
-
-  return <OutreachClient initialContacts={contacts} />;
+/**
+ * The list is fetched client-side from /api/admin/outreach with server-side
+ * filters and 50-row pages (it used to preload 500 rows and filter in the
+ * browser). useSearchParams in the client needs the Suspense boundary.
+ */
+export default function AdminOutreachPage() {
+  return (
+    <Suspense fallback={<div className="h-24 bg-muted animate-pulse rounded-lg" />}>
+      <OutreachClient />
+    </Suspense>
+  );
 }

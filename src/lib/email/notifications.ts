@@ -1,6 +1,6 @@
 import { getResend } from './resend';
 import { escapeHtml } from './escape';
-import { formatCurrency } from '@/types';
+import { formatCurrency, formatCurrencyWithCents } from '@/types';
 import { BUSINESS } from '@/lib/config';
 import { db } from '@/db';
 import { emails } from '@/db/schema';
@@ -143,6 +143,54 @@ export async function sendEndingSoonNotification(params: {
 }
 
 /**
+ * Resend caps outbound messages at 40 MB; leave headroom for the body and
+ * base64 overhead when relaying an inbound email's attachments.
+ */
+export const MAX_FORWARD_ATTACHMENT_BYTES = 30 * 1024 * 1024;
+
+/** A Resend outbound attachment that Resend fetches itself at send time. */
+export interface ForwardableAttachment {
+  filename: string;
+  path: string;
+  contentType?: string;
+}
+
+/**
+ * An inbound email's attachments as outbound `path` attachments — fresh
+ * signed download URLs that Resend fetches when it sends, so no file bytes
+ * ever pass through us. Files that would push the total past the cap are
+ * counted in `skipped` rather than included. Shared by the owner-mailbox
+ * relay (inbound webhook) and the admin inbox's Forward action.
+ */
+export async function listForwardableAttachments(resendEmailId: string): Promise<{
+  attachments: ForwardableAttachment[];
+  skipped: number;
+}> {
+  const resend = getResend();
+  const { data: list, error } = await resend.emails.receiving.attachments.list({ emailId: resendEmailId });
+  if (error) {
+    throw new Error(`Failed to list inbound attachments: ${error.message}`);
+  }
+
+  const attachments: ForwardableAttachment[] = [];
+  let skipped = 0;
+  let totalBytes = 0;
+  for (const att of list?.data ?? []) {
+    if (totalBytes + att.size > MAX_FORWARD_ATTACHMENT_BYTES) {
+      skipped++;
+      continue;
+    }
+    totalBytes += att.size;
+    attachments.push({
+      filename: att.filename || 'attachment',
+      path: att.download_url,
+      contentType: att.content_type,
+    });
+  }
+  return { attachments, skipped };
+}
+
+/**
  * Forward a copy of an inbound email to the owner's external mailbox.
  * Deliberately NOT routed through sendAndLog: the original message is already
  * stored in the emails table, and logging the forward too would double every
@@ -160,7 +208,7 @@ export async function forwardInboundEmail(params: {
    * Attachments to relay, as Resend-hosted signed URLs (`path`) — Resend
    * downloads them at send time, so the webhook never buffers file bytes.
    */
-  attachments?: Array<{ filename: string; path: string; contentType?: string }>;
+  attachments?: ForwardableAttachment[];
   /** Count of attachments dropped by the size cap, surfaced in the banner. */
   skippedAttachments?: number;
 }) {
@@ -266,7 +314,7 @@ export async function sendInvoiceNotification(params: {
           </tr>
           <tr>
             <td style="padding: 8px 16px; color: #666;">Total:</td>
-            <td style="padding: 8px 16px; font-weight: bold; font-size: 20px;">${formatCurrency(params.totalAmount)}</td>
+            <td style="padding: 8px 16px; font-weight: bold; font-size: 20px;">${formatCurrencyWithCents(params.totalAmount)}</td>
           </tr>
           <tr>
             <td style="padding: 8px 16px; color: #666;">Due by:</td>
@@ -275,6 +323,46 @@ export async function sendInvoiceNotification(params: {
         </table>
         ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/invoices/${params.accessToken}`, 'View & Pay Invoice')}
     `, 'Congratulations!'),
+  });
+}
+
+/**
+ * One-off reminder for an invoice that has gone past its due date. Sent by
+ * the lifecycle cron at most once per invoice (invoices.reminderSentAt).
+ */
+export async function sendInvoicePaymentReminder(params: {
+  email: string;
+  lotTitle: string;
+  invoiceNumber: string;
+  totalAmount: number;
+  dueDate: Date;
+  accessToken: string;
+}) {
+  await sendAndLog({
+    to: params.email,
+    subject: `Payment reminder — invoice ${params.invoiceNumber} is past due`,
+    html: emailLayout(`
+        <p>A friendly reminder that your invoice for <strong>${escapeHtml(params.lotTitle)}</strong> was due on ${params.dueDate.toLocaleDateString()} and is still outstanding.</p>
+        <table style="margin: 20px 0; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Invoice:</td>
+            <td style="padding: 8px 16px; font-weight: bold;">${params.invoiceNumber}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Amount due:</td>
+            <td style="padding: 8px 16px; font-weight: bold; font-size: 20px;">${formatCurrencyWithCents(params.totalAmount)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">Was due:</td>
+            <td style="padding: 8px 16px;">${params.dueDate.toLocaleDateString()}</td>
+          </tr>
+        </table>
+        ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/invoices/${params.accessToken}`, 'Pay Invoice')}
+        <p style="margin-top: 20px; font-size: 14px; color: #666;">
+          If you have already sent payment by wire or check, please disregard this notice.
+          Questions? Reply to this email or call us at ${BUSINESS.phone}.
+        </p>
+    `, 'Payment Reminder'),
   });
 }
 
@@ -288,9 +376,73 @@ export async function sendPaymentConfirmation(params: {
     to: params.email,
     subject: `Payment received for ${params.invoiceNumber}`,
     html: emailLayout(`
-        <p>Thank you! We've received your payment of <strong>${formatCurrency(params.totalAmount)}</strong> for <strong>${escapeHtml(params.lotTitle)}</strong>.</p>
+        <p>Thank you! We've received your payment of <strong>${formatCurrencyWithCents(params.totalAmount)}</strong> for <strong>${escapeHtml(params.lotTitle)}</strong>.</p>
         <p>We'll begin preparing your item for shipment. You'll receive tracking information once it ships.</p>
     `, 'Payment Confirmed'),
+  });
+}
+
+/**
+ * The buyer's payment was refunded and the sale unwound (Stripe refund or a
+ * manual wire/check refund recorded by an admin).
+ */
+export async function sendInvoiceRefundedNotification(params: {
+  email: string;
+  lotTitle: string;
+  invoiceNumber: string;
+  totalAmount: number;
+}) {
+  await sendAndLog({
+    to: params.email,
+    subject: `Refund issued for invoice ${params.invoiceNumber}`,
+    html: emailLayout(`
+        <p>We've issued a refund of <strong>${formatCurrencyWithCents(params.totalAmount)}</strong> for <strong>${escapeHtml(params.lotTitle)}</strong> (invoice ${params.invoiceNumber}).</p>
+        <p>Card refunds typically appear on your statement within 5–10 business days; a wire or check refund is sent to the details we have on file.</p>
+        <p>If you have any questions, simply reply to this email or call us at ${BUSINESS.phone}.</p>
+    `, 'Refund Issued'),
+  });
+}
+
+/**
+ * Consignor's proceeds were sent (wire / check). One email per batch — a
+ * single remittance can cover several lots.
+ */
+export async function sendPayoutSentNotification(params: {
+  email: string;
+  sellerName: string;
+  items: Array<{ lotTitle: string; netAmount: number }>;
+  totalAmount: number;
+  method: 'wire' | 'check' | 'other';
+  reference?: string | null;
+  paidAt: Date;
+  portalUrl?: string;
+}) {
+  const methodLabel = params.method === 'wire' ? 'wire transfer' : params.method === 'check' ? 'check' : 'payment';
+  const rows = params.items
+    .map(
+      (item) => `
+          <tr>
+            <td style="padding: 8px 16px; color: #666;">${escapeHtml(item.lotTitle)}</td>
+            <td style="padding: 8px 16px; text-align: right;">${formatCurrencyWithCents(item.netAmount)}</td>
+          </tr>`,
+    )
+    .join('');
+  await sendAndLog({
+    to: params.email,
+    subject: `Your ${methodLabel} of ${formatCurrencyWithCents(params.totalAmount)} is on its way`,
+    html: emailLayout(`
+        <p>Dear ${escapeHtml(params.sellerName)},</p>
+        <p>We've sent your proceeds by <strong>${methodLabel}</strong> on ${params.paidAt.toLocaleDateString('en-US', { dateStyle: 'long' })}${params.reference ? ` (reference <strong>${escapeHtml(params.reference)}</strong>)` : ''}.</p>
+        <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
+          ${rows}
+          <tr style="border-top: 1px solid #ddd;">
+            <td style="padding: 8px 16px; color: #666; font-weight: bold;">Total sent:</td>
+            <td style="padding: 8px 16px; text-align: right; font-weight: bold; font-size: 20px;">${formatCurrencyWithCents(params.totalAmount)}</td>
+          </tr>
+        </table>
+        <p>Wires usually arrive within 1–2 business days; checks within 5–7. If anything looks off, reply to this email.</p>
+        ${params.portalUrl ? `<div style="text-align: center; margin: 24px 0;">${ctaButton(params.portalUrl, 'View Your Consignments')}</div>` : ''}
+    `, 'Payment Sent'),
   });
 }
 
@@ -339,15 +491,15 @@ export async function sendSellerStatementNotification(params: {
         <table style="margin: 20px 0; border-collapse: collapse;">
           <tr>
             <td style="padding: 8px 16px; color: #666;">Hammer price:</td>
-            <td style="padding: 8px 16px; font-weight: bold;">${formatCurrency(params.hammerPrice)}</td>
+            <td style="padding: 8px 16px; font-weight: bold;">${formatCurrencyWithCents(params.hammerPrice)}</td>
           </tr>
           <tr>
             <td style="padding: 8px 16px; color: #666;">Seller's commission (${params.commissionPercent}%):</td>
-            <td style="padding: 8px 16px;">−${formatCurrency(params.commissionAmount)}</td>
+            <td style="padding: 8px 16px;">−${formatCurrencyWithCents(params.commissionAmount)}</td>
           </tr>
           <tr style="border-top: 1px solid #ddd;">
             <td style="padding: 8px 16px; color: #666;">Net proceeds to you:</td>
-            <td style="padding: 8px 16px; font-weight: bold; font-size: 20px;">${formatCurrency(params.netAmount)}</td>
+            <td style="padding: 8px 16px; font-weight: bold; font-size: 20px;">${formatCurrencyWithCents(params.netAmount)}</td>
           </tr>
         </table>
         <p>Your proceeds will be remitted per your consignment agreement. If your payment details or mailing address have changed, please reply to this email.</p>
@@ -425,13 +577,16 @@ export async function sendSellerShippingNotification(params: {
   sellerName: string;
   lotTitle: string;
   hammerPrice: number;
-  commission: number;
-  sellerPayout: number;
+  /** Null when the payout hasn't been computed yet (no seller-of-record rate). */
+  commission?: number | null;
+  sellerPayout?: number | null;
   labelUrl?: string | null;
   shipmentId: string;
   isWhiteGlove?: boolean;
+  /** The consignor's no-login portal (src/lib/sellers/portal.ts). */
+  portalUrl?: string | null;
 }) {
-  const dashboardUrl = `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/shipments`;
+  const portalCta = params.portalUrl ? ctaButton(params.portalUrl, 'View Your Consignments') : '';
 
   const shippingInstructions = params.isWhiteGlove
     ? `
@@ -444,16 +599,27 @@ export async function sendSellerShippingNotification(params: {
         <div style="background: #f9f8f5; border: 1px solid #e5e2d9; border-radius: 8px; padding: 20px; margin-bottom: 12px;">
           <strong>Option A: Drop Off</strong>
           <p style="margin: 8px 0 0; color: #666;">Print your prepaid shipping label and drop the package at any FedEx or UPS location.</p>
-          ${params.labelUrl ? ctaButton(params.labelUrl, 'Download Shipping Label') : '<p style="color: #c33;">Label will be available shortly in your dashboard.</p>'}
+          ${params.labelUrl ? ctaButton(params.labelUrl, 'Download Shipping Label') : '<p style="color: #c33;">We will email your prepaid label shortly.</p>'}
         </div>
         <div style="background: #f9f8f5; border: 1px solid #e5e2d9; border-radius: 8px; padding: 20px;">
           <strong>Option B: Schedule Pickup</strong>
-          <p style="margin: 8px 0 0; color: #666;">Request a carrier to pick up the package from your address.</p>
-          ${ctaButton(dashboardUrl, 'Schedule Pickup')}
+          <p style="margin: 8px 0 0; color: #666;">Reply to this email or call ${BUSINESS.phone} and we'll arrange a carrier pickup from your address.</p>
         </div>
       </div>
       <p style="font-size: 13px; color: #666;">Pack the item securely. Once shipped, damage in transit is between the buyer and the carrier.</p>
     `;
+
+  const payoutRows = params.commission != null && params.sellerPayout != null
+    ? `
+        <tr>
+          <td style="padding: 8px 16px; color: #666;">Commission:</td>
+          <td style="padding: 8px 16px;">${formatCurrencyWithCents(params.commission)}</td>
+        </tr>
+        <tr style="border-top: 2px solid #D4C5A0;">
+          <td style="padding: 8px 16px; color: #666; font-weight: bold;">Your Payout:</td>
+          <td style="padding: 8px 16px; font-weight: bold; font-size: 20px; color: #2a7a2a;">${formatCurrencyWithCents(params.sellerPayout)}</td>
+        </tr>`
+    : '';
 
   await sendAndLog({
     to: params.sellerEmail,
@@ -467,19 +633,13 @@ export async function sendSellerShippingNotification(params: {
         </tr>
         <tr>
           <td style="padding: 8px 16px; color: #666;">Hammer Price:</td>
-          <td style="padding: 8px 16px; font-weight: bold;">${formatCurrency(params.hammerPrice)}</td>
+          <td style="padding: 8px 16px; font-weight: bold;">${formatCurrencyWithCents(params.hammerPrice)}</td>
         </tr>
-        <tr>
-          <td style="padding: 8px 16px; color: #666;">Commission:</td>
-          <td style="padding: 8px 16px;">${formatCurrency(params.commission)}</td>
-        </tr>
-        <tr style="border-top: 2px solid #D4C5A0;">
-          <td style="padding: 8px 16px; color: #666; font-weight: bold;">Your Payout:</td>
-          <td style="padding: 8px 16px; font-weight: bold; font-size: 20px; color: #2a7a2a;">${formatCurrency(params.sellerPayout)}</td>
-        </tr>
+        ${payoutRows}
       </table>
       <h2 style="font-size: 18px; margin-top: 30px;">Shipping Instructions</h2>
       ${shippingInstructions}
+      ${portalCta ? `<p style="margin-top: 24px;">Track this sale, your payout and the rest of your consignment anytime:</p><div style="text-align: center; margin: 16px 0 24px;">${portalCta}</div>` : ''}
     `, 'Your Item Sold!'),
   });
 }
@@ -607,7 +767,7 @@ export async function sendProspectAcceptedNotification(params: {
           <td style="padding: 8px 16px; font-weight: bold;">${formatCurrency(params.totalEstimateLow)} — ${formatCurrency(params.totalEstimateHigh)}</td>
         </tr>
       </table>
-      <p>We will be sending you a consignment agreement shortly. Once signed, your items will be cataloged and placed into an upcoming auction.</p>
+      <p>Your items have been cataloged and are being placed into an upcoming sale. A separate email gives you a private link to follow their progress — auction placement, bidding, results, and your payouts.</p>
       <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
     `, 'Items Accepted for Consignment'),
   });
@@ -648,6 +808,132 @@ export async function sendProspectFollowUpEmail(params: {
       <p>We look forward to working with you.</p>
       <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
     `, "We're Here to Help"),
+  });
+}
+
+/**
+ * Consignment agreement offer sent to a prospect after their items were
+ * reviewed. Totals must be computed by the caller from accepted items only.
+ */
+export async function sendConsignmentAgreementEmail(params: {
+  prospectEmail: string;
+  prospectName: string;
+  acceptedCount: number;
+  totalEstimateLow: number;
+  totalEstimateHigh: number;
+  commissionPercent: number;
+  signUrl: string;
+  message?: string;
+}) {
+  const safeMessage = params.message ? escapeHtml(params.message) : null;
+  await sendAndLog({
+    to: params.prospectEmail,
+    subject: `${BUSINESS.name} — Consignment Agreement for Your Review`,
+    html: `
+      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #272D35;">
+        <div style="text-align: center; padding: 30px 0; border-bottom: 2px solid #D4C5A0;">
+          <h1 style="font-size: 28px; margin: 0; letter-spacing: 2px;">${BUSINESS.name}</h1>
+          <p style="color: #D4C5A0; font-size: 12px; text-transform: uppercase; letter-spacing: 3px; margin-top: 4px;">Consignment Agreement</p>
+        </div>
+        <div style="padding: 30px 0;">
+          <p>Dear ${escapeHtml(params.prospectName)},</p>
+          <p>Thank you for submitting your items to ${BUSINESS.name}. After careful review by our specialists, we are pleased to offer the following consignment terms:</p>
+          <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
+            <tr>
+              <td style="padding: 8px 16px; color: #666;">Accepted Items:</td>
+              <td style="padding: 8px 16px; font-weight: bold;">${params.acceptedCount}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 16px; color: #666;">Estimated Total Value:</td>
+              <td style="padding: 8px 16px; font-weight: bold; font-size: 18px;">${formatCurrency(params.totalEstimateLow)} &ndash; ${formatCurrency(params.totalEstimateHigh)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 16px; color: #666;">Commission Rate:</td>
+              <td style="padding: 8px 16px; font-weight: bold;">${params.commissionPercent}%</td>
+            </tr>
+          </table>
+          ${safeMessage ? `<p style="background: #f9f8f5; border-left: 3px solid #D4C5A0; padding: 12px 16px; color: #555;">${safeMessage}</p>` : ''}
+          <p>Please review and sign the consignment agreement at your earliest convenience:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${params.signUrl}" style="display: inline-block; background-color: #D4C5A0; color: #272D35; padding: 14px 32px; text-decoration: none; font-weight: bold; font-size: 14px; letter-spacing: 1px; border-radius: 6px;">REVIEW &amp; SIGN AGREEMENT</a>
+          </div>
+          <p style="font-size: 13px; color: #666;">If you have any questions about the terms, please don&rsquo;t hesitate to reach out.</p>
+          <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
+        </div>
+        <div style="border-top: 1px solid #eee; padding-top: 20px; text-align: center; font-size: 11px; color: #aaa;">
+          <p>${BUSINESS.name} &bull; Palm Beach County, Florida</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Admin alert when a consignor signs the agreement electronically.
+ */
+export async function sendAgreementSignedAdminNotification(params: {
+  prospectId: string;
+  prospectName: string;
+  prospectEmail?: string | null;
+  signedName: string;
+  commissionPercent: number;
+  acceptedCount: number;
+  totalEstimateLow: number;
+  totalEstimateHigh: number;
+}) {
+  await sendAndLog({
+    to: ADMIN_EMAIL,
+    subject: `${params.prospectName} signed the consignment agreement (${params.commissionPercent}%)`,
+    html: adminEmailLayout(`
+      <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">
+        <tr><td style="padding: 6px 12px; color: #666;">Consignor:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(params.prospectName)}${params.prospectEmail ? ` (${escapeHtml(params.prospectEmail)})` : ''}</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666;">Signed as:</td><td style="padding: 6px 12px;">${escapeHtml(params.signedName)}</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666;">Commission:</td><td style="padding: 6px 12px;">${params.commissionPercent}%</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666;">Accepted Items:</td><td style="padding: 6px 12px;">${params.acceptedCount}</td></tr>
+        <tr><td style="padding: 6px 12px; color: #666;">Estimated Value:</td><td style="padding: 6px 12px;">${formatCurrency(params.totalEstimateLow)} &ndash; ${formatCurrency(params.totalEstimateHigh)}</td></tr>
+      </table>
+      <p>Next step: create lots from the accepted items.</p>
+      ${ctaButton(`${BUSINESS.url}/admin/prospects/${params.prospectId}`, 'Open Prospect')}
+    `, 'Consignment Agreement Signed'),
+  });
+}
+
+/**
+ * Confirmation copy to the consignor after they sign. Callers must skip
+ * sentinel (no-email) addresses.
+ */
+export async function sendAgreementSignedConfirmation(params: {
+  prospectEmail: string;
+  prospectName: string;
+  signedName: string;
+  signedAt: Date;
+  commissionPercent: number;
+  acceptedCount: number;
+  totalEstimateLow: number;
+  totalEstimateHigh: number;
+  agreementUrl: string;
+}) {
+  const signedOn = params.signedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  await sendAndLog({
+    to: params.prospectEmail,
+    subject: `${BUSINESS.name} — Your Consignment Agreement Is Signed`,
+    html: emailLayout(`
+      <p>Dear ${escapeHtml(params.prospectName)},</p>
+      <p>Thank you — we have recorded your electronic signature on the ${BUSINESS.name} consignment agreement. This email is your copy of the terms you agreed to.</p>
+      <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
+        <tr><td style="padding: 8px 16px; color: #666;">Signed by:</td><td style="padding: 8px 16px; font-weight: bold;">${escapeHtml(params.signedName)}</td></tr>
+        <tr><td style="padding: 8px 16px; color: #666;">Signed on:</td><td style="padding: 8px 16px;">${signedOn}</td></tr>
+        <tr><td style="padding: 8px 16px; color: #666;">Commission Rate:</td><td style="padding: 8px 16px; font-weight: bold;">${params.commissionPercent}% of the hammer price</td></tr>
+        <tr><td style="padding: 8px 16px; color: #666;">Accepted Items:</td><td style="padding: 8px 16px;">${params.acceptedCount}</td></tr>
+        <tr><td style="padding: 8px 16px; color: #666;">Estimated Value:</td><td style="padding: 8px 16px;">${formatCurrency(params.totalEstimateLow)} &ndash; ${formatCurrency(params.totalEstimateHigh)}</td></tr>
+      </table>
+      <p>You can review the full agreement at any time:</p>
+      <div style="text-align: center; margin: 30px 0;">
+        ${ctaButton(params.agreementUrl, 'View Agreement')}
+      </div>
+      <p>Our team will be in touch with next steps for cataloging your items and placing them in an upcoming sale.</p>
+      <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
+    `, 'Agreement Signed'),
   });
 }
 

@@ -8,11 +8,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Brain, Camera, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { UploadImagesButton } from './upload-images-button';
 
 export default function CatalogTab() {
   const [imageUrls, setImageUrls] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+
+  function appendUrls(urls: string[]) {
+    setImageUrls((prev) => [prev.trim(), ...urls].filter(Boolean).join('\n'));
+  }
 
   async function handleCatalog() {
     const urls = imageUrls.split('\n').map((u) => u.trim()).filter(Boolean);
@@ -37,12 +42,16 @@ export default function CatalogTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Camera className="h-5 w-5 text-champagne" /> AI Cataloging</CardTitle>
-          <CardDescription>Upload image URLs and AI will generate a complete catalog entry.</CardDescription>
+          <CardDescription>Upload photos or paste image URLs and AI will generate a complete catalog entry.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Image URLs (one per line)</Label>
             <Textarea rows={4} placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
+            <div className="flex items-center gap-2 pt-1">
+              <UploadImagesButton onUploaded={appendUrls} disabled={loading} />
+              <span className="text-xs text-muted-foreground">Uploaded photos are added to the list above.</span>
+            </div>
           </div>
           <Button onClick={handleCatalog} disabled={loading} className="bg-champagne text-charcoal hover:bg-champagne/90">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Analyzing...</> : <><Brain className="h-4 w-4 mr-2" />Generate Catalog Entry</>}
@@ -56,11 +65,14 @@ export default function CatalogTab() {
             <div><strong>Title:</strong> {String(result.title ?? '')}</div>
             {result.subtitle ? <div><strong>Subtitle:</strong> {String(result.subtitle)}</div> : null}
             {result.artist ? <div><strong>Artist:</strong> {String(result.artist)}</div> : null}
+            {result.maker ? <div><strong>Maker:</strong> {String(result.maker)}</div> : null}
             {result.period ? <div><strong>Period:</strong> {String(result.period)}</div> : null}
+            {result.circa ? <div><strong>Circa:</strong> {String(result.circa)}</div> : null}
             {result.medium ? <div><strong>Medium:</strong> {String(result.medium)}</div> : null}
             {result.origin ? <div><strong>Origin:</strong> {String(result.origin)}</div> : null}
             {result.dimensions ? <div><strong>Dimensions:</strong> {String(result.dimensions)}</div> : null}
             {result.condition ? <div><strong>Condition:</strong> <Badge variant="secondary">{String(result.condition)}</Badge></div> : null}
+            {result.conditionNotes ? <div><strong>Condition Notes:</strong><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{String(result.conditionNotes)}</p></div> : null}
             {result.suggestedCategory ? <div><strong>Department:</strong> <Badge className="bg-champagne/20 text-champagne">{String(result.suggestedCategory)}</Badge></div> : null}
             <div><strong>Description:</strong><p className="mt-1 whitespace-pre-wrap text-muted-foreground">{String(result.description ?? '')}</p></div>
             {result.tags ? <div className="flex flex-wrap gap-1">{(result.tags as string[]).map((t) => <Badge key={t} variant="outline" className="text-xs">{t}</Badge>)}</div> : null}

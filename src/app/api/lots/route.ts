@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
 import { lots, users } from '@/db/schema';
-import { eq, desc, asc, and, ilike, sql, inArray } from 'drizzle-orm';
+import { eq, desc, asc, and, ilike, sql, inArray, isNull } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { lotSchema } from '@/lib/validation/schemas';
 import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
@@ -75,6 +76,20 @@ export async function GET(req: NextRequest) {
     if (saleType) {
       conditions.push(eq(lots.saleType, saleType as (typeof VALID_SALE_TYPES)[number]));
     }
+    // Admin-only filters (seller pickers, payout audits). sellerId is
+    // confidential on the public projection, so non-admins can't filter by it.
+    if (isAdmin) {
+      const sellerId = searchParams.get('sellerId');
+      if (sellerId) {
+        if (!UUID_RE.test(sellerId)) {
+          return NextResponse.json({ error: 'Invalid seller id' }, { status: 400 });
+        }
+        conditions.push(eq(lots.sellerId, sellerId));
+      }
+      if (searchParams.get('missingSeller') === '1') {
+        conditions.push(isNull(lots.sellerId));
+      }
+    }
     if (search) {
       const trimmed = search.slice(0, 200); // Cap search length
       conditions.push(ilike(lots.title, `%${trimmed}%`));
@@ -101,7 +116,9 @@ export async function GET(req: NextRequest) {
         : sort === 'ending_soon'
           // Correlated subquery: earliest upcoming closing time across any auction this lot is in
           ? sql`(SELECT MIN(closing_at) FROM auction_lots WHERE lot_id = lots.id AND closing_at > now()) NULLS LAST`
-          : desc(lots.createdAt);
+          : sort === 'oldest' && isAdmin
+            ? asc(lots.createdAt)
+            : desc(lots.createdAt);
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -126,15 +143,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const body = await req.json();
     const parsed = lotSchema.safeParse(body);

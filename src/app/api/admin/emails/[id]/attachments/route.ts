@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
-import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { emails, users } from '@/db/schema';
+import { emails } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { getResend } from '@/lib/email/resend';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { logger } from '@/lib/logger';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -19,13 +18,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { id } = await params;
     if (!UUID_RE.test(id)) {

@@ -38,6 +38,16 @@ export const invoices = pgTable('invoices', {
   // lifecycle cron sweeps those and retries, so a buyer can't be stranded
   // without a pay link.
   emailSentAt: timestamp('email_sent_at'),
+  // The single overdue payment reminder (lifecycle cron). Null = not yet
+  // sent; stamped only after a successful send.
+  reminderSentAt: timestamp('reminder_sent_at'),
+  // Cumulative cents Stripe has refunded on the payment of record. Stays
+  // below totalAmount on a partial refund (status unchanged); a full refund
+  // unwinds the sale and flips status to `refunded`.
+  refundedAmount: integer('refunded_amount').default(0).notNull(),
+  // Set when a chargeback is opened, cleared when it is won. Kept on a loss
+  // (the invoice is unwound like a full refund) so the history stays visible.
+  disputedAt: timestamp('disputed_at'),
 
   // Stripe
   stripePaymentIntentId: text('stripe_payment_intent_id'),
@@ -47,7 +57,9 @@ export const invoices = pgTable('invoices', {
   // PaymentIntent and double-charge the buyer.
   stripeCheckoutSessionId: text('stripe_checkout_session_id'),
 
-  // Shipping
+  // Shipping. Stored as a JSON string of StructuredShippingAddress (see
+  // src/lib/shipping/address.ts) when collected by Stripe Checkout; legacy rows
+  // may hold free text, which the parser falls back to.
   shippingAddress: text('shipping_address'),
   trackingNumber: text('tracking_number'),
 
@@ -59,8 +71,10 @@ export const invoices = pgTable('invoices', {
   index('invoices_buyer_idx').on(table.buyerId),
   index('invoices_status_idx').on(table.status),
   index('invoices_auction_idx').on(table.auctionId),
-  // At most one live invoice per lot — settlement reruns must not double-invoice
-  uniqueIndex('invoices_lot_unique_idx').on(table.lotId).where(sql`status <> 'cancelled'`),
+  // At most one live invoice per lot — settlement reruns must not double-invoice.
+  // Cancelled AND refunded invoices are dead: a refunded sale releases the lot,
+  // so a later re-sale must be able to invoice it again.
+  uniqueIndex('invoices_lot_unique_idx').on(table.lotId).where(sql`status not in ('cancelled', 'refunded')`),
   index('invoices_due_date_idx').on(table.dueDate),
 ]).enableRLS();
 

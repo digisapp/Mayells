@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, date, pgEnum, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const outreachCategoryEnum = pgEnum('outreach_category', [
@@ -43,7 +43,9 @@ export const outreachContacts = pgTable('outreach_contacts', {
   state: text('state'),
   notes: text('notes'),
   lastContactedAt: timestamp('last_contacted_at'),
-  nextFollowUpAt: timestamp('next_follow_up_at'),
+  // A calendar day, not an instant: the follow-up picker is a date input and
+  // a timestamp here shifted the day across the UTC boundary.
+  nextFollowUpAt: date('next_follow_up_at', { mode: 'string' }),
   createdAt: timestamp('created_at').default(sql`now()`),
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [

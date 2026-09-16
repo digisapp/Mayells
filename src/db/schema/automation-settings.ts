@@ -1,9 +1,27 @@
-import { pgTable, uuid, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+
+/**
+ * The one row's id. Every reader does `select … limit 1` with no ordering, so
+ * a second row would make the admin UI and the crons disagree about what the
+ * settings are. Bootstrapping inserts with this fixed id (+ ON CONFLICT DO
+ * NOTHING) so two first-time requests racing can only ever create one row,
+ * and the singleton index below refuses a second row outright.
+ */
+export const AUTOMATION_SETTINGS_ROW_ID = '00000000-0000-4000-8000-000000000001';
 
 /**
  * Automation settings — the control panel for AI vs manual operations.
  * Single row table (one global config). Each setting is a toggle with optional thresholds.
+ *
+ * Columns no admin UI exposes any more (kept so nothing that reads them has to
+ * change, and so the defaults keep applying):
+ *   - autoInvoiceOnClose: read by the auction-lifecycle cron. There is no
+ *     manual "create invoice" path, so turning it off strands won lots.
+ *   - autoGenerateLabel / requireInsurance / defaultCarrier: read by the
+ *     shipping service; label purchase needs a Shippo key that isn't wired.
+ *   - autoApprove*, aiAutoCatalog, aiAutoAppraise, requireCatalogReview,
+ *     autoSchedule*, notifySellerOnApproval, sendDailyDigest: nothing reads them.
  */
 export const automationSettings = pgTable('automation_settings', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -60,6 +78,11 @@ export const automationSettings = pgTable('automation_settings', {
 
   updatedAt: timestamp('updated_at').default(sql`now()`),
   updatedById: uuid('updated_by_id'),
-}).enableRLS();
+}, () => [
+  // Singleton: a unique index over a constant expression admits exactly one
+  // row. (The migration must dedupe first — keep the most recently updated
+  // row — or CREATE UNIQUE INDEX fails.)
+  uniqueIndex('automation_settings_singleton_idx').on(sql`(true)`),
+]).enableRLS();
 
 export type AutomationSettings = typeof automationSettings.$inferSelect;

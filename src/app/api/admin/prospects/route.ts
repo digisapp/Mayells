@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { sellerProspects, uploadLinks, uploadItems, users } from '@/db/schema';
-import { eq, desc, countDistinct, sql, or, ilike } from 'drizzle-orm';
+import { sellerProspects, uploadLinks, uploadItems } from '@/db/schema';
+import { eq, desc, countDistinct, sql, or, ilike, and, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { parsePagination } from '@/lib/pagination';
 
 const PROSPECT_SOURCES = ['phone', 'email', 'website', 'referral', 'estate_visit', 'walk_in', 'other'] as const;
 const PROSPECT_STATUSES = ['new', 'contacted', 'upload_sent', 'items_received', 'under_review', 'agreement_sent', 'agreement_signed', 'accepted', 'declined', 'archived'] as const;
+type ProspectStatus = (typeof PROSPECT_STATUSES)[number];
 
 const prospectBaseFields = {
   fullName: z.string().min(1, 'Full name is required').max(200),
@@ -31,9 +31,19 @@ const prospectCreateSchema = z.object(prospectBaseFields);
 
 const prospectPatchSchema = z.object({
   id: z.string().uuid('Valid prospect ID is required'),
-  ...Object.fromEntries(
-    Object.entries(prospectBaseFields).map(([k, v]) => [k, v.optional()])
-  ) as Record<string, z.ZodTypeAny>,
+  fullName: prospectBaseFields.fullName.optional(),
+  email: prospectBaseFields.email,
+  phone: prospectBaseFields.phone,
+  company: prospectBaseFields.company,
+  address: prospectBaseFields.address,
+  city: prospectBaseFields.city,
+  state: prospectBaseFields.state,
+  zip: prospectBaseFields.zip,
+  source: prospectBaseFields.source,
+  sourceNotes: prospectBaseFields.sourceNotes,
+  estimatedItemCount: prospectBaseFields.estimatedItemCount,
+  itemSummary: prospectBaseFields.itemSummary,
+  notes: prospectBaseFields.notes,
   status: z.enum(PROSPECT_STATUSES).optional(),
   agreedCommissionPercent: z.number().int().min(0).max(100).optional(),
   acceptedItems: z.number().int().min(0).optional(),
@@ -41,18 +51,21 @@ const prospectPatchSchema = z.object({
   totalEstimateHigh: z.number().int().min(0).optional(),
 });
 
+// Optional text columns: an empty string from a form means "clear it".
+const NULLABLE_TEXT_FIELDS = ['email', 'phone', 'company', 'address', 'city', 'state', 'zip', 'sourceNotes', 'itemSummary', 'notes'] as const;
+
+function blankToNull<T extends Record<string, unknown>>(fields: T): T {
+  const out: Record<string, unknown> = { ...fields };
+  for (const key of NULLABLE_TEXT_FIELDS) {
+    if (typeof out[key] === 'string' && (out[key] as string).trim() === '') out[key] = null;
+  }
+  return out as T;
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { limit, offset } = parsePagination(request.nextUrl.searchParams, { defaultLimit: 50, maxLimit: 100 });
 
@@ -60,14 +73,28 @@ export async function GET(request: NextRequest) {
     // only the loaded page). Escape LIKE wildcards in the user's input.
     const rawSearch = request.nextUrl.searchParams.get('search')?.trim().slice(0, 200) ?? '';
     const pattern = rawSearch ? `%${rawSearch.replace(/[\\%_]/g, '\\$&')}%` : null;
-    const searchWhere = pattern
-      ? or(
+
+    // Funnel filter: ?status=a,b,c (unknown values are ignored).
+    const statusFilter = (request.nextUrl.searchParams.get('status') ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s): s is ProspectStatus => (PROSPECT_STATUSES as readonly string[]).includes(s));
+
+    const filters = [];
+    if (pattern) {
+      filters.push(
+        or(
           ilike(sellerProspects.fullName, pattern),
           ilike(sellerProspects.email, pattern),
           ilike(sellerProspects.phone, pattern),
           ilike(sellerProspects.company, pattern),
-        )
-      : undefined;
+        ),
+      );
+    }
+    if (statusFilter.length > 0) {
+      filters.push(inArray(sellerProspects.status, statusFilter));
+    }
+    const where = filters.length > 0 ? and(...filters) : undefined;
 
     const listQuery = db
       .select({
@@ -81,33 +108,41 @@ export async function GET(request: NextRequest) {
       .from(sellerProspects)
       .leftJoin(uploadLinks, eq(uploadLinks.prospectId, sellerProspects.id))
       .leftJoin(uploadItems, eq(uploadItems.prospectId, sellerProspects.id))
-      .where(searchWhere)
+      .where(where)
       .groupBy(sellerProspects.id)
       .orderBy(desc(sellerProspects.createdAt))
       .limit(limit)
       .offset(offset);
 
-    const [prospects, [globalStats], filteredCount] = await Promise.all([
+    const [prospects, [globalStats], byStatusRows, filteredCount] = await Promise.all([
       listQuery,
-      // Global (unfiltered) stats for the dashboard cards.
+      // Global (unfiltered) stats for the dashboard cards. "Awaiting review"
+      // is everything that has items but no decision yet; "signed" covers
+      // signed agreements whether or not lots have been created since.
       db
         .select({
           total: sql<number>`count(*)::int`,
-          pendingReview: sql<number>`count(*) filter (where ${sellerProspects.status} = 'new')::int`,
-          itemsReceived: sql<number>`count(*) filter (where ${sellerProspects.status} = 'items_received')::int`,
-          agreementSigned: sql<number>`count(*) filter (where ${sellerProspects.status} = 'agreement_signed')::int`,
+          newLeads: sql<number>`count(*) filter (where ${sellerProspects.status} in ('new', 'contacted'))::int`,
+          awaitingReview: sql<number>`count(*) filter (where ${sellerProspects.status} in ('items_received', 'under_review'))::int`,
+          signed: sql<number>`count(*) filter (where ${sellerProspects.status} in ('agreement_signed', 'accepted'))::int`,
         })
         .from(sellerProspects),
-      searchWhere
-        ? db.select({ total: sql<number>`count(*)::int` }).from(sellerProspects).where(searchWhere)
+      db
+        .select({ status: sellerProspects.status, count: sql<number>`count(*)::int` })
+        .from(sellerProspects)
+        .groupBy(sellerProspects.status),
+      where
+        ? db.select({ total: sql<number>`count(*)::int` }).from(sellerProspects).where(where)
         : Promise.resolve(null),
     ]);
 
     const total = filteredCount ? filteredCount[0].total : globalStats.total;
+    const byStatus: Record<string, number> = {};
+    for (const row of byStatusRows) byStatus[row.status] = row.count;
 
     return NextResponse.json({
       data: prospects,
-      stats: globalStats,
+      stats: { ...globalStats, byStatus },
       pagination: { total, limit, offset, hasMore: offset + limit < total },
     });
   } catch (error) {
@@ -118,16 +153,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const parsed = prospectCreateSchema.safeParse(await req.json());
     if (!parsed.success) {
@@ -136,7 +163,7 @@ export async function POST(req: NextRequest) {
 
     const [created] = await db
       .insert(sellerProspects)
-      .values(parsed.data)
+      .values(blankToNull(parsed.data))
       .returning();
 
     return NextResponse.json({ data: created }, { status: 201 });
@@ -148,16 +175,8 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const parsed = prospectPatchSchema.safeParse(await req.json());
     if (!parsed.success) {
@@ -168,7 +187,7 @@ export async function PATCH(req: NextRequest) {
 
     const [updated] = await db
       .update(sellerProspects)
-      .set({ ...fields, updatedAt: new Date() })
+      .set({ ...blankToNull(fields), updatedAt: new Date() })
       .where(eq(sellerProspects.id, id))
       .returning();
 

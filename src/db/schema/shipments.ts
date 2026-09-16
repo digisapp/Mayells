@@ -12,6 +12,7 @@ export const shippingMethodEnum = pgEnum('shipping_method', [
 
 export const shipmentStatusEnum = pgEnum('shipment_status', [
   'pending',         // Awaiting payment / invoice not yet paid
+  'needs_address',   // Paid, but no usable destination address on file yet
   'label_created',   // Label generated, waiting for seller to ship
   'pickup_scheduled',// Carrier pickup scheduled at seller's address
   'picked_up',       // Carrier picked up from seller
@@ -20,6 +21,7 @@ export const shipmentStatusEnum = pgEnum('shipment_status', [
   'delivered',       // Confirmed delivered
   'exception',       // Problem (damaged, lost, returned to sender)
   'returned',        // Returned to seller
+  'cancelled',       // Sale unwound (refund / invoice cancelled) before it shipped
 ]);
 
 export const carrierEnum = pgEnum('shipping_carrier', [
@@ -65,26 +67,28 @@ export const shipments = pgTable('shipments', {
   pickupWindowStart: text('pickup_window_start'), // e.g. "9:00 AM"
   pickupWindowEnd: text('pickup_window_end'),     // e.g. "5:00 PM"
 
-  // Origin (seller's address)
+  // Origin (seller's address). Nullable: a seller with no address on file
+  // still gets a shipment row (admin fills it in) rather than blank strings.
   fromName: text('from_name').notNull(),
   fromPhone: text('from_phone'),
   fromEmail: text('from_email'),
-  fromStreet: text('from_street').notNull(),
+  fromStreet: text('from_street'),
   fromStreet2: text('from_street_2'),
-  fromCity: text('from_city').notNull(),
-  fromState: text('from_state').notNull(),
-  fromZip: text('from_zip').notNull(),
+  fromCity: text('from_city'),
+  fromState: text('from_state'),
+  fromZip: text('from_zip'),
   fromCountry: text('from_country').default('US').notNull(),
 
-  // Destination (buyer's address)
+  // Destination (buyer's address). Nullable: when the buyer's address is
+  // unknown the shipment is created as 'needs_address' with these empty.
   toName: text('to_name').notNull(),
   toPhone: text('to_phone'),
   toEmail: text('to_email'),
-  toStreet: text('to_street').notNull(),
+  toStreet: text('to_street'),
   toStreet2: text('to_street_2'),
-  toCity: text('to_city').notNull(),
-  toState: text('to_state').notNull(),
-  toZip: text('to_zip').notNull(),
+  toCity: text('to_city'),
+  toState: text('to_state'),
+  toZip: text('to_zip'),
   toCountry: text('to_country').default('US').notNull(),
 
   // Package dimensions
@@ -104,6 +108,10 @@ export const shipments = pgTable('shipments', {
   shippedAt: timestamp('shipped_at'),
   deliveredAt: timestamp('delivered_at'),
   estimatedDelivery: timestamp('estimated_delivery'),
+  // Once-only email stamps: the seller's "ship this" notice and the buyer's
+  // "it's on the way" notice must not re-send on every admin edit.
+  sellerNotifiedAt: timestamp('seller_notified_at'),
+  buyerNotifiedAt: timestamp('buyer_notified_at'),
 
   // Notes
   sellerNotes: text('seller_notes'),
@@ -114,8 +122,13 @@ export const shipments = pgTable('shipments', {
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [
   // One shipment per invoice (one lot per invoice) — makes auto-creation on
-  // payment idempotent under concurrent webhook deliveries. 'returned' is
-  // excluded so a returned-to-sender shipment can be re-attempted.
+  // payment idempotent under concurrent webhook deliveries. 'returned' and
+  // 'cancelled' are excluded so a returned-to-sender or unwound shipment can
+  // be re-attempted.
+  // 'cancelled' deliberately still occupies the slot: an admin-cancelled
+  // shipment on a paid invoice must not be silently recreated by a webhook
+  // redelivery or replay. (It also can't be referenced here in the migration
+  // that adds the enum value — see payouts.ts.)
   uniqueIndex('shipments_invoice_unique_idx').on(table.invoiceId).where(sql`status <> 'returned'`),
   index('shipments_invoice_idx').on(table.invoiceId),
   index('shipments_lot_idx').on(table.lotId),

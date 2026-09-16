@@ -17,20 +17,28 @@ export interface CommissionSettings {
 
 export const FALLBACK_COMMISSION_PERCENT = 25;
 
+/** Which agreement the resolved rate came from (persisted on the payout). */
+export type CommissionSource = 'consignment' | 'prospect' | 'default';
+
 function isValidPercent(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
 }
 
-export function resolveCommissionPercent(params: {
+export interface ResolveCommissionParams {
   hammerPrice: number;
   consignmentPercent?: number | null;
   prospectAgreedPercent?: number | null;
   settings?: CommissionSettings | null;
-}): number {
+}
+
+export function resolveCommission(params: ResolveCommissionParams): {
+  percent: number;
+  source: CommissionSource;
+} {
   const { hammerPrice, consignmentPercent, prospectAgreedPercent, settings } = params;
 
-  if (isValidPercent(consignmentPercent)) return consignmentPercent;
-  if (isValidPercent(prospectAgreedPercent)) return prospectAgreedPercent;
+  if (isValidPercent(consignmentPercent)) return { percent: consignmentPercent, source: 'consignment' };
+  if (isValidPercent(prospectAgreedPercent)) return { percent: prospectAgreedPercent, source: 'prospect' };
 
   const threshold = settings?.highValueThreshold;
   if (
@@ -39,14 +47,18 @@ export function resolveCommissionPercent(params: {
     threshold > 0 &&
     hammerPrice >= threshold
   ) {
-    return settings.highValueCommissionPercent;
+    return { percent: settings.highValueCommissionPercent, source: 'default' };
   }
 
   if (isValidPercent(settings?.defaultCommissionPercent)) {
-    return settings.defaultCommissionPercent;
+    return { percent: settings.defaultCommissionPercent, source: 'default' };
   }
 
-  return FALLBACK_COMMISSION_PERCENT;
+  return { percent: FALLBACK_COMMISSION_PERCENT, source: 'default' };
+}
+
+export function resolveCommissionPercent(params: ResolveCommissionParams): number {
+  return resolveCommission(params).percent;
 }
 
 export interface PayoutAmounts {

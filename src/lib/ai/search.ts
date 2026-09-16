@@ -40,17 +40,29 @@ Examples:
   return object;
 }
 
+export interface AiSearchOptions {
+  /**
+   * Admin branch (AI Tools → Search): search every lot status, including
+   * drafts, approved inventory, unsold and withdrawn. Never set from a
+   * public caller — the projection stays public-safe either way, but the
+   * status filter is what keeps unpublished consignments off public surfaces.
+   */
+  includeAllStatuses?: boolean;
+}
+
 /**
  * Execute an AI-powered search against the lots database.
  */
-export async function aiSearch(query: string, limit = 24) {
+export async function aiSearch(query: string, limit = 24, opts: AiSearchOptions = {}) {
   const intent = await parseSearchQuery(query);
 
   const conditions = [];
 
   // Public search surface: only publicly-listable lots ('approved' is an
   // internal pre-publication status and must not appear in results).
-  conditions.push(inArray(lots.status, [...PUBLIC_LOT_STATUSES]));
+  if (!opts.includeAllStatuses) {
+    conditions.push(inArray(lots.status, [...PUBLIC_LOT_STATUSES]));
+  }
 
   // Category filter
   if (intent.category) {

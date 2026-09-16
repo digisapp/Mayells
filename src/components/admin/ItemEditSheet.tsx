@@ -23,6 +23,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Trash2, RefreshCw, Save, AlertCircle } from 'lucide-react';
 import { LensButton } from '@/components/admin/LensButton';
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 
 interface EstateVisitItem {
   id: string;
@@ -51,8 +52,22 @@ interface ItemEditSheetProps {
   item: EstateVisitItem;
   onClose: () => void;
   onSave: (updates: Partial<EstateVisitItem>) => void;
-  onDelete: () => void;
+  onDelete: () => void | Promise<void>;
   onReprocess: () => void;
+}
+
+// Money is stored in cents and edited in dollars. A $0 estimate is a real
+// value (the AI can grade something as having no resale value), so both
+// directions test for null rather than truthiness.
+function centsToDollarsInput(cents: number | null | undefined): string {
+  return cents == null ? '' : String(cents / 100);
+}
+
+function dollarsInputToCents(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const parsed = parseFloat(trimmed);
+  return Number.isNaN(parsed) ? null : Math.round(parsed * 100);
 }
 
 export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: ItemEditSheetProps) {
@@ -65,9 +80,10 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
   const [condition, setCondition] = useState(item.condition || '');
   const [conditionNotes, setConditionNotes] = useState(item.conditionNotes || '');
   const [suggestedCategory, setSuggestedCategory] = useState(item.suggestedCategory || '');
-  const [estimateLow, setEstimateLow] = useState(item.estimateLow ? String(item.estimateLow / 100) : '');
-  const [estimateHigh, setEstimateHigh] = useState(item.estimateHigh ? String(item.estimateHigh / 100) : '');
+  const [estimateLow, setEstimateLow] = useState(centsToDollarsInput(item.estimateLow));
+  const [estimateHigh, setEstimateHigh] = useState(centsToDollarsInput(item.estimateHigh));
   const [adminNotes, setAdminNotes] = useState(item.adminNotes || '');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleSave = () => {
     onSave({
@@ -80,210 +96,225 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
       condition: condition || null,
       conditionNotes: conditionNotes || null,
       suggestedCategory: suggestedCategory || null,
-      estimateLow: estimateLow ? Math.round(parseFloat(estimateLow) * 100) : null,
-      estimateHigh: estimateHigh ? Math.round(parseFloat(estimateHigh) * 100) : null,
+      estimateLow: dollarsInputToCents(estimateLow),
+      estimateHigh: dollarsInputToCents(estimateHigh),
       adminNotes: adminNotes || null,
     });
   };
 
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="text-lg">{item.title || 'Item Details'}</SheetTitle>
-          <SheetDescription>
-            {item.status === 'error' ? (
-              <span className="text-red-500 flex items-center gap-1">
-                <AlertCircle className="h-3.5 w-3.5" />
-                {item.errorMessage || 'Analysis failed'}
-              </span>
-            ) : item.status === 'completed' ? (
-              'AI analysis complete — edit fields below'
-            ) : (
-              'Pending AI analysis'
-            )}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="px-4 space-y-5 pb-4">
-          {/* Image */}
-          <div className="rounded-lg overflow-hidden border relative">
-            {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
-            <img
-              src={item.imageUrl}
-              alt={item.title || 'Item'}
-              className="w-full h-48 object-cover"
-            />
-            <LensButton
-              imageUrl={item.imageUrl}
-              className="absolute bottom-2 right-2 bg-background/90"
-            />
-          </div>
-
-          {/* AI Confidence */}
-          {item.confidence && (
-            <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-xs">
-                Confidence: {Math.round(parseFloat(item.confidence) * 100)}%
-              </Badge>
-              {item.marketTrend && (
-                <Badge variant="outline" className="text-xs capitalize">
-                  Market: {item.marketTrend}
-                </Badge>
+    <>
+      <Sheet open onOpenChange={(open) => !open && onClose()}>
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle className="text-lg">{item.title || 'Item Details'}</SheetTitle>
+            <SheetDescription>
+              {item.status === 'error' ? (
+                <span className="text-red-500 flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  {item.errorMessage || 'Analysis failed'}
+                </span>
+              ) : item.status === 'completed' ? (
+                'AI analysis complete — edit fields below'
+              ) : (
+                'Pending AI analysis'
               )}
-            </div>
-          )}
+            </SheetDescription>
+          </SheetHeader>
 
-          {/* Title */}
-          <div className="space-y-1.5">
-            <Label htmlFor="title">Title</Label>
-            <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-
-          {/* Description */}
-          <div className="space-y-1.5">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </div>
-
-          {/* Artist / Period row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="artist">Artist / Maker</Label>
-              <Input id="artist" value={artist} onChange={(e) => setArtist(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="period">Period</Label>
-              <Input id="period" value={period} onChange={(e) => setPeriod(e.target.value)} />
-            </div>
-          </div>
-
-          {/* Medium / Dimensions row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="medium">Medium</Label>
-              <Input id="medium" value={medium} onChange={(e) => setMedium(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="dimensions">Dimensions</Label>
-              <Input id="dimensions" value={dimensions} onChange={(e) => setDimensions(e.target.value)} />
-            </div>
-          </div>
-
-          {/* Category */}
-          <div className="space-y-1.5">
-            <Label htmlFor="category">Category</Label>
-            <Input
-              id="category"
-              value={suggestedCategory}
-              onChange={(e) => setSuggestedCategory(e.target.value)}
-            />
-          </div>
-
-          {/* Condition */}
-          <div className="space-y-1.5">
-            <Label>Condition</Label>
-            <Select value={condition} onValueChange={setCondition}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select condition" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="excellent">Excellent</SelectItem>
-                <SelectItem value="very_good">Very Good</SelectItem>
-                <SelectItem value="good">Good</SelectItem>
-                <SelectItem value="fair">Fair</SelectItem>
-                <SelectItem value="poor">Poor</SelectItem>
-                <SelectItem value="as_is">As Is</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Condition Notes */}
-          <div className="space-y-1.5">
-            <Label htmlFor="conditionNotes">Condition Notes</Label>
-            <Textarea
-              id="conditionNotes"
-              value={conditionNotes}
-              onChange={(e) => setConditionNotes(e.target.value)}
-              rows={2}
-            />
-          </div>
-
-          {/* Estimates */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="estimateLow">Low Estimate ($)</Label>
-              <Input
-                id="estimateLow"
-                type="number"
-                value={estimateLow}
-                onChange={(e) => setEstimateLow(e.target.value)}
-                placeholder="0"
+          <div className="px-4 space-y-5 pb-4">
+            {/* Image */}
+            <div className="rounded-lg overflow-hidden border relative">
+              {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
+              <img
+                src={item.imageUrl}
+                alt={item.title || 'Item'}
+                className="w-full h-48 object-cover"
+              />
+              <LensButton
+                imageUrl={item.imageUrl}
+                className="absolute bottom-2 right-2 bg-background/90"
               />
             </div>
+
+            {/* AI Confidence */}
+            {item.confidence && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  Confidence: {Math.round(parseFloat(item.confidence) * 100)}%
+                </Badge>
+                {item.marketTrend && (
+                  <Badge variant="outline" className="text-xs capitalize">
+                    Market: {item.marketTrend}
+                  </Badge>
+                )}
+              </div>
+            )}
+
+            {/* Title */}
             <div className="space-y-1.5">
-              <Label htmlFor="estimateHigh">High Estimate ($)</Label>
-              <Input
-                id="estimateHigh"
-                type="number"
-                value={estimateHigh}
-                onChange={(e) => setEstimateHigh(e.target.value)}
-                placeholder="0"
+              <Label htmlFor="title">Title</Label>
+              <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
               />
             </div>
-          </div>
 
-          {/* Verification Notes */}
-          <div className="space-y-1.5">
-            <Label htmlFor="adminNotes">Verification Notes</Label>
-            <Textarea
-              id="adminNotes"
-              value={adminNotes}
-              onChange={(e) => setAdminNotes(e.target.value)}
-              rows={3}
-              placeholder="What Lens/research showed: confirmed maker, comparable listings with prices and links, why the estimate was adjusted…"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Internal only — not shown on the client report.
-            </p>
-          </div>
+            {/* Artist / Period row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="artist">Artist / Maker</Label>
+                <Input id="artist" value={artist} onChange={(e) => setArtist(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="period">Period</Label>
+                <Input id="period" value={period} onChange={(e) => setPeriod(e.target.value)} />
+              </div>
+            </div>
 
-          {/* AI Reasoning */}
-          {item.reasoning && (
+            {/* Medium / Dimensions row */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="medium">Medium</Label>
+                <Input id="medium" value={medium} onChange={(e) => setMedium(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="dimensions">Dimensions</Label>
+                <Input id="dimensions" value={dimensions} onChange={(e) => setDimensions(e.target.value)} />
+              </div>
+            </div>
+
+            {/* Category */}
             <div className="space-y-1.5">
-              <Label className="text-muted-foreground">AI Reasoning</Label>
-              <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
-                {item.reasoning}
+              <Label htmlFor="category">Category</Label>
+              <Input
+                id="category"
+                value={suggestedCategory}
+                onChange={(e) => setSuggestedCategory(e.target.value)}
+              />
+            </div>
+
+            {/* Condition */}
+            <div className="space-y-1.5">
+              <Label>Condition</Label>
+              <Select value={condition} onValueChange={setCondition}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select condition" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mint">Mint</SelectItem>
+                  <SelectItem value="excellent">Excellent</SelectItem>
+                  <SelectItem value="very_good">Very Good</SelectItem>
+                  <SelectItem value="good">Good</SelectItem>
+                  <SelectItem value="fair">Fair</SelectItem>
+                  <SelectItem value="poor">Poor</SelectItem>
+                  <SelectItem value="as_is">As Is</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Condition Notes */}
+            <div className="space-y-1.5">
+              <Label htmlFor="conditionNotes">Condition Notes</Label>
+              <Textarea
+                id="conditionNotes"
+                value={conditionNotes}
+                onChange={(e) => setConditionNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            {/* Estimates */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="estimateLow">Low Estimate ($)</Label>
+                <Input
+                  id="estimateLow"
+                  type="number"
+                  value={estimateLow}
+                  onChange={(e) => setEstimateLow(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="estimateHigh">High Estimate ($)</Label>
+                <Input
+                  id="estimateHigh"
+                  type="number"
+                  value={estimateHigh}
+                  onChange={(e) => setEstimateHigh(e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            {/* Verification Notes */}
+            <div className="space-y-1.5">
+              <Label htmlFor="adminNotes">Verification Notes</Label>
+              <Textarea
+                id="adminNotes"
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                rows={3}
+                placeholder="What Lens/research showed: confirmed maker, comparable listings with prices and links, why the estimate was adjusted…"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Internal only — not shown on the client report.
               </p>
             </div>
-          )}
-        </div>
 
-        <SheetFooter className="flex-row gap-2 border-t pt-4">
-          <Button variant="destructive" size="sm" onClick={onDelete}>
-            <Trash2 className="h-4 w-4 mr-1" />
-            Delete
-          </Button>
-          <Button variant="outline" size="sm" onClick={onReprocess}>
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Re-analyze
-          </Button>
-          <div className="flex-1" />
-          <Button
-            size="sm"
-            className="bg-champagne text-charcoal hover:bg-champagne/90"
-            onClick={handleSave}
-          >
-            <Save className="h-4 w-4 mr-1" />
-            Save
-          </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+            {/* AI Reasoning */}
+            {item.reasoning && (
+              <div className="space-y-1.5">
+                <Label className="text-muted-foreground">AI Reasoning</Label>
+                <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-3">
+                  {item.reasoning}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <SheetFooter className="flex-row gap-2 border-t pt-4">
+            <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="h-4 w-4 mr-1" />
+              Delete
+            </Button>
+            <Button variant="outline" size="sm" onClick={onReprocess}>
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Re-analyze
+            </Button>
+            <div className="flex-1" />
+            <Button
+              size="sm"
+              className="bg-champagne text-charcoal hover:bg-champagne/90"
+              onClick={handleSave}
+            >
+              <Save className="h-4 w-4 mr-1" />
+              Save
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Remove this item?"
+        description="The photo and its AI analysis are removed from this appraisal and the visit totals are recalculated. This cannot be undone."
+        confirmLabel="Remove"
+        variant="destructive"
+        onConfirm={async () => {
+          await onDelete();
+        }}
+      />
+    </>
   );
 }

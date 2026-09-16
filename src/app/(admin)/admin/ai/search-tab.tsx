@@ -46,7 +46,7 @@ export default function SearchTab() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Search className="h-5 w-5 text-champagne" /> AI-Powered Search</CardTitle>
-          <CardDescription>Search with natural language. Try: &quot;art deco jewelry under $5000&quot; or &quot;Picasso prints&quot;</CardDescription>
+          <CardDescription>Search with natural language across every lot status — drafts and unsold included. Try: &quot;art deco jewelry under $5000&quot; or &quot;Picasso prints&quot;</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">

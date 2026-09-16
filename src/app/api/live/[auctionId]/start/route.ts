@@ -6,6 +6,7 @@ import { users, auctions, auctionLots } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { createAuctionRoom } from '@/lib/livekit/config';
 import { openAuctionLots } from '@/lib/bidding/lifecycle';
+import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 
 export async function POST(
@@ -35,6 +36,16 @@ export async function POST(
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    // The live console is for auctioneer-led sales only. A timed sale opens
+    // on its schedule (or via "Open bidding now" on its admin page) and never
+    // gets a LiveKit room.
+    if (auction.type !== 'live') {
+      return NextResponse.json(
+        { error: 'This is a timed sale; it opens on its schedule or via Open bidding now' },
+        { status: 409 },
+      );
+    }
+
     // Only auctions awaiting their live session can be started — never
     // restart completed/cancelled/closing auctions or unpublished drafts.
     const STARTABLE_STATUSES = ['scheduled', 'preview', 'open'] as const;
@@ -45,6 +56,14 @@ export async function POST(
       );
     }
 
+    const roomName = `auction-${auctionId}`;
+
+    // Create the LiveKit room FIRST. Opening the lots is the irreversible
+    // step (lots flip to in_auction, close times and Redis bid state are
+    // seeded), so a LiveKit outage must fail here — before a scheduled sale
+    // is left half-open with biddable lots and no session.
+    await createAuctionRoom(roomName);
+
     // If the auction hasn't been opened yet (started live directly from
     // scheduled/preview), open its lots now — in_auction status, closingAt, and
     // Redis bid state — so bids are actually accepted. Without this, flipping
@@ -52,15 +71,6 @@ export async function POST(
     // (which only opens 'scheduled'/'preview') never runs the open step, so the
     // auction closes having sold nothing.
     if (auction.status === 'scheduled' || auction.status === 'preview') {
-      // A timed auction with no biddingEndsAt can't be opened correctly
-      // (openAuctionLots refuses it) — don't flip it to 'live' with unbiddable
-      // lots; make the auctioneer set an end date first.
-      if (auction.type !== 'live' && !auction.biddingEndsAt) {
-        return NextResponse.json(
-          { error: 'Set a bidding end date before starting this auction.' },
-          { status: 409 },
-        );
-      }
       const opened = await openAuctionLots(auction, new Date());
       if (opened === 0) {
         const [{ count } = { count: 0 }] = await db
@@ -77,11 +87,6 @@ export async function POST(
       }
     }
 
-    const roomName = `auction-${auctionId}`;
-
-    // Create LiveKit room
-    await createAuctionRoom(roomName);
-
     // Update auction to live status
     await db
       .update(auctions)
@@ -91,6 +96,9 @@ export async function POST(
         updatedAt: new Date(),
       })
       .where(eq(auctions.id, auctionId));
+
+    // The catalogue now shows the sale as live with biddable lots.
+    revalidatePublicCatalog(auction.slug);
 
     return NextResponse.json({ roomName, status: 'live' });
   } catch (error) {

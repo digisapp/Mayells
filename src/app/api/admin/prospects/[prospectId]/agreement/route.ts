@@ -1,44 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
+import { sellerProspects, uploadItems } from '@/db/schema';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { isSentinelEmail } from '@/lib/sellers/shadow';
+import { sendConsignmentAgreementEmail } from '@/lib/email/notifications';
 
 const agreementSchema = z.object({
   commissionPercent: z.number().int().min(0).max(100).optional(),
   message: z.string().max(5000).optional(),
 });
-import { sellerProspects, users, emails } from '@/db/schema';
-import { eq } from 'drizzle-orm';
-import { logger } from '@/lib/logger';
-import { UUID_RE } from '@/lib/bidding/lot-resolution';
-import { getResend } from '@/lib/email/resend';
-import { escapeHtml } from '@/lib/email/escape';
-import { BUSINESS } from '@/lib/config';
-import { formatCurrency } from '@/types';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ prospectId: string }> },
 ) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    if (!profile || !isAdminProfile(profile)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const { admin, response } = await requireAdminApi();
+    if (!admin) return response;
 
     const { prospectId } = await params;
     if (!UUID_RE.test(prospectId)) {
       return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
     }
-    const parsed = agreementSchema.safeParse(await req.json());
+    const parsed = agreementSchema.safeParse(await req.json().catch(() => ({})));
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
     const { commissionPercent, message } = parsed.data;
 
-    // Get the prospect
     const [prospect] = await db
       .select()
       .from(sellerProspects)
@@ -49,134 +42,89 @@ export async function POST(
       return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
     }
 
-    if (!prospect.email) {
+    // Signed is signed: the terms on file are a contract, re-sending (with a
+    // possibly different commission) would only create confusion.
+    if (prospect.agreementSignedAt) {
+      return NextResponse.json(
+        { error: 'This agreement has already been signed and cannot be re-sent.' },
+        { status: 409 },
+      );
+    }
+
+    if (!prospect.email || isSentinelEmail(prospect.email)) {
       return NextResponse.json({ error: 'Prospect has no email address' }, { status: 400 });
     }
 
-    if (!prospect.acceptedItems || prospect.acceptedItems <= 0) {
+    // Totals come from the accepted items themselves (admin override wins
+    // over the AI estimate) — never from the cached counters on the prospect,
+    // which can lag behind the last review action.
+    const [totals] = await db
+      .select({
+        acceptedCount: sql<number>`count(*)::int`,
+        totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})), 0)::int`,
+        totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})), 0)::int`,
+      })
+      .from(uploadItems)
+      // Items that already became lots (lots created ahead of the signature)
+      // were accepted too and are covered by this agreement.
+      .where(and(eq(uploadItems.prospectId, prospectId), inArray(uploadItems.status, ['accepted', 'lot_created'])));
+
+    if (!totals || totals.acceptedCount <= 0) {
       return NextResponse.json({ error: 'Prospect has no accepted items' }, { status: 400 });
     }
 
     const commission = commissionPercent ?? prospect.agreedCommissionPercent ?? 35;
     const signUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com'}/consignment-agreement?prospect=${prospectId}`;
 
-    // Update the prospect
+    // Mark as sent first so the state is consistent if the email lands;
+    // rolled back below if Resend rejects the message.
+    const sentAt = new Date();
     await db
       .update(sellerProspects)
       .set({
         agreedCommissionPercent: commission,
-        agreementSentAt: new Date(),
+        agreementSentAt: sentAt,
         status: 'agreement_sent',
-        updatedAt: new Date(),
+        acceptedItems: totals.acceptedCount,
+        totalEstimateLow: totals.totalEstimateLow,
+        totalEstimateHigh: totals.totalEstimateHigh,
+        updatedAt: sentAt,
       })
       .where(eq(sellerProspects.id, prospectId));
 
-    const safeName = escapeHtml(prospect.fullName);
-    const safeMessage = message ? escapeHtml(message) : null;
-
-    const emailSubject = `${BUSINESS.name} — Consignment Agreement for Your Review`;
-    const emailHtml = `
-      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #272D35;">
-        <div style="text-align: center; padding: 30px 0; border-bottom: 2px solid #D4C5A0;">
-          <h1 style="font-size: 28px; margin: 0; letter-spacing: 2px;">${BUSINESS.name}</h1>
-          <p style="color: #D4C5A0; font-size: 12px; text-transform: uppercase; letter-spacing: 3px; margin-top: 4px;">
-            Consignment Agreement
-          </p>
-        </div>
-
-        <div style="padding: 30px 0;">
-          <p>Dear ${safeName},</p>
-
-          <p>
-            Thank you for submitting your items to ${BUSINESS.name}. After careful review by our specialists,
-            we are pleased to offer the following consignment terms:
-          </p>
-
-          <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
-            <tr>
-              <td style="padding: 8px 16px; color: #666;">Accepted Items:</td>
-              <td style="padding: 8px 16px; font-weight: bold;">${prospect.acceptedItems}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 16px; color: #666;">Estimated Total Value:</td>
-              <td style="padding: 8px 16px; font-weight: bold; font-size: 18px;">
-                ${formatCurrency(prospect.totalEstimateLow)} &ndash; ${formatCurrency(prospect.totalEstimateHigh)}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 16px; color: #666;">Commission Rate:</td>
-              <td style="padding: 8px 16px; font-weight: bold;">${commission}%</td>
-            </tr>
-          </table>
-
-          ${safeMessage ? `<p>${safeMessage}</p>` : ''}
-
-          <p>Please review and sign the consignment agreement at your earliest convenience:</p>
-
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${signUrl}"
-               style="display: inline-block; background-color: #D4C5A0; color: #272D35; padding: 14px 32px; text-decoration: none; font-weight: bold; font-size: 14px; letter-spacing: 1px; border-radius: 6px;">
-              REVIEW &amp; SIGN AGREEMENT
-            </a>
-          </div>
-
-          <p style="font-size: 13px; color: #666;">
-            If you have any questions about the terms, please don&rsquo;t hesitate to reach out.
-          </p>
-
-          <p style="margin-top: 30px;">
-            Warm regards,<br />
-            <strong>The ${BUSINESS.name} Team</strong><br />
-            <span style="color: #888; font-size: 13px;">
-              ${BUSINESS.phone} &bull; ${BUSINESS.email}
-            </span>
-          </p>
-        </div>
-
-        <div style="border-top: 1px solid #eee; padding-top: 20px; text-align: center; font-size: 11px; color: #aaa;">
-          <p>${BUSINESS.name} &bull; Palm Beach County, Florida</p>
-        </div>
-      </div>
-    `;
-
-    // Send email using sendAndLog pattern
-    const resend = getResend();
-    const fromEmail = 'notifications@mayells.com';
-    const { data: sent, error: sendError } = await resend.emails.send({
-      from: `${BUSINESS.name} <${fromEmail}>`,
-      to: prospect.email,
-      subject: emailSubject,
-      html: emailHtml,
-    });
-
-    if (sendError) {
-      // Don't leave the prospect marked agreement_sent (nor log a phantom
-      // 'sent' row) when Resend rejected the message — the admin needs to
-      // see the failure and retry.
-      logger.error('Resend agreement send error', sendError, { prospectId });
+    try {
+      await sendConsignmentAgreementEmail({
+        prospectEmail: prospect.email,
+        prospectName: prospect.fullName,
+        acceptedCount: totals.acceptedCount,
+        totalEstimateLow: totals.totalEstimateLow,
+        totalEstimateHigh: totals.totalEstimateHigh,
+        commissionPercent: commission,
+        signUrl,
+        message,
+      });
+    } catch (sendError) {
+      // Don't leave the prospect marked agreement_sent when the message was
+      // rejected — the admin needs to see the failure and retry.
+      logger.error('Agreement email send failed', sendError, { prospectId });
       await db
         .update(sellerProspects)
         .set({
           status: prospect.status,
           agreementSentAt: prospect.agreementSentAt,
           agreedCommissionPercent: prospect.agreedCommissionPercent,
+          updatedAt: new Date(),
         })
         .where(eq(sellerProspects.id, prospectId));
       return NextResponse.json({ error: 'Failed to send agreement email' }, { status: 502 });
     }
 
-    await db.insert(emails).values({
-      resendId: sent?.id || null,
-      direction: 'outbound',
-      fromEmail,
-      fromName: BUSINESS.name,
-      toEmail: prospect.email,
-      subject: emailSubject,
-      bodyHtml: emailHtml,
-      status: 'sent',
+    return NextResponse.json({
+      success: true,
+      agreementSentAt: sentAt.toISOString(),
+      commissionPercent: commission,
+      acceptedCount: totals.acceptedCount,
     });
-
-    return NextResponse.json({ success: true });
   } catch (error) {
     logger.error('Send prospect agreement error', error);
     return NextResponse.json({ error: 'Failed to send agreement' }, { status: 500 });

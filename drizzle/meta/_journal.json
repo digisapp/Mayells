@@ -148,6 +148,20 @@
       "when": 1788645404783,
       "tag": "0020_auction_lot_number_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789501057125,
+      "tag": "0021_admin_overhaul",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1789501927808,
+      "tag": "0022_invoice_reminders_disputes",
+      "breakpoints": true
     }
   ]
 }

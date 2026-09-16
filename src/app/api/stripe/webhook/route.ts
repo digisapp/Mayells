@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe/config';
-import { db } from '@/db';
-import { webhookLogs } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { logger } from '@/lib/logger';
 import { handleStripeEvent } from '@/lib/stripe/handlers';
+import { claimWebhookEvent, finalizeWebhookLog } from '@/lib/webhooks/log';
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+if (!webhookSecret) {
+  // Loud at startup, not just per request: without the secret every Stripe
+  // delivery is rejected below, which means paid invoices never get marked
+  // paid and no payout/shipment is created.
+  logger.error('STRIPE_WEBHOOK_SECRET is not configured — Stripe webhooks will be rejected');
+}
 
 export async function POST(request: NextRequest) {
+  // Fail closed: without the secret we cannot verify events, so never process.
+  if (!webhookSecret) {
+    logger.error('STRIPE_WEBHOOK_SECRET is not configured — rejecting Stripe webhook');
+    return NextResponse.json({ error: 'Webhook not configured' }, { status: 503 });
+  }
+
   const body = await request.text();
-  const signature = request.headers.get('stripe-signature')!;
+  const signature = request.headers.get('stripe-signature') ?? '';
 
   let event: Stripe.Event;
 
@@ -22,20 +32,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
   }
 
-  // Dedup: skip events that have already been processed successfully
-  const [alreadyProcessed] = await db
-    .select({ id: webhookLogs.id })
-    .from(webhookLogs)
-    .where(
-      and(
-        eq(webhookLogs.provider, 'stripe'),
-        eq(webhookLogs.eventId, event.id),
-        eq(webhookLogs.status, 'success'),
-      ),
-    )
-    .limit(1);
-
-  if (alreadyProcessed) {
+  // Log FIRST. The (provider, event_id) unique index makes the claim the
+  // atomic dedup: a concurrent duplicate delivery loses the insert instead of
+  // both being processed, and a redelivery of an event that previously
+  // `failed` takes that row over so the failure count stays truthful.
+  const claim = await claimWebhookEvent({
+    provider: 'stripe',
+    eventId: event.id,
+    eventType: event.type,
+    payload: event,
+  });
+  if (!claim.claimed) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
@@ -55,26 +62,15 @@ export async function POST(request: NextRequest) {
     status = 'failed';
     errorMessage = error instanceof Error ? error.message : String(error);
   } finally {
-    // Persist log — this is the dedup record, so it must be awaited. The
-    // (provider, event_id) unique index makes this the atomic dedup backstop:
-    // a concurrent duplicate delivery that raced past the select above loses
-    // the insert here (DO NOTHING) instead of crashing with a duplicate-key
-    // 500. The event handlers are idempotent, so a lost log is harmless.
-    try {
-      await db.insert(webhookLogs).values({
-        provider: 'stripe',
-        eventType: event.type,
-        eventId: event.id,
-        status,
-        errorMessage: errorMessage ?? null,
-        processingMs: Date.now() - startMs,
-        payload: event as unknown as Record<string, unknown>,
-        relatedType: relatedType ?? null,
-        relatedId: relatedId ?? null,
-      }).onConflictDoNothing();
-    } catch (err) {
-      logger.warn('Failed to persist webhook log', { err: String(err) });
-    }
+    // Must be awaited: the claimed row is the dedup record, and a row left in
+    // `processing` blocks redelivery until it goes stale. Never throws.
+    await finalizeWebhookLog(claim.id, {
+      status,
+      errorMessage,
+      processingMs: Date.now() - startMs,
+      relatedType,
+      relatedId,
+    });
   }
 
   if (status === 'failed') {
