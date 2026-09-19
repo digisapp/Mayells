@@ -5,6 +5,7 @@ import { isAdminProfile } from '@/lib/auth/admin';
 import { redis, isRedisConfigured } from '@/lib/redis';
 import { hasVerifiedTotpFactor, needsMfaChallenge, isMfaExemptPath, MFA_CHALLENGE_PATH } from '@/lib/auth/mfa';
 import { profileCacheKey, PROFILE_CACHE_SECONDS } from '@/lib/auth/profile-cache';
+import { getMicrositeByHost } from '@/lib/microsites/config';
 
 const adminAuthRoutes = ['/admin/login'];
 
@@ -68,9 +69,60 @@ async function currentAal(supabase: ReturnType<typeof createServerClient>): Prom
 // admin === role 'admin' OR is_admin true.
 const isAdminUser = isAdminProfile;
 
+const MAIN_HOST = 'https://mayells.com';
+
+/**
+ * City microsites (delraybeachauctions.com and friends) are served by this
+ * same deployment, selected on the Host header. Each domain exposes exactly
+ * one page plus its own robots/sitemap; every other path 301s to the
+ * equivalent on mayells.com.
+ *
+ * Deliberately a single landing page per domain rather than a full mirror of
+ * the catalogue: duplicating lot and auction pages across five hosts would
+ * split ranking signals between them and is precisely the pattern Google
+ * classifies as doorway pages. Depth stays on the main domain.
+ */
+function handleMicrosite(request: NextRequest): NextResponse | null {
+  const site = getMicrositeByHost(request.headers.get('host'));
+  if (!site) return null;
+
+  const { pathname, search } = request.nextUrl;
+
+  // API calls (the consignment form) and framework assets must reach their
+  // real handlers untouched, on the same origin — the CSP sets
+  // form-action/connect-src to 'self', so they cannot be sent to mayells.com.
+  if (pathname.startsWith('/api/') || pathname.startsWith('/_next/')) return null;
+
+  if (pathname === '/') {
+    return NextResponse.rewrite(new URL(`/sites/${site.slug}`, request.url));
+  }
+  if (pathname === '/robots.txt') {
+    return NextResponse.rewrite(new URL(`/sites/${site.slug}/robots.txt`, request.url));
+  }
+  // Served from `city-sitemap` rather than a `sitemap.xml` segment: Next
+  // reserves that name for its own metadata convention, which forces a
+  // generateSitemaps() placeholder route instead of one file per city.
+  if (pathname === '/sitemap.xml') {
+    return NextResponse.rewrite(new URL(`/sites/${site.slug}/city-sitemap`, request.url));
+  }
+
+  // Anything else belongs to the main brand. Permanent, so the link equity
+  // consolidates there instead of accumulating on the city domain.
+  return NextResponse.redirect(new URL(`${pathname}${search}`, MAIN_HOST), 308);
+}
+
 export async function middleware(request: NextRequest) {
+  const micrositeResponse = handleMicrosite(request);
+  if (micrositeResponse) return micrositeResponse;
+
   const response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
+
+  // /sites/* exists only to be rewritten onto a city domain. Served on the
+  // main host it would be a second, indexable copy of each microsite.
+  if (pathname.startsWith('/sites/')) {
+    return new NextResponse(null, { status: 404 });
+  }
   const isAdminScope = pathname.startsWith('/admin');
   const isApi = pathname.startsWith('/api/');
 

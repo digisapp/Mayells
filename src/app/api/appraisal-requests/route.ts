@@ -27,6 +27,11 @@ const appraisalSchema = z.object({
   items: z.string().max(5000).optional(),
   service: z.string().max(200).optional(),
   message: z.string().max(5000).optional(),
+  // Which property the lead came from: a city microsite slug
+  // (see src/lib/microsites/config.ts) or undefined for mayells.com itself.
+  // Constrained to a slug so it can't be used to inject text into the
+  // admin-facing source notes.
+  site: z.string().regex(/^[a-z0-9-]{1,40}$/, 'Invalid site').optional(),
 });
 
 // Storage paths minted by /api/appraisal-requests/upload-urls. Strict shape
@@ -63,6 +68,7 @@ export async function POST(req: NextRequest) {
     let email: string | undefined;
     let service: string | undefined;
     let message: string | undefined;
+    let site: string | undefined;
     let photoUrls: string[] = [];
     let aiImageUrls: string[] = [];
 
@@ -74,6 +80,7 @@ export async function POST(req: NextRequest) {
       email = (formData.get('email') as string) || undefined;
       service = (formData.get('service') as string) || undefined;
       message = (formData.get('message') as string) || undefined;
+      site = (formData.get('site') as string) || undefined;
 
       const photos = formData.getAll('photos') as File[];
       if (photos.length > 0) {
@@ -113,6 +120,7 @@ export async function POST(req: NextRequest) {
       email = body.email;
       service = body.service;
       message = body.message;
+      site = body.site;
 
       // Preferred flow: photos were already uploaded directly to storage via
       // signed URLs (Vercel caps request bodies at ~4.5MB, so file bytes
@@ -143,11 +151,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const parsed = appraisalSchema.safeParse({ name, phone, email, items, service, message });
+    const parsed = appraisalSchema.safeParse({ name, phone, email, items, service, message, site });
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
-    ({ name, phone, email, items, service, message } = parsed.data as typeof parsed.data & { name: string; phone: string });
+    ({ name, phone, email, items, service, message, site } = parsed.data as typeof parsed.data & { name: string; phone: string });
 
     // Preliminary AI estimate for the prospect. Strictly best-effort: any
     // failure (model down, unparseable photos) must not fail the request.
@@ -161,7 +169,7 @@ export async function POST(req: NextRequest) {
     // notification email below still carries the full lead.
     try {
       await createProspectFromSubmission(
-        { name, phone, email, items, service, message },
+        { name, phone, email, items, service, message, site },
         photoUrls,
         estimate,
       );
@@ -217,14 +225,19 @@ async function createProspectFromSubmission(
     items?: string;
     service?: string;
     message?: string;
+    site?: string;
   },
   photoUrls: string[],
   estimate: InstantEstimate | null,
 ) {
   const hasPhotos = photoUrls.length > 0;
 
+  const origin = form.site
+    ? `Submitted via the ${form.site} city microsite`
+    : 'Submitted via mayells.com consign/appraisal form';
+
   const sourceNotes = [
-    'Submitted via mayells.com consign/appraisal form',
+    origin,
     form.service ? `Service requested: ${form.service}` : null,
     form.message ? `Message: ${form.message}` : null,
   ]
