@@ -1,17 +1,15 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { ArrowRight, Phone } from 'lucide-react';
+import { ArrowRight, Check, Phone } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { formatCurrency } from '@/types';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
-import { getMicrositeBySlug } from '@/lib/microsites/config';
+import { getMicrositeBySlug, type Microsite } from '@/lib/microsites/config';
 import { getMicrositeData } from '@/lib/microsites/data';
 import { CityConsignForm } from '@/components/microsites/CityConsignForm';
+import { StickyCallBar } from '@/components/microsites/StickyCallBar';
 
-// Marketing copy is static; realized prices and sale dates come from the
-// database. An hour of staleness is fine and keeps these pages off the
-// per-request database path.
 export const revalidate = 3600;
 
 export async function generateMetadata({
@@ -30,8 +28,6 @@ export async function generateMetadata({
     `${site.specialties.map((s) => s.title).slice(0, 3).join(', ')}. Call ${BUSINESS.phone}.`;
 
   return {
-    // Absolute: the root layout appends "| Mayells" via a title template,
-    // which would otherwise double up on a title that already carries it.
     title: { absolute: title },
     description,
     metadataBase: new URL(origin),
@@ -41,13 +37,53 @@ export async function generateMetadata({
   };
 }
 
+/** Process steps. Step 2 differs for cities served by collection trips. */
+function steps(site: Microsite) {
+  return [
+    {
+      n: '01',
+      t: 'Tell us what you have',
+      d: 'A few photos and a sentence. No account, no paperwork, no charge.',
+    },
+    site.serviceModel === 'local'
+      ? {
+          n: '02',
+          t: 'We come to the house',
+          d: `A specialist appraises the contents in person, anywhere in ${site.city} and the surrounding towns.`,
+        }
+      : {
+          n: '02',
+          t: 'We schedule a collection',
+          d: `Central Florida is covered by scheduled trips. Smaller consignments can ship instead — we will tell you which makes sense.`,
+        },
+    {
+      n: '03',
+      t: 'We recommend a route',
+      d: 'Live auction, gallery or private sale, chosen per piece — and an honest no on whatever will not sell.',
+    },
+    {
+      n: '04',
+      t: 'You are paid when it sells',
+      d: 'Photography, cataloguing, marketing and handling are ours. No upfront cost to you.',
+    },
+  ];
+}
+
 export default async function MicrositePage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
   const site = getMicrositeBySlug(city);
   if (!site) notFound();
 
-  const { realized, upcoming, soldCount, soldTotal } = await getMicrositeData(site);
+  const { showcase, upcoming, soldCount, soldTotal, currentCount } = await getMicrositeData(site);
   const origin = `https://${site.domain}`;
+  const realized = showcase.mode === 'realized';
+
+  const trust = [
+    'Free appraisal, no obligation',
+    site.serviceModel === 'local' ? 'We come to you' : 'Scheduled collection trips',
+    'We handle photography and cataloguing',
+    'You are paid when it sells',
+  ];
 
   const jsonLd = [
     {
@@ -63,8 +99,6 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         `Auction house serving ${site.city}, ${site.state}. Estate appraisals and consignment for ` +
         `${site.specialties.map((s) => s.title.toLowerCase()).join(', ')}.`,
       priceRange: '$$$$',
-      // Only the towns this site legitimately covers — an inflated areaServed
-      // is the fastest way to look like a lead-generation shell.
       areaServed: [site.city, ...site.nearby].map((name) => ({ '@type': 'City', name })),
       address: {
         '@type': 'PostalAddress',
@@ -85,82 +119,167 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
   ];
 
   return (
-    <main>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
-      />
+    <main className="pb-20 lg:pb-0">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
 
-      {/* ── Hero ─────────────────────────────────────────────── */}
+      {/* ── Hero: copy and the form share the first screen ───────── */}
       <section className="border-b border-border">
-        <div className="mx-auto max-w-5xl px-5 py-14 sm:py-20">
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            {site.hero.eyebrow}
-          </p>
-          <h1 className="mt-5 max-w-3xl text-balance font-display text-4xl leading-[1.08] tracking-tight sm:text-5xl">
-            {site.hero.headline}
-          </h1>
-          <p className="mt-5 max-w-2xl text-[15px] leading-relaxed text-muted-foreground sm:text-base">
-            {site.hero.sub}
-          </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
-            <a
-              href="#appraisal"
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            >
-              Request a free appraisal
-              <ArrowRight className="h-4 w-4" />
-            </a>
-            <a
-              href={BUSINESS.phoneHref}
-              className="inline-flex items-center gap-2 rounded-md border border-border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-secondary"
-            >
-              <Phone className="h-3.5 w-3.5" />
-              <span className="tabular-nums">{BUSINESS.phone}</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Service area ─────────────────────────────────────── */}
-      <section className="border-b border-border bg-secondary/40">
-        <div className="mx-auto max-w-5xl px-5 py-8">
-          <div className="grid gap-6 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-            <p className="text-[14px] leading-relaxed">{site.serviceCopy}</p>
+        <div className="mx-auto max-w-6xl px-5 py-10 sm:py-14 lg:py-20">
+          <div className="grid items-start gap-10 lg:grid-cols-[1.05fr_minmax(400px,0.95fr)] lg:gap-14">
             <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                Also covering
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                {site.hero.eyebrow}
               </p>
-              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-                {site.nearby.join(' · ')}
+              <h1 className="mt-4 text-balance font-display text-[2.4rem] leading-[1.06] tracking-tight sm:text-5xl lg:text-[3.4rem]">
+                {site.hero.headline}
+              </h1>
+              <p className="mt-5 max-w-[46ch] text-[16px] leading-[1.65] text-muted-foreground sm:text-[17px]">
+                {site.hero.sub}
               </p>
+
+              <ul className="mt-7 grid gap-2.5 sm:grid-cols-2">
+                {trust.map((t) => (
+                  <li key={t} className="flex items-start gap-2.5 text-[14.5px] leading-snug">
+                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-champagne" aria-hidden="true" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+
+              <a
+                href={BUSINESS.phoneHref}
+                className="mt-7 inline-flex h-12 items-center gap-2.5 rounded-lg border border-border px-5 text-[16px] font-semibold transition-colors hover:bg-secondary"
+              >
+                <Phone className="h-4 w-4" />
+                <span className="tabular-nums">{BUSINESS.phone}</span>
+              </a>
+            </div>
+
+            <div data-lead-form>
+              <CityConsignForm site={site.slug} city={site.city} placement="hero" />
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── Why this town ────────────────────────────────────── */}
+      {/* ── Service area ─────────────────────────────────────────── */}
+      <section className="border-b border-border bg-secondary/50">
+        <div className="mx-auto grid max-w-6xl gap-5 px-5 py-7 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-10">
+          <p className="text-[15px] leading-relaxed">{site.serviceCopy}</p>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Also covering
+            </p>
+            <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
+              {site.nearby.join(' · ')}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Proof: our own lots, real pictures ───────────────────── */}
+      {showcase.lots.length > 0 && (
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
+              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
+                {realized ? 'Recently sold' : 'In our current sale'}
+              </h2>
+              <p className="text-[13.5px] tabular-nums text-muted-foreground">
+                {realized ? (
+                  <>
+                    {soldCount.toLocaleString()} lots sold in these categories
+                    {soldTotal > 0 && <> · {formatCurrency(soldTotal)} realized</>}
+                  </>
+                ) : (
+                  <>{currentCount.toLocaleString()} lots catalogued in these categories</>
+                )}
+              </p>
+            </div>
+
+            {/* Scroll-snap rail on phones, grid from sm up */}
+            <ul className="-mx-5 mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-8 sm:overflow-visible sm:px-0 lg:grid-cols-4">
+              {showcase.lots.map((lot) => (
+                <li key={lot.id} className="w-[68vw] shrink-0 snap-start sm:w-auto">
+                  <a href={`${BUSINESS.url}${lot.href}`} className="group block">
+                    <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border bg-secondary">
+                      {lot.primaryImageUrl ? (
+                        <Image
+                          src={lot.primaryImageUrl}
+                          alt={lot.title}
+                          fill
+                          sizes="(max-width: 640px) 68vw, (max-width: 1024px) 45vw, 23vw"
+                          className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                        />
+                      ) : (
+                        <span className="grid h-full place-items-center text-[11px] uppercase tracking-widest text-muted-foreground">
+                          {lot.categoryName ?? 'Lot'}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-3 line-clamp-2 text-[14.5px] font-semibold leading-snug">
+                      {lot.title}
+                    </p>
+                    {(lot.artist || lot.maker || lot.period) && (
+                      <p className="mt-1 line-clamp-1 text-[13px] text-muted-foreground">
+                        {[lot.artist ?? lot.maker, lot.period].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                    {realized && lot.hammerPrice != null ? (
+                      <>
+                        <p className="mt-2 font-display text-xl tabular-nums tracking-tight">
+                          {formatCurrency(lot.hammerPrice)}
+                        </p>
+                        {lot.estimateLow != null && lot.estimateHigh != null && (
+                          <p className="text-[12.5px] tabular-nums text-muted-foreground">
+                            est. {formatCurrency(lot.estimateLow)}–{formatCurrency(lot.estimateHigh)}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      lot.estimateLow != null && lot.estimateHigh != null && (
+                        <p className="mt-2 text-[14px] tabular-nums">
+                          <span className="text-muted-foreground">Estimate </span>
+                          {formatCurrency(lot.estimateLow)}–{formatCurrency(lot.estimateHigh)}
+                        </p>
+                      )
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+
+            <p className="mt-7 text-[12.5px] leading-relaxed text-muted-foreground">
+              {realized
+                ? 'Hammer prices from Mayells sales, excluding buyer’s premium. Past results do not guarantee what any individual piece will bring.'
+                : 'Lots currently catalogued by Mayells. Estimates are pre-sale and are not a guarantee of price realized.'}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* ── Why this town ────────────────────────────────────────── */}
       <section className="border-b border-border">
-        <div className="mx-auto max-w-5xl px-5 py-14">
-          <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
             What comes out of {site.city} houses
           </h2>
-          <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          <div className="mt-7 grid gap-6 sm:grid-cols-2 sm:gap-10">
             {site.localAngle.map((para, i) => (
-              <p key={i} className="max-w-[62ch] text-[14px] leading-[1.7] text-muted-foreground">
+              <p key={i} className="max-w-[58ch] text-[15px] leading-[1.75] text-muted-foreground">
                 {para}
               </p>
             ))}
           </div>
-          <div className="mt-8 border-t border-border pt-6">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+          <div className="mt-9 border-t border-border pt-6">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Neighbourhoods we work in
             </p>
-            <ul className="mt-3 flex flex-wrap gap-x-2 gap-y-2">
+            <ul className="mt-3.5 flex flex-wrap gap-2">
               {site.neighborhoods.map((n) => (
                 <li
                   key={n}
-                  className="rounded-full border border-border px-3 py-1 text-[12.5px] text-muted-foreground"
+                  className="rounded-full border border-border px-3.5 py-1.5 text-[13px] text-muted-foreground"
                 >
                   {n}
                 </li>
@@ -170,17 +289,15 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         </div>
       </section>
 
-      {/* ── Specialties ──────────────────────────────────────── */}
-      <section className="border-b border-border">
-        <div className="mx-auto max-w-5xl px-5 py-14">
-          <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
-            What we look for here
-          </h2>
+      {/* ── Specialties ──────────────────────────────────────────── */}
+      <section className="border-b border-border bg-secondary/50">
+        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">What we look for here</h2>
           <dl className="mt-8 grid gap-x-10 gap-y-8 sm:grid-cols-2">
             {site.specialties.map((s) => (
               <div key={s.title}>
-                <dt className="font-display text-[17px] tracking-tight">{s.title}</dt>
-                <dd className="mt-2 max-w-[54ch] text-[13.5px] leading-[1.65] text-muted-foreground">
+                <dt className="font-display text-[19px] tracking-tight">{s.title}</dt>
+                <dd className="mt-2 max-w-[52ch] text-[14.5px] leading-[1.7] text-muted-foreground">
                   {s.blurb}
                 </dd>
               </div>
@@ -189,85 +306,39 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         </div>
       </section>
 
-      {/* ── Realized prices (real sold lots only) ────────────── */}
-      {realized.length > 0 && (
-        <section className="border-b border-border bg-secondary/40">
-          <div className="mx-auto max-w-5xl px-5 py-14">
-            <div className="flex flex-wrap items-baseline justify-between gap-3">
-              <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Recently sold</h2>
-              {soldCount > 0 && (
-                <p className="text-[13px] tabular-nums text-muted-foreground">
-                  {soldCount.toLocaleString()} lots sold in these categories
-                  {soldTotal > 0 && <> &middot; {formatCurrency(soldTotal)} realized</>}
-                </p>
-              )}
-            </div>
-            <ul className="mt-8 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
-              {realized.map((lot) => (
-                <li key={lot.id}>
-                  <a href={`${BUSINESS.url}${lot.href}`} className="group block">
-                    <div className="relative aspect-square overflow-hidden rounded-md border border-border bg-background">
-                      {lot.primaryImageUrl ? (
-                        <Image
-                          src={lot.primaryImageUrl}
-                          alt={lot.title}
-                          fill
-                          sizes="(max-width: 640px) 50vw, 25vw"
-                          className="object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-[11px] uppercase tracking-widest text-muted-foreground">
-                          {lot.categoryName ?? 'Lot'}
-                        </div>
-                      )}
-                    </div>
-                    <p className="mt-3 line-clamp-2 text-[13.5px] font-medium leading-snug">
-                      {lot.title}
-                    </p>
-                    {(lot.artist || lot.maker || lot.period) && (
-                      <p className="mt-1 line-clamp-1 text-[12px] text-muted-foreground">
-                        {[lot.artist ?? lot.maker, lot.period].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
-                    <p className="mt-2 font-display text-lg tabular-nums tracking-tight">
-                      {formatCurrency(lot.hammerPrice)}
-                    </p>
-                    {lot.estimateLow != null && lot.estimateHigh != null && (
-                      <p className="text-[11.5px] tabular-nums text-muted-foreground">
-                        est. {formatCurrency(lot.estimateLow)}–{formatCurrency(lot.estimateHigh)}
-                      </p>
-                    )}
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-8 text-[12px] text-muted-foreground">
-              Hammer prices from Mayells sales, excluding buyer&rsquo;s premium. Past results do not
-              guarantee what any individual piece will bring.
-            </p>
-          </div>
-        </section>
-      )}
+      {/* ── Process — numbered because it is a real sequence ─────── */}
+      <section className="border-b border-border">
+        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">How it works</h2>
+          <ol className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+            {steps(site).map((s) => (
+              <li key={s.n}>
+                <p className="font-mono text-[12px] tracking-[0.1em] text-champagne">{s.n}</p>
+                <p className="mt-2.5 font-display text-[18px] leading-snug tracking-tight">{s.t}</p>
+                <p className="mt-2 text-[14px] leading-[1.65] text-muted-foreground">{s.d}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
 
-      {/* ── Upcoming sales ───────────────────────────────────── */}
+      {/* ── Upcoming sales ───────────────────────────────────────── */}
       {upcoming.length > 0 && (
         <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-5 py-14">
-            <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Upcoming sales</h2>
+          <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+            <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">Upcoming sales</h2>
             <ul className="mt-6 divide-y divide-border border-y border-border">
               {upcoming.map((a) => (
                 <li key={a.id}>
                   <a
                     href={`${BUSINESS.url}/auctions/${a.slug}`}
-                    className="flex flex-wrap items-baseline justify-between gap-3 py-4 transition-colors hover:bg-secondary/50"
+                    className="flex min-h-[56px] flex-wrap items-center justify-between gap-x-4 gap-y-1 py-4 transition-colors hover:bg-secondary/60"
                   >
-                    <span className="text-[14.5px] font-medium">{a.title}</span>
-                    <span className="text-[12.5px] tabular-nums text-muted-foreground">
+                    <span className="text-[15.5px] font-medium">{a.title}</span>
+                    <span className="text-[13px] tabular-nums text-muted-foreground">
                       {a.biddingEndsAt
                         ? `Closes ${a.biddingEndsAt.toLocaleDateString('en-US', {
-                            month: 'long',
-                            day: 'numeric',
-                            year: 'numeric',
+                            month: 'long', day: 'numeric', year: 'numeric',
                           })}`
                         : a.status}
                     </span>
@@ -279,52 +350,70 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         </section>
       )}
 
-      {/* ── Appraisal form ───────────────────────────────────── */}
-      <section id="appraisal" className="scroll-mt-16 border-b border-border">
-        <div className="mx-auto max-w-5xl px-5 py-14">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1fr)]">
+      {/* ── Second conversion point ──────────────────────────────── */}
+      <section id="appraisal" className="scroll-mt-16 border-b border-border bg-secondary/50">
+        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(400px,1fr)] lg:gap-14">
             <div>
-              <h2 className="font-display text-2xl tracking-tight sm:text-3xl">
+              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
                 Tell us what you have
               </h2>
-              <p className="mt-4 max-w-[52ch] text-[14px] leading-[1.7] text-muted-foreground">
+              <p className="mt-4 max-w-[48ch] text-[15px] leading-[1.75] text-muted-foreground">
                 Photographs and a sentence about the situation are enough to start. We will tell you
                 what is worth selling at auction, what is not, and what it is likely to bring — before
                 anyone commits to anything.
               </p>
-              <p className="mt-4 max-w-[52ch] text-[14px] leading-[1.7] text-muted-foreground">
-                If there is a deadline — a closing, a clearance, a probate date — say so in the form
-                and we will work to it.
+              <p className="mt-4 max-w-[48ch] text-[15px] leading-[1.75] text-muted-foreground">
+                If there is a deadline — a closing, a clearance, a probate date — say so and we will
+                work to it.
               </p>
               <a
                 href={BUSINESS.phoneHref}
-                className="mt-6 inline-flex items-center gap-2 text-[14px] font-medium hover:underline"
+                className="mt-6 inline-flex h-12 items-center gap-2.5 rounded-lg bg-primary px-6 text-[16px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
               >
-                <Phone className="h-3.5 w-3.5" />
+                <Phone className="h-4 w-4" />
                 <span className="tabular-nums">{BUSINESS.phone}</span>
               </a>
             </div>
-            <CityConsignForm site={site.slug} city={site.city} />
+            <div data-lead-form>
+              <CityConsignForm site={site.slug} city={site.city} placement="section" />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── FAQ ──────────────────────────────────────────────── */}
+      {/* ── FAQ ──────────────────────────────────────────────────── */}
       <section>
-        <div className="mx-auto max-w-5xl px-5 py-14">
-          <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Questions we get</h2>
+        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">Questions we get</h2>
           <dl className="mt-8 divide-y divide-border border-y border-border">
             {site.faqs.map((f) => (
-              <div key={f.q} className="grid gap-2 py-6 sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:gap-8">
-                <dt className="text-[14.5px] font-medium leading-snug">{f.q}</dt>
-                <dd className="max-w-[60ch] text-[13.5px] leading-[1.7] text-muted-foreground">
-                  {f.a}
-                </dd>
+              <div key={f.q} className="grid gap-2 py-6 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-10">
+                <dt className="text-[15.5px] font-semibold leading-snug">{f.q}</dt>
+                <dd className="max-w-[58ch] text-[14.5px] leading-[1.75] text-muted-foreground">{f.a}</dd>
               </div>
             ))}
           </dl>
+          <div className="mt-10 flex flex-wrap items-center gap-3">
+            <a
+              href="#appraisal"
+              className="inline-flex h-12 items-center gap-2 rounded-lg bg-primary px-6 text-[15px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              Request a free appraisal
+              <ArrowRight className="h-4 w-4" />
+            </a>
+            <a
+              href={BUSINESS.phoneHref}
+              className="inline-flex h-12 items-center gap-2 rounded-lg border border-border px-5 text-[15px] font-semibold transition-colors hover:bg-secondary"
+            >
+              <Phone className="h-4 w-4" />
+              <span className="tabular-nums">{BUSINESS.phone}</span>
+            </a>
+          </div>
         </div>
       </section>
+
+      <StickyCallBar phone={BUSINESS.phone} phoneHref={BUSINESS.phoneHref} />
     </main>
   );
 }
