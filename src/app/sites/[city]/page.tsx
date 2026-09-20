@@ -74,9 +74,8 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
   const site = getMicrositeBySlug(city);
   if (!site) notFound();
 
-  const { showcase, upcoming, soldCount, soldTotal, currentCount } = await getMicrositeData(site);
+  const { showcase, upcoming, soldCount, soldTotal } = await getMicrositeData(site);
   const origin = `https://${site.domain}`;
-  const realized = showcase.mode === 'realized';
 
   const trust = [
     'Free appraisal, no obligation',
@@ -182,18 +181,10 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         <section className="border-b border-border">
           <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
             <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
-                {realized ? 'Recently sold' : 'In our current sale'}
-              </h2>
+              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">Recently sold</h2>
               <p className="text-[13.5px] tabular-nums text-muted-foreground">
-                {realized ? (
-                  <>
-                    {soldCount.toLocaleString()} lots sold in these categories
-                    {soldTotal > 0 && <> · {formatCurrency(soldTotal)} realized</>}
-                  </>
-                ) : (
-                  <>{currentCount.toLocaleString()} lots catalogued in these categories</>
-                )}
+                {soldCount.toLocaleString()} lots sold in these categories
+                {soldTotal > 0 && <> · {formatCurrency(soldTotal)} realized</>}
               </p>
             </div>
 
@@ -225,7 +216,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                         {[lot.artist ?? lot.maker, lot.period].filter(Boolean).join(' · ')}
                       </p>
                     )}
-                    {realized && lot.hammerPrice != null ? (
+                    {lot.hammerPrice != null && (
                       <>
                         <p className="mt-2 font-display text-xl tabular-nums tracking-tight">
                           {formatCurrency(lot.hammerPrice)}
@@ -236,13 +227,6 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                           </p>
                         )}
                       </>
-                    ) : (
-                      lot.estimateLow != null && lot.estimateHigh != null && (
-                        <p className="mt-2 text-[14px] tabular-nums">
-                          <span className="text-muted-foreground">Estimate </span>
-                          {formatCurrency(lot.estimateLow)}–{formatCurrency(lot.estimateHigh)}
-                        </p>
-                      )
                     )}
                   </a>
                 </li>
@@ -250,9 +234,8 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
             </ul>
 
             <p className="mt-7 text-[12.5px] leading-relaxed text-muted-foreground">
-              {realized
-                ? 'Hammer prices from Mayells sales, excluding buyer’s premium. Past results do not guarantee what any individual piece will bring.'
-                : 'Lots currently catalogued by Mayells. Estimates are pre-sale and are not a guarantee of price realized.'}
+              Hammer prices from Mayells sales, excluding buyer’s premium. Past results do not
+              guarantee what any individual piece will bring.
             </p>
           </div>
         </section>

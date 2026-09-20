@@ -92,17 +92,23 @@ export function CityConsignForm({ site, city, placement }: Props) {
     e.preventDefault();
     setSubmitting(true);
     try {
+      // Photos are an optional attachment; the name, phone and description are
+      // the lead. An upload failure must never discard them — a 429 from the
+      // IP rate limit, a storage blip, or a dropped PUT on a phone inside a
+      // house being cleared would otherwise lose the most engaged visitor
+      // there is, with nothing written server-side to recover them from.
       let photoPaths: string[] = [];
+      let photoNote = '';
       if (photos.length > 0) {
         setStage('uploading');
-        const { paths, failed } = await uploadPhotosDirect(photos.map((p) => p.file));
-        photoPaths = paths;
-        if (failed > 0 && paths.length === 0) {
-          toast.error('Photo upload failed. Please try again.');
-          return;
-        }
-        if (failed > 0) {
-          toast.error(`${failed} photo${failed !== 1 ? 's' : ''} failed to upload — continuing with the rest.`);
+        try {
+          const { paths, failed } = await uploadPhotosDirect(photos.map((p) => p.file));
+          photoPaths = paths;
+          if (failed > 0) {
+            photoNote = `\n\n[${failed} of ${photos.length} photo(s) did not upload.]`;
+          }
+        } catch {
+          photoNote = `\n\n[All ${photos.length} photo(s) failed to upload — please ask the seller to resend them.]`;
         }
       }
 
@@ -110,7 +116,13 @@ export function CityConsignForm({ site, city, placement }: Props) {
       const res = await fetch('/api/appraisal-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, photoPaths, site }),
+        body: JSON.stringify({
+          ...form,
+          // Server caps `items` at 5000 chars; keep the note inside that.
+          items: `${form.items}${photoNote}`.slice(0, 5000),
+          photoPaths,
+          site,
+        }),
       });
 
       if (res.ok) {
@@ -118,6 +130,10 @@ export function CityConsignForm({ site, city, placement }: Props) {
         setEstimate(body?.data?.estimate ?? null);
         setSubmitted(true);
         track('microsite_lead', { site, placement, photos: photoPaths.length });
+        // Report the photo problem only after the lead is safely captured.
+        if (photoNote) {
+          toast.error('Your request was sent, but the photos did not attach. We will ask for them.');
+        }
       } else if (res.status === 429) {
         toast.error('Too many requests. Please call us instead.');
       } else {

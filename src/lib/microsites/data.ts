@@ -31,19 +31,25 @@ export interface UpcomingAuction {
 
 export interface MicrositeData {
   /**
-   * What the page shows as proof.
+   * What the page shows as proof: ONLY lots that actually sold, evidenced by a
+   * recorded hammer price.
    *
-   * 'realized' is strictly better — our own hammer prices against our own
-   * estimates. Until lots actually sell there are none, and an auction page
-   * with no pictures converts badly, so we fall back to the live catalogue
-   * and label it honestly as current rather than sold. Never fabricated.
+   * This deliberately has no catalogue fallback. It had one, and it was wrong:
+   * the catalogue is still the staging seed (scripts/seed.sql, whose own header
+   * says placeholder lots "MUST be replaced with real consignments or
+   * withdrawn"), so four lead-generation domains were presenting invented
+   * artists and six-figure estimates as "In our current sale". A hammer price
+   * is the one field that cannot exist for a lot that never sold, which makes
+   * this honest by construction rather than by remembering to check.
+   *
+   * Consequence: the rail is empty until real sales settle, and the page
+   * renders without it. An auction page with no pictures converts worse than
+   * one with pictures — but not worse than one whose proof is fiction.
    */
-  showcase: { mode: 'realized' | 'current' | 'none'; lots: ShowcaseLot[] };
+  showcase: { mode: 'realized' | 'none'; lots: ShowcaseLot[] };
   upcoming: UpcomingAuction[];
   soldCount: number;
   soldTotal: number;
-  /** Lots currently catalogued in this city's lead categories. */
-  currentCount: number;
   degraded: boolean;
 }
 
@@ -52,7 +58,6 @@ const EMPTY: MicrositeData = {
   upcoming: [],
   soldCount: 0,
   soldTotal: 0,
-  currentCount: 0,
   degraded: true,
 };
 
@@ -149,22 +154,10 @@ export async function getMicrositeData(site: Microsite): Promise<MicrositeData> 
       inArray(lots.categoryId, categoryIds),
     );
 
-    // Publicly-visible catalogue in this city's categories. Requires an image:
-    // a proof rail with a grey placeholder in it is worse than a shorter rail.
-    const currentInCategories = and(
-      inArray(lots.status, ['in_auction', 'for_sale']),
-      isNotNull(lots.primaryImageUrl),
-      inArray(lots.categoryId, categoryIds),
-    );
-
-    const [soldRows, currentRows, upcomingRows, soldStats, currentStats] = await Promise.all([
+    const [soldRows, upcomingRows, soldStats] = await Promise.all([
       db.select(SELECT).from(lots)
         .leftJoin(categories, eq(lots.categoryId, categories.id))
         .where(soldInCategories).orderBy(desc(lots.hammerPrice)).limit(8),
-
-      db.select(SELECT).from(lots)
-        .leftJoin(categories, eq(lots.categoryId, categories.id))
-        .where(currentInCategories).orderBy(desc(lots.estimateHigh)).limit(24),
 
       db.select({
         id: auctions.id,
@@ -181,27 +174,21 @@ export async function getMicrositeData(site: Microsite): Promise<MicrositeData> 
         count: sql<number>`count(*)`.mapWith(Number),
         total: sql<number>`coalesce(sum(${lots.hammerPrice}), 0)`.mapWith(Number),
       }).from(lots).where(soldInCategories),
-
-      db.select({ count: sql<number>`count(*)`.mapWith(Number) })
-        .from(lots).where(currentInCategories),
     ]);
 
     const showcase: MicrositeData['showcase'] =
       soldRows.length > 0
-        ? { mode: 'realized', lots: toShowcase(soldRows) }
-        : currentRows.length > 0
-          ? {
-              mode: 'current',
-              lots: interleaveByCategory(toShowcase(currentRows), site.leadCategories, 8),
-            }
-          : { mode: 'none', lots: [] };
+        ? {
+            mode: 'realized',
+            lots: interleaveByCategory(toShowcase(soldRows), site.leadCategories, 8),
+          }
+        : { mode: 'none', lots: [] };
 
     return {
       showcase,
       upcoming: upcomingRows,
       soldCount: soldStats[0]?.count ?? 0,
       soldTotal: soldStats[0]?.total ?? 0,
-      currentCount: currentStats[0]?.count ?? 0,
       degraded: false,
     };
   } catch {
