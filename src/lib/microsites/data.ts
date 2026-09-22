@@ -1,5 +1,5 @@
 import { db } from '@/db';
-import { auctions, categories, lots } from '@/db/schema';
+import { categories, lots } from '@/db/schema';
 import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { publicLotPath } from '@/lib/lots/urls';
 import type { Microsite } from './config';
@@ -20,15 +20,6 @@ export interface ShowcaseLot {
   href: string;
 }
 
-export interface UpcomingAuction {
-  id: string;
-  title: string;
-  slug: string;
-  status: string;
-  biddingEndsAt: Date | null;
-  previewStartsAt: Date | null;
-}
-
 export interface MicrositeData {
   /**
    * What the page shows as proof: ONLY lots that actually sold, evidenced by a
@@ -47,7 +38,6 @@ export interface MicrositeData {
    * one with pictures — but not worse than one whose proof is fiction.
    */
   showcase: { mode: 'realized' | 'none'; lots: ShowcaseLot[] };
-  upcoming: UpcomingAuction[];
   soldCount: number;
   soldTotal: number;
   degraded: boolean;
@@ -55,7 +45,6 @@ export interface MicrositeData {
 
 const EMPTY: MicrositeData = {
   showcase: { mode: 'none', lots: [] },
-  upcoming: [],
   soldCount: 0,
   soldTotal: 0,
   degraded: true,
@@ -154,21 +143,15 @@ export async function getMicrositeData(site: Microsite): Promise<MicrositeData> 
       inArray(lots.categoryId, categoryIds),
     );
 
-    const [soldRows, upcomingRows, soldStats] = await Promise.all([
+    // No "upcoming sales" query here, deliberately. The scheduled sales are
+    // the staging Inaugural Season, whose lots are placeholders (see
+    // scripts/seed.sql); linking a lead page to them repeats the problem the
+    // showcase gate above exists to prevent. Bring it back when a sale holds
+    // real consignments — the section was removed in the same commit.
+    const [soldRows, soldStats] = await Promise.all([
       db.select(SELECT).from(lots)
         .leftJoin(categories, eq(lots.categoryId, categories.id))
         .where(soldInCategories).orderBy(desc(lots.hammerPrice)).limit(8),
-
-      db.select({
-        id: auctions.id,
-        title: auctions.title,
-        slug: auctions.slug,
-        status: auctions.status,
-        biddingEndsAt: auctions.biddingEndsAt,
-        previewStartsAt: auctions.previewStartsAt,
-      }).from(auctions)
-        .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
-        .orderBy(desc(auctions.createdAt)).limit(3),
 
       db.select({
         count: sql<number>`count(*)`.mapWith(Number),
@@ -186,7 +169,6 @@ export async function getMicrositeData(site: Microsite): Promise<MicrositeData> 
 
     return {
       showcase,
-      upcoming: upcomingRows,
       soldCount: soldStats[0]?.count ?? 0,
       soldTotal: soldStats[0]?.total ?? 0,
       degraded: false,

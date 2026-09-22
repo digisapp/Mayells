@@ -48,7 +48,8 @@ export default async function OGImage({ params }: { params: Promise<{ lotId: str
             alt=""
             style={{
               position: 'absolute',
-              inset: 0,
+              top: 0,
+              left: 0,
               width: '100%',
               height: '100%',
               objectFit: 'cover',
@@ -58,10 +59,15 @@ export default async function OGImage({ params }: { params: Promise<{ lotId: str
         )}
 
         {/* Gradient overlay */}
+        {/* Satori ignores the `inset` shorthand: an overlay sized that way
+            renders at zero size and the text lands on the bare photo. */}
         <div
           style={{
             position: 'absolute',
-            inset: 0,
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
             background: 'linear-gradient(to top, rgba(26,29,46,0.95) 0%, rgba(26,29,46,0.4) 50%, rgba(26,29,46,0.1) 100%)',
           }}
         />

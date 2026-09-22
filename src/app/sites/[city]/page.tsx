@@ -78,7 +78,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
   const site = getMicrositeBySlug(city);
   if (!site) notFound();
 
-  const { showcase, upcoming, soldCount, soldTotal } = await getMicrositeData(site);
+  const { showcase, soldCount, soldTotal } = await getMicrositeData(site);
   const origin = `https://${site.domain}`;
 
   const trust = [
@@ -349,34 +349,6 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
           </ol>
         </div>
       </section>
-
-      {/* ── Upcoming sales ───────────────────────────────────────── */}
-      {upcoming.length > 0 && (
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-            <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">Upcoming sales</h2>
-            <ul className="mt-6 divide-y divide-border border-y border-border">
-              {upcoming.map((a) => (
-                <li key={a.id}>
-                  <a
-                    href={`${BUSINESS.url}/auctions/${a.slug}`}
-                    className="flex min-h-[56px] flex-wrap items-center justify-between gap-x-4 gap-y-1 py-4 transition-colors hover:bg-secondary/60"
-                  >
-                    <span className="text-[15.5px] font-medium">{a.title}</span>
-                    <span className="text-[13px] tabular-nums text-muted-foreground">
-                      {a.biddingEndsAt
-                        ? `Closes ${a.biddingEndsAt.toLocaleDateString('en-US', {
-                            month: 'long', day: 'numeric', year: 'numeric',
-                          })}`
-                        : a.status}
-                    </span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-      )}
 
       {/* ── Second conversion point ──────────────────────────────── */}
       <section id="appraisal" className="scroll-mt-16 border-b border-border bg-secondary/50">
