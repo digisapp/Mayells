@@ -164,7 +164,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
 
   if (submitted) {
     return (
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+      <div className="rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-8">
         {estimate ? (
           <>
             <div className="mb-3 flex items-center gap-2">
@@ -209,7 +209,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
     <form
       onSubmit={handleSubmit}
       onFocusCapture={handleFormStart}
-      className="relative rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7"
+      className="relative rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-7"
     >
       <p className="font-display text-xl tracking-tight sm:text-2xl">Get a free appraisal</p>
       <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">

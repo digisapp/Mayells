@@ -29,7 +29,9 @@ export interface MicrositeFaq {
 }
 
 /**
- * The one illustration each site carries, on the page and on its share card.
+ * The illustrations each site carries: `hero` behind the opening screen and
+ * on the share card, `feature` beside the "what comes out of these houses"
+ * copy.
  *
  * Every entry must be an image recorded in public/images/credits.json — the
  * openly-licensed set the catalogue already uses — and the credit is printed
@@ -81,7 +83,7 @@ export interface Microsite {
     headline: string;
     sub: string;
   };
-  image: SiteImage;
+  images: { hero: SiteImage; feature: SiteImage };
   /** Real neighbourhoods — these are what make the page locally specific. */
   neighborhoods: string[];
   /** Towns this site legitimately covers. Feeds LocalBusiness areaServed. */
@@ -117,12 +119,21 @@ export const MICROSITES: Microsite[] = [
         'We appraise the contents at the house, free of charge, take what will sell at auction, and tell you ' +
         'plainly what will not.',
     },
-    image: {
-      src: '/images/auctions/design.webp',
-      alt: 'A panelled mid-century living room with two Eames lounge chairs and pendant lamps',
-      credit: 'Living Room @ Horizon Reach, Peter Alfred Hess (CC BY 2.0)',
-      width: 1024,
-      height: 768,
+    images: {
+      hero: {
+        src: '/images/auctions/design.webp',
+        alt: 'A panelled mid-century living room with two Eames lounge chairs and pendant lamps',
+        credit: 'Living Room @ Horizon Reach, Peter Alfred Hess (CC BY 2.0)',
+        width: 1024,
+        height: 768,
+      },
+      feature: {
+        src: '/images/lots/brass-lamps.webp',
+        alt: 'A mid-century brass tripod table lamp with a dark green shade',
+        credit: 'Mid-Century Modern tripod lamp, Siarhei Besarab (CC BY-SA 4.0)',
+        width: 1054,
+        height: 1400,
+      },
     },
     neighborhoods: [
       'Lake Ida',
@@ -220,12 +231,21 @@ export const MICROSITES: Microsite[] = [
         'and watches. A general estate liquidator does not know how to value them. We do, and the appraisal ' +
         'at the house is free.',
     },
-    image: {
-      src: '/images/lots/abstract-landscape-pacific.webp',
-      alt: 'Gustave Courbet’s painting The Calm Sea: two beached boats under a wide cloud-filled sky',
-      credit: 'Gustave Courbet, The Calm Sea. The Metropolitan Museum of Art, public domain',
-      width: 1400,
-      height: 1142,
+    images: {
+      hero: {
+        src: '/images/lots/abstract-landscape-pacific.webp',
+        alt: 'Gustave Courbet’s painting The Calm Sea: two beached boats under a wide cloud-filled sky',
+        credit: 'Gustave Courbet, The Calm Sea. The Metropolitan Museum of Art, public domain',
+        width: 1400,
+        height: 1142,
+      },
+      feature: {
+        src: '/images/lots/patek-nautilus.webp',
+        alt: 'A steel Patek Philippe Nautilus wristwatch with a blue dial',
+        credit: 'Patek Philippe Nautilus 5711, Patek Philippe SA via Wikimedia Commons (CC BY-SA 4.0)',
+        width: 1119,
+        height: 1400,
+      },
     },
     neighborhoods: [
       'Admirals Cove',
@@ -323,12 +343,21 @@ export const MICROSITES: Microsite[] = [
         'always been on Antique Row, on the mainland side of the bridges, and that is the market we sell into. ' +
         'The appraisal at the house is free.',
     },
-    image: {
-      src: '/images/auctions/antiques.webp',
-      alt: 'A gilded eighteenth-century panelled room with a marble bust, mirrors and chandeliers',
-      credit: 'The Louis XV Room, Jean-François Roumier. The Metropolitan Museum of Art, public domain',
-      width: 1215,
-      height: 1600,
+    images: {
+      hero: {
+        src: '/images/auctions/antiques.webp',
+        alt: 'A gilded eighteenth-century panelled room with a marble bust, mirrors and chandeliers',
+        credit: 'The Louis XV Room, Jean-François Roumier. The Metropolitan Museum of Art, public domain',
+        width: 1215,
+        height: 1600,
+      },
+      feature: {
+        src: '/images/lots/george-iii-epergne.webp',
+        alt: 'A George III silver epergne with pierced baskets on scrolled arms',
+        credit: 'Epergne, Thomas Heming. The Metropolitan Museum of Art, public domain',
+        width: 1400,
+        height: 1251,
+      },
     },
     neighborhoods: [
       'Antique Row (South Dixie)',
@@ -427,12 +456,21 @@ export const MICROSITES: Microsite[] = [
         'surface in Winter Park houses at a rate nowhere else in Florida matches. There is a reason for that, ' +
         'and it is four blocks from Park Avenue.',
     },
-    image: {
-      src: '/images/lots/venetian-chandelier.webp',
-      alt: 'A cut-glass chandelier with six candle arms and hanging prisms',
-      credit: 'Glass chandelier. The Metropolitan Museum of Art, public domain',
-      width: 1177,
-      height: 1400,
+    images: {
+      hero: {
+        src: '/images/lots/venetian-chandelier.webp',
+        alt: 'A cut-glass chandelier with six candle arms and hanging prisms',
+        credit: 'Glass chandelier. The Metropolitan Museum of Art, public domain',
+        width: 1177,
+        height: 1400,
+      },
+      feature: {
+        src: '/images/lots/lalique-bowl.webp',
+        alt: 'Three ribbed glass bowls in green, purple and blue',
+        credit: 'Glass ribbed bowls. The Metropolitan Museum of Art, public domain',
+        width: 1400,
+        height: 1071,
+      },
     },
     neighborhoods: [
       'Park Avenue',

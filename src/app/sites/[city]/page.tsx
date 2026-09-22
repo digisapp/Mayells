@@ -70,8 +70,20 @@ function steps(site: Microsite) {
   ];
 }
 
-const PHONE_BUTTON =
-  'inline-flex h-12 items-center gap-2.5 rounded-lg px-5 text-[16px] font-semibold transition-colors';
+/** Tracked-caps kicker above section headings, in the brand's champagne. */
+function Eyebrow({ children, dark = false }: { children: React.ReactNode; dark?: boolean }) {
+  return (
+    <p
+      className={`text-[11.5px] font-semibold uppercase tracking-[0.2em] ${
+        dark ? 'text-champagne/90' : 'text-champagne-deep'
+      }`}
+    >
+      {children}
+    </p>
+  );
+}
+
+const H2 = 'mt-2.5 font-display text-[1.85rem] leading-[1.12] tracking-tight sm:text-[2.5rem]';
 
 export default async function MicrositePage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
@@ -80,6 +92,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
 
   const { showcase, soldCount, soldTotal } = await getMicrositeData(site);
   const origin = `https://${site.domain}`;
+  const { hero, feature } = site.images;
 
   const trust = [
     'Free appraisal, no obligation',
@@ -124,24 +137,36 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
     <main className="pb-20 lg:pb-0">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
 
-      {/* ── Hero: copy and the form share the first screen ───────── */}
-      <section className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-5 py-10 sm:py-14 lg:py-20">
-          <div className="grid items-start gap-10 lg:grid-cols-[1.05fr_minmax(400px,0.95fr)] lg:gap-14">
+      {/* ── Hero: charcoal, the city photograph behind, the form on top ── */}
+      <section className="relative overflow-hidden bg-charcoal text-white">
+        <Image
+          src={hero.src}
+          alt=""
+          aria-hidden="true"
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover opacity-70"
+        />
+        {/* Two gradients: phones read top-to-bottom, so the copy needs a dark
+            ground beneath it; desktop puts the copy on the left. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-charcoal/70 via-charcoal/85 to-charcoal lg:bg-gradient-to-r lg:from-charcoal lg:via-charcoal/90 lg:to-charcoal/25" />
+        <div className="absolute inset-x-0 bottom-0 gradient-line" />
+
+        <div className="relative mx-auto max-w-6xl px-5 pb-14 pt-9 sm:pb-16 sm:pt-14 lg:py-24">
+          <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_minmax(400px,0.95fr)] lg:gap-16">
             <div>
-              <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                {site.hero.eyebrow}
-              </p>
-              <h1 className="mt-4 text-balance font-display text-[2.4rem] leading-[1.06] tracking-tight sm:text-5xl lg:text-[3.4rem]">
+              <Eyebrow dark>{site.hero.eyebrow}</Eyebrow>
+              <h1 className="mt-5 text-balance font-display text-[2.5rem] leading-[1.04] tracking-tight sm:text-[3.25rem] lg:text-[3.75rem]">
                 {site.hero.headline}
               </h1>
-              <p className="mt-5 max-w-[46ch] text-[16px] leading-[1.65] text-muted-foreground sm:text-[17px]">
+              <p className="mt-6 max-w-[46ch] text-[16px] leading-[1.65] text-white/75 sm:text-[17px]">
                 {site.hero.sub}
               </p>
 
-              <ul className="mt-7 grid gap-2.5 sm:grid-cols-2">
+              <ul className="mt-8 grid gap-3 sm:grid-cols-2">
                 {trust.map((t) => (
-                  <li key={t} className="flex items-start gap-2.5 text-[14.5px] leading-snug">
+                  <li key={t} className="flex items-start gap-2.5 text-[14.5px] leading-snug text-white/90">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-champagne" aria-hidden="true" />
                     {t}
                   </li>
@@ -152,29 +177,33 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                 href={BUSINESS.phoneHref}
                 site={site.slug}
                 placement="hero"
-                className={`${PHONE_BUTTON} mt-7 border border-border hover:bg-secondary`}
+                className="mt-8 inline-flex h-12 items-center gap-2.5 rounded-lg border-2 border-champagne px-5 text-[16px] font-semibold text-champagne transition-colors hover:bg-champagne hover:text-charcoal"
               >
                 <Phone className="h-4 w-4" />
                 <span className="tabular-nums">{BUSINESS.phone}</span>
               </CallLink>
             </div>
 
-            <div data-lead-form>
+            <div data-lead-form className="shadow-luxury-hover rounded-2xl">
               <CityConsignForm site={site.slug} city={site.city} placement="hero" />
             </div>
           </div>
         </div>
+
+        {/* Attribution stays visible at every size: the Delray photograph is
+            CC BY, and a credit that only desktop sees is not a credit. */}
+        <p className="absolute bottom-1.5 right-4 max-w-[80vw] truncate text-[10px] text-white/45 sm:text-[11px]">
+          {hero.credit}
+        </p>
       </section>
 
       {/* ── Service area ─────────────────────────────────────────── */}
-      <section className="border-b border-border bg-secondary/50">
-        <div className="mx-auto grid max-w-6xl gap-5 px-5 py-7 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-10">
-          <p className="text-[15px] leading-relaxed">{site.serviceCopy}</p>
+      <section className="border-b border-border/60 bg-ivory">
+        <div className="mx-auto grid max-w-6xl gap-5 px-5 py-8 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-10">
+          <p className="text-[15.5px] leading-relaxed">{site.serviceCopy}</p>
           <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Also covering
-            </p>
-            <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
+            <Eyebrow>Also covering</Eyebrow>
+            <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">
               {site.nearby.join(' · ')}
             </p>
           </div>
@@ -183,10 +212,13 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
 
       {/* ── Proof: our own lots, real pictures ───────────────────── */}
       {showcase.lots.length > 0 && (
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
-              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">Recently sold</h2>
+        <section className="border-b border-border/60">
+          <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
+            <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
+              <div>
+                <Eyebrow>Realized prices</Eyebrow>
+                <h2 className={H2}>Recently sold</h2>
+              </div>
               <p className="text-[13.5px] tabular-nums text-muted-foreground">
                 {soldCount.toLocaleString()} lots sold in these categories
                 {soldTotal > 0 && <> · {formatCurrency(soldTotal)} realized</>}
@@ -246,29 +278,28 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         </section>
       )}
 
-      {/* ── Why this town: the one picture on the page sits here ── */}
-      <section className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14">
-            <figure className="lg:order-first">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border bg-secondary lg:aspect-[4/5]">
+      {/* ── Why this town ────────────────────────────────────────── */}
+      <section className="border-b border-border/60">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
+          <div className="grid gap-9 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
+            <figure>
+              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-secondary shadow-luxury lg:aspect-[4/5]">
                 <Image
-                  src={site.image.src}
-                  alt={site.image.alt}
+                  src={feature.src}
+                  alt={feature.alt}
                   fill
                   sizes="(max-width: 1024px) 100vw, 40vw"
                   className="object-cover"
                 />
               </div>
               <figcaption className="mt-2.5 text-[13px] leading-relaxed text-muted-foreground">
-                {site.image.credit}
+                {feature.credit}
               </figcaption>
             </figure>
 
             <div>
-              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
-                What comes out of {site.city} houses
-              </h2>
+              <Eyebrow>{site.city}, {site.state}</Eyebrow>
+              <h2 className={H2}>What comes out of {site.city} houses</h2>
               <div className="mt-6 space-y-5">
                 {site.localAngle.map((para, i) => (
                   <p key={i} className="max-w-[62ch] text-[15.5px] leading-[1.75] text-muted-foreground">
@@ -277,14 +308,12 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                 ))}
               </div>
               <div className="mt-8 border-t border-border pt-6">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Neighbourhoods we work in
-                </p>
+                <Eyebrow>Neighbourhoods we work in</Eyebrow>
                 <ul className="mt-3.5 flex flex-wrap gap-2">
                   {site.neighborhoods.map((n) => (
                     <li
                       key={n}
-                      className="rounded-full border border-border px-3.5 py-1.5 text-[13.5px] text-muted-foreground"
+                      className="rounded-full border border-border bg-ivory px-3.5 py-1.5 text-[13.5px]"
                     >
                       {n}
                     </li>
@@ -296,34 +325,47 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         </div>
       </section>
 
-      {/* ── Specialties ──────────────────────────────────────────── */}
-      <section className="border-b border-border bg-secondary/50">
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">What we look for here</h2>
-          <dl className="mt-8 grid gap-x-10 gap-y-8 sm:grid-cols-2">
-            {site.specialties.map((s) => (
-              <div key={s.title}>
-                <dt className="font-display text-[19px] tracking-tight">{s.title}</dt>
-                <dd className="mt-2 max-w-[52ch] text-[14.5px] leading-[1.7] text-muted-foreground">
-                  {s.blurb}
-                </dd>
+      {/* ── Specialties: the page's second dark moment ───────────── */}
+      <section className="relative overflow-hidden bg-charcoal text-white">
+        <div className="absolute inset-x-0 top-0 gradient-line" />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.035]"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+            backgroundSize: '40px 40px',
+          }}
+        />
+        <div className="relative mx-auto max-w-6xl px-5 py-14 sm:py-20">
+          <Eyebrow dark>Specialties</Eyebrow>
+          <h2 className={H2}>What we look for here</h2>
+          <dl className="mt-9 grid gap-4 sm:grid-cols-2 sm:gap-5">
+            {site.specialties.map((s, i) => (
+              <div
+                key={s.title}
+                className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-7"
+              >
+                <p className="font-mono text-[12px] tracking-[0.12em] text-champagne">
+                  {String(i + 1).padStart(2, '0')}
+                </p>
+                <dt className="mt-3 font-display text-[21px] leading-snug tracking-tight">{s.title}</dt>
+                <dd className="mt-2.5 text-[14.5px] leading-[1.7] text-white/65">{s.blurb}</dd>
               </div>
             ))}
           </dl>
         </div>
+        <div className="absolute inset-x-0 bottom-0 gradient-line" />
       </section>
 
       {/* ── Testimonials: only real ones, only when there are some ── */}
       {site.testimonials.length > 0 && (
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-            <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
-              From {site.city} families
-            </h2>
-            <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="border-b border-border/60 bg-ivory">
+          <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
+            <Eyebrow>In their words</Eyebrow>
+            <h2 className={H2}>From {site.city} families</h2>
+            <ul className="mt-9 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {site.testimonials.map((t) => (
-                <li key={t.name + t.place} className="rounded-2xl border border-border bg-card p-6">
-                  <blockquote className="text-[15.5px] leading-[1.7]">“{t.quote}”</blockquote>
+                <li key={t.name + t.place} className="rounded-2xl border border-border bg-card p-6 shadow-luxury">
+                  <blockquote className="font-display text-[17px] leading-[1.6]">“{t.quote}”</blockquote>
                   <p className="mt-4 text-[13.5px] text-muted-foreground">
                     <span className="font-semibold text-foreground">{t.name}</span> · {t.place}
                   </p>
@@ -335,15 +377,16 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
       )}
 
       {/* ── Process — numbered because it is a real sequence ─────── */}
-      <section className="border-b border-border">
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">How it works</h2>
-          <ol className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
+      <section className="border-b border-border/60">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
+          <Eyebrow>The process</Eyebrow>
+          <h2 className={H2}>How it works</h2>
+          <ol className="mt-10 grid gap-9 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
             {steps(site).map((s) => (
-              <li key={s.n}>
-                <p className="font-mono text-[12px] tracking-[0.1em] text-champagne">{s.n}</p>
-                <p className="mt-2.5 font-display text-[18px] leading-snug tracking-tight">{s.t}</p>
-                <p className="mt-2 text-[14px] leading-[1.65] text-muted-foreground">{s.d}</p>
+              <li key={s.n} className="border-t border-border pt-5">
+                <p className="font-display text-[2rem] leading-none text-champagne">{s.n}</p>
+                <p className="mt-4 font-display text-[19px] leading-snug tracking-tight">{s.t}</p>
+                <p className="mt-2 text-[14.5px] leading-[1.65] text-muted-foreground">{s.d}</p>
               </li>
             ))}
           </ol>
@@ -351,19 +394,18 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
       </section>
 
       {/* ── Second conversion point ──────────────────────────────── */}
-      <section id="appraisal" className="scroll-mt-16 border-b border-border bg-secondary/50">
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(400px,1fr)] lg:gap-14">
+      <section id="appraisal" className="relative scroll-mt-16 border-b border-border/60 bg-ivory">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
+          <div className="grid gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(400px,1fr)] lg:gap-16">
             <div>
-              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
-                Tell us what you have
-              </h2>
-              <p className="mt-4 max-w-[48ch] text-[15px] leading-[1.75] text-muted-foreground">
+              <Eyebrow>Free appraisal</Eyebrow>
+              <h2 className={H2}>Tell us what you have</h2>
+              <p className="mt-5 max-w-[48ch] text-[15.5px] leading-[1.75] text-muted-foreground">
                 Photographs and a sentence about the situation are enough to start. We will tell you
                 what is worth selling at auction, what is not, and what it is likely to bring — before
                 anyone commits to anything.
               </p>
-              <p className="mt-4 max-w-[48ch] text-[15px] leading-[1.75] text-muted-foreground">
+              <p className="mt-4 max-w-[48ch] text-[15.5px] leading-[1.75] text-muted-foreground">
                 If there is a deadline — a closing, a clearance, a probate date — say so and we will
                 work to it.
               </p>
@@ -371,13 +413,13 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                 href={BUSINESS.phoneHref}
                 site={site.slug}
                 placement="section"
-                className={`${PHONE_BUTTON} mt-6 bg-primary px-6 text-primary-foreground hover:opacity-90`}
+                className="mt-7 inline-flex h-12 items-center gap-2.5 rounded-lg bg-primary px-6 text-[16px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <Phone className="h-4 w-4" />
                 <span className="tabular-nums">{BUSINESS.phone}</span>
               </CallLink>
             </div>
-            <div data-lead-form>
+            <div data-lead-form className="shadow-luxury rounded-2xl">
               <CityConsignForm site={site.slug} city={site.city} placement="section" />
             </div>
           </div>
@@ -386,12 +428,13 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
 
       {/* ── FAQ ──────────────────────────────────────────────────── */}
       <section>
-        <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">Questions we get</h2>
-          <dl className="mt-8 divide-y divide-border border-y border-border">
+        <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
+          <Eyebrow>Questions we get</Eyebrow>
+          <h2 className={H2}>Before you call</h2>
+          <dl className="mt-9 divide-y divide-border border-y border-border">
             {site.faqs.map((f) => (
               <div key={f.q} className="grid gap-2 py-6 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-10">
-                <dt className="text-[15.5px] font-semibold leading-snug">{f.q}</dt>
+                <dt className="font-display text-[18px] leading-snug tracking-tight">{f.q}</dt>
                 <dd className="max-w-[58ch] text-[14.5px] leading-[1.75] text-muted-foreground">{f.a}</dd>
               </div>
             ))}

@@ -11,6 +11,7 @@
   --font-display: var(--font-playfair);
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --color-champagne: var(--champagne);
+  --color-champagne-deep: var(--champagne-deep);
   --color-ivory: var(--ivory);
   --color-charcoal: var(--charcoal);
   --color-graphite: var(--graphite);
@@ -77,6 +78,10 @@
 
   /* Brand Colors */
   --champagne: oklch(0.82 0.06 80);
+  /* Champagne is a dark-ground colour: at 11–12px on warm white it falls to
+     ~2:1. This is the same hue pulled down to ~4.8:1 for small tracked-caps
+     kickers on light sections. */
+  --champagne-deep: oklch(0.50 0.09 78);
   --ivory: oklch(0.97 0.01 85);
   --charcoal: oklch(0.18 0.02 250);
   --graphite: oklch(0.45 0.01 250);
