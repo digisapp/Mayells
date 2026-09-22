@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { NewsletterSignup } from '@/components/layout/NewsletterSignup';
 import { BUSINESS } from '@/lib/config';
+import { MICROSITES } from '@/lib/microsites/config';
 
 export function PublicFooter() {
   return (
@@ -56,8 +57,28 @@ export function PublicFooter() {
           </div>
         </div>
 
+        {/*
+          City practices. These are the only crawlable links the microsites
+          receive from the main brand; without them a new exact-match domain
+          with one page has nothing pointing at it and may never be indexed.
+        */}
+        <div className="border-t border-white/10 mt-10 sm:mt-14 pt-6 sm:pt-8">
+          <h4 className="text-[11px] uppercase tracking-[0.15em] font-semibold text-white/50 mb-3">
+            Estate appraisals by area
+          </h4>
+          <ul className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-white/70">
+            {MICROSITES.map((m) => (
+              <li key={m.slug}>
+                <a href={`https://${m.domain}`} className="inline-block py-1 hover:text-champagne transition-colors duration-300">
+                  {m.city}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         {/* Bottom bar */}
-        <div className="border-t border-white/10 mt-10 sm:mt-14 pt-6 sm:pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+        <div className="border-t border-white/10 mt-6 sm:mt-8 pt-6 sm:pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
           <p className="text-[12px] text-white/40">
             &copy; {new Date().getFullYear()} Mayells. All rights reserved.
           </p>

@@ -28,6 +28,37 @@ export interface MicrositeFaq {
   a: string;
 }
 
+/**
+ * The one illustration each site carries, on the page and on its share card.
+ *
+ * Every entry must be an image recorded in public/images/credits.json — the
+ * openly-licensed set the catalogue already uses — and the credit is printed
+ * beside it. A museum picture captioned as a museum picture is an honest
+ * illustration of what a town's estates contain; an uncaptioned one on a
+ * consignment page reads as stock we are passing off as our own.
+ */
+export interface SiteImage {
+  /** Path under /public. */
+  src: string;
+  alt: string;
+  /** Printed caption. Satisfies CC BY attribution where the licence needs it. */
+  credit: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * REVIEW: only real, permissioned quotes. The section renders nothing while
+ * the list is empty — a family choosing who to trust with a parent's house
+ * is the audience most likely to check.
+ */
+export interface Testimonial {
+  quote: string;
+  name: string;
+  /** e.g. "Lake Ida" or "Tequesta" — the town or neighbourhood, not an address. */
+  place: string;
+}
+
 export interface Microsite {
   /** Route segment under /sites and the key used for lead attribution. */
   slug: string;
@@ -38,11 +69,19 @@ export interface Microsite {
   region: string;
   /** Wordmark shown in the microsite nav. */
   brand: string;
+  /** Search-result snippet. Keep under ~155 characters or the phone number is cut. */
+  metaDescription: string;
   hero: {
     eyebrow: string;
+    /**
+     * Says what we do and where, in those words. A visitor arriving from a
+     * search or an ad decides in about two seconds whether this is the right
+     * page; the town's character belongs in `sub`, not in the headline.
+     */
     headline: string;
     sub: string;
   };
+  image: SiteImage;
   /** Real neighbourhoods — these are what make the page locally specific. */
   neighborhoods: string[];
   /** Towns this site legitimately covers. Feeds LocalBusiness areaServed. */
@@ -55,6 +94,7 @@ export interface Microsite {
   specialties: Specialty[];
   /** Category slugs whose sold lots headline the realized-prices section. */
   leadCategories: string[];
+  testimonials: Testimonial[];
   faqs: MicrositeFaq[];
 }
 
@@ -66,12 +106,23 @@ export const MICROSITES: Microsite[] = [
     state: 'FL',
     region: 'Palm Beach County',
     brand: 'Mayells Delray Beach',
+    metaDescription:
+      'Free in-home estate appraisals and auction consignment in Delray Beach, FL. Estate contents, ' +
+      'Highwaymen paintings, signed jewelry. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Estate auctions · Delray Beach, Florida',
-      headline: 'Settling a house in Delray Beach',
+      eyebrow: 'Mayells · Palm Beach County auction house',
+      headline: 'Estate appraisals and auctions in Delray Beach',
       sub:
         'Most Delray estates are not a single painting — they are a whole house, and a family with a closing date. ' +
-        'We appraise the contents, take what will sell at auction, and tell you plainly what will not.',
+        'We appraise the contents at the house, free of charge, take what will sell at auction, and tell you ' +
+        'plainly what will not.',
+    },
+    image: {
+      src: '/images/auctions/design.webp',
+      alt: 'A panelled mid-century living room with two Eames lounge chairs and pendant lamps',
+      credit: 'Living Room @ Horizon Reach, Peter Alfred Hess (CC BY 2.0)',
+      width: 1024,
+      height: 768,
     },
     neighborhoods: [
       'Lake Ida',
@@ -128,6 +179,7 @@ export const MICROSITES: Microsite[] = [
       },
     ],
     leadCategories: ['antiques', 'art', 'jewelry', 'design'],
+    testimonials: [],
     faqs: [
       {
         q: 'We have to clear the house by a closing date. How fast can you move?',
@@ -157,12 +209,23 @@ export const MICROSITES: Microsite[] = [
     state: 'FL',
     region: 'Northern Palm Beach County',
     brand: 'Mayells Jupiter',
+    metaDescription:
+      'Free in-home estate appraisals and auction consignment in Jupiter and Tequesta, FL. Marine art, ' +
+      'ship models, watches, vintage tackle. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Estate auctions · Jupiter, Florida',
-      headline: 'Jupiter estates are built on water and golf',
+      eyebrow: 'Mayells · Palm Beach County auction house',
+      headline: 'Estate appraisals and auctions in Jupiter',
       sub:
-        'Sportfishing pictures, ship models, club silver, tackle and watches. The things that matter in a Jupiter ' +
-        'house are not what a general estate liquidator knows how to value.',
+        'Jupiter estates are built on water and golf: sportfishing pictures, ship models, club silver, tackle ' +
+        'and watches. A general estate liquidator does not know how to value them. We do, and the appraisal ' +
+        'at the house is free.',
+    },
+    image: {
+      src: '/images/lots/abstract-landscape-pacific.webp',
+      alt: 'Gustave Courbet’s painting The Calm Sea: two beached boats under a wide cloud-filled sky',
+      credit: 'Gustave Courbet, The Calm Sea. The Metropolitan Museum of Art, public domain',
+      width: 1400,
+      height: 1142,
     },
     neighborhoods: [
       'Admirals Cove',
@@ -217,6 +280,7 @@ export const MICROSITES: Microsite[] = [
       },
     ],
     leadCategories: ['art', 'luxury', 'antiques', 'jewelry'],
+    testimonials: [],
     faqs: [
       {
         q: 'How do you value a sportfishing painting?',
@@ -248,12 +312,23 @@ export const MICROSITES: Microsite[] = [
     state: 'FL',
     region: 'Palm Beach County',
     brand: 'Mayells West Palm Beach',
+    metaDescription:
+      'Free in-home estate appraisals and auction consignment in West Palm Beach, FL. Estate jewelry, silver, ' +
+      'Regency and European furniture. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Estate auctions · West Palm Beach, Florida',
-      headline: 'The county’s trade has always been on Antique Row',
+      eyebrow: 'Mayells · Palm Beach County auction house',
+      headline: 'Estate appraisals and auctions in West Palm Beach',
       sub:
-        'Estate jewelry, silver, European furniture and the Palm Beach Regency look. We are on the mainland side ' +
-        'of the bridges, where the dealers are.',
+        'Estate jewelry, silver, European furniture and the Palm Beach Regency look. The county’s trade has ' +
+        'always been on Antique Row, on the mainland side of the bridges, and that is the market we sell into. ' +
+        'The appraisal at the house is free.',
+    },
+    image: {
+      src: '/images/auctions/antiques.webp',
+      alt: 'A gilded eighteenth-century panelled room with a marble bust, mirrors and chandeliers',
+      credit: 'The Louis XV Room, Jean-François Roumier. The Metropolitan Museum of Art, public domain',
+      width: 1215,
+      height: 1600,
     },
     neighborhoods: [
       'Antique Row (South Dixie)',
@@ -310,6 +385,7 @@ export const MICROSITES: Microsite[] = [
       },
     ],
     leadCategories: ['jewelry', 'antiques', 'design', 'art'],
+    testimonials: [],
     faqs: [
       {
         q: 'Should I take silver to a buyer on Antique Row or send it to auction?',
@@ -340,12 +416,23 @@ export const MICROSITES: Microsite[] = [
     state: 'FL',
     region: 'Orlando, Orange County',
     brand: 'Mayells Winter Park',
+    metaDescription:
+      'Estate appraisals and auction consignment for Winter Park, FL. Tiffany and leaded glass, American art ' +
+      'pottery, silver and pictures. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Estate auctions · Winter Park, Florida',
-      headline: 'A Tiffany town, and it shows in the estates',
+      eyebrow: 'Mayells · Palm Beach County auction house',
+      headline: 'Estate appraisals and auctions for Winter Park',
       sub:
-        'Leaded glass, American art pottery and decorative arts surface in Winter Park houses at a rate nowhere ' +
-        'else in Florida matches. There is a reason for that, and it is four blocks from Park Avenue.',
+        'A Tiffany town, and it shows in the estates: leaded glass, American art pottery and decorative arts ' +
+        'surface in Winter Park houses at a rate nowhere else in Florida matches. There is a reason for that, ' +
+        'and it is four blocks from Park Avenue.',
+    },
+    image: {
+      src: '/images/lots/venetian-chandelier.webp',
+      alt: 'A cut-glass chandelier with six candle arms and hanging prisms',
+      credit: 'Glass chandelier. The Metropolitan Museum of Art, public domain',
+      width: 1177,
+      height: 1400,
     },
     neighborhoods: [
       'Park Avenue',
@@ -363,8 +450,8 @@ export const MICROSITES: Microsite[] = [
     // site. Confirm the actual Central Florida arrangement before launch —
     // do not imply a local office that does not exist.
     serviceCopy:
-      'We are a Palm Beach County house, not an Orlando one. Central Florida is served by scheduled collection ' +
-      'trips, and we will give you a real date when you call rather than imply we are around the corner.',
+      'Central Florida is served by scheduled collection trips from our Palm Beach County base. Tell us what ' +
+      'you have and we will give you a real date, rather than imply we are around the corner.',
     localAngle: [
       'The Charles Hosmer Morse Museum on Park Avenue holds the most comprehensive collection of Tiffany glass ' +
         'anywhere, assembled from the Laurelton Hall salvage. Three generations of Winter Park collectors formed ' +
@@ -405,6 +492,7 @@ export const MICROSITES: Microsite[] = [
       },
     ],
     leadCategories: ['antiques', 'design', 'art', 'jewelry'],
+    testimonials: [],
     faqs: [
       {
         q: 'Are you actually located in Winter Park?',
@@ -445,6 +533,11 @@ export function getMicrositeByHost(host: string | null | undefined): Microsite |
   if (!host) return undefined;
   const bare = host.split(':')[0].toLowerCase().replace(/^www\./, '');
   return BY_DOMAIN.get(bare);
+}
+
+/** Path of the share image generated by app/sites/[city]/opengraph-image.tsx. */
+export function micrositeOgImagePath(site: Microsite): string {
+  return `/sites/${site.slug}/opengraph-image`;
 }
 
 export const MICROSITE_SLUGS = MICROSITES.map((m) => m.slug);

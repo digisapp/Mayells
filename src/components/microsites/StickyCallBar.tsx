@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { ArrowRight, Phone } from 'lucide-react';
+import { CallLink } from './CallLink';
 
 interface Props {
+  site: string;
   phone: string;
   phoneHref: string;
 }
@@ -17,7 +19,7 @@ interface Props {
  * own buttons are still on screen), and whenever a lead form is actually
  * visible, where a floating duplicate would just cover the fields.
  */
-export function StickyCallBar({ phone, phoneHref }: Props) {
+export function StickyCallBar({ site, phone, phoneHref }: Props) {
   const [past, setPast] = useState(false);
   const [formVisible, setFormVisible] = useState(false);
 
@@ -57,14 +59,16 @@ export function StickyCallBar({ phone, phoneHref }: Props) {
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <div className="flex gap-2.5 px-4 py-3">
-        <a
+        <CallLink
           href={phoneHref}
+          site={site}
+          placement="sticky"
           tabIndex={show ? 0 : -1}
           className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background text-[15px] font-semibold"
         >
           <Phone className="h-4 w-4" />
           Call
-        </a>
+        </CallLink>
         <a
           href="#appraisal"
           tabIndex={show ? 0 : -1}

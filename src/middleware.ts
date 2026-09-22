@@ -106,6 +106,13 @@ function handleMicrosite(request: NextRequest): NextResponse | null {
     return NextResponse.rewrite(new URL(`/sites/${site.slug}/city-sitemap`, request.url));
   }
 
+  // The share card is the page's file-based metadata route, so Next emits its
+  // URL under the page's own segment. Let exactly that path through — the
+  // /sites/ guard below is for the main host, where the rewrite never runs.
+  if (pathname === `/sites/${site.slug}/opengraph-image`) {
+    return NextResponse.next();
+  }
+
   // Anything else belongs to the main brand. Permanent, so the link equity
   // consolidates there instead of accumulating on the city domain.
   return NextResponse.redirect(new URL(`${pathname}${search}`, MAIN_HOST), 308);

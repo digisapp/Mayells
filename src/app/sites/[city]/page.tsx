@@ -5,8 +5,9 @@ import { ArrowRight, Check, Phone } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { formatCurrency } from '@/types';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
-import { getMicrositeBySlug, type Microsite } from '@/lib/microsites/config';
+import { getMicrositeBySlug, micrositeOgImagePath, type Microsite } from '@/lib/microsites/config';
 import { getMicrositeData } from '@/lib/microsites/data';
+import { CallLink } from '@/components/microsites/CallLink';
 import { CityConsignForm } from '@/components/microsites/CityConsignForm';
 import { StickyCallBar } from '@/components/microsites/StickyCallBar';
 
@@ -23,16 +24,16 @@ export async function generateMetadata({
 
   const origin = `https://${site.domain}`;
   const title = `${site.city} Estate Auctions & Appraisals | Mayells`;
-  const description =
-    `Free in-home appraisals and auction consignment for ${site.city}, ${site.state} estates. ` +
-    `${site.specialties.map((s) => s.title).slice(0, 3).join(', ')}. Call ${BUSINESS.phone}.`;
+  const description = site.metaDescription;
 
+  // The share image itself comes from ./opengraph-image.tsx (file-based
+  // metadata), which Next attaches to openGraph and twitter here.
   return {
     title: { absolute: title },
     description,
     metadataBase: new URL(origin),
     alternates: { canonical: origin },
-    openGraph: { title, description, url: origin, siteName: site.brand, type: 'website' },
+    openGraph: { title, description, url: origin, siteName: site.brand, type: 'website', locale: 'en_US' },
     twitter: { card: 'summary_large_image', title, description },
   };
 }
@@ -69,6 +70,9 @@ function steps(site: Microsite) {
   ];
 }
 
+const PHONE_BUTTON =
+  'inline-flex h-12 items-center gap-2.5 rounded-lg px-5 text-[16px] font-semibold transition-colors';
+
 export default async function MicrositePage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
   const site = getMicrositeBySlug(city);
@@ -92,19 +96,18 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
       name: site.brand,
       parentOrganization: { '@type': 'Organization', name: 'Mayells', url: BUSINESS.url },
       url: origin,
-      telephone: '+15612204622',
+      sameAs: [BUSINESS.url],
+      image: `${origin}${micrositeOgImagePath(site)}`,
+      telephone: BUSINESS.phoneHref.replace(/^tel:/, ''),
       email: BUSINESS.email,
       description:
         `Auction house serving ${site.city}, ${site.state}. Estate appraisals and consignment for ` +
         `${site.specialties.map((s) => s.title.toLowerCase()).join(', ')}.`,
       priceRange: '$$$$',
+      // Service-area business: no `address`. Mayells publishes no street
+      // address, and for Winter Park a locality here would contradict the
+      // page's own answer to "are you actually located in Winter Park?".
       areaServed: [site.city, ...site.nearby].map((name) => ({ '@type': 'City', name })),
-      address: {
-        '@type': 'PostalAddress',
-        addressLocality: site.city,
-        addressRegion: site.state,
-        addressCountry: 'US',
-      },
     },
     {
       '@context': 'https://schema.org',
@@ -126,7 +129,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         <div className="mx-auto max-w-6xl px-5 py-10 sm:py-14 lg:py-20">
           <div className="grid items-start gap-10 lg:grid-cols-[1.05fr_minmax(400px,0.95fr)] lg:gap-14">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 {site.hero.eyebrow}
               </p>
               <h1 className="mt-4 text-balance font-display text-[2.4rem] leading-[1.06] tracking-tight sm:text-5xl lg:text-[3.4rem]">
@@ -145,13 +148,15 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                 ))}
               </ul>
 
-              <a
+              <CallLink
                 href={BUSINESS.phoneHref}
-                className="mt-7 inline-flex h-12 items-center gap-2.5 rounded-lg border border-border px-5 text-[16px] font-semibold transition-colors hover:bg-secondary"
+                site={site.slug}
+                placement="hero"
+                className={`${PHONE_BUTTON} mt-7 border border-border hover:bg-secondary`}
               >
                 <Phone className="h-4 w-4" />
                 <span className="tabular-nums">{BUSINESS.phone}</span>
-              </a>
+              </CallLink>
             </div>
 
             <div data-lead-form>
@@ -166,7 +171,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         <div className="mx-auto grid max-w-6xl gap-5 px-5 py-7 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-10">
           <p className="text-[15px] leading-relaxed">{site.serviceCopy}</p>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               Also covering
             </p>
             <p className="mt-2 text-[14px] leading-relaxed text-muted-foreground">
@@ -222,7 +227,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                           {formatCurrency(lot.hammerPrice)}
                         </p>
                         {lot.estimateLow != null && lot.estimateHigh != null && (
-                          <p className="text-[12.5px] tabular-nums text-muted-foreground">
+                          <p className="text-[13px] tabular-nums text-muted-foreground">
                             est. {formatCurrency(lot.estimateLow)}–{formatCurrency(lot.estimateHigh)}
                           </p>
                         )}
@@ -233,7 +238,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
               ))}
             </ul>
 
-            <p className="mt-7 text-[12.5px] leading-relaxed text-muted-foreground">
+            <p className="mt-7 text-[13.5px] leading-relaxed text-muted-foreground">
               Hammer prices from Mayells sales, excluding buyer’s premium. Past results do not
               guarantee what any individual piece will bring.
             </p>
@@ -241,33 +246,52 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         </section>
       )}
 
-      {/* ── Why this town ────────────────────────────────────────── */}
+      {/* ── Why this town: the one picture on the page sits here ── */}
       <section className="border-b border-border">
         <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
-          <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
-            What comes out of {site.city} houses
-          </h2>
-          <div className="mt-7 grid gap-6 sm:grid-cols-2 sm:gap-10">
-            {site.localAngle.map((para, i) => (
-              <p key={i} className="max-w-[58ch] text-[15px] leading-[1.75] text-muted-foreground">
-                {para}
-              </p>
-            ))}
-          </div>
-          <div className="mt-9 border-t border-border pt-6">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Neighbourhoods we work in
-            </p>
-            <ul className="mt-3.5 flex flex-wrap gap-2">
-              {site.neighborhoods.map((n) => (
-                <li
-                  key={n}
-                  className="rounded-full border border-border px-3.5 py-1.5 text-[13px] text-muted-foreground"
-                >
-                  {n}
-                </li>
-              ))}
-            </ul>
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-14">
+            <figure className="lg:order-first">
+              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-border bg-secondary lg:aspect-[4/5]">
+                <Image
+                  src={site.image.src}
+                  alt={site.image.alt}
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 40vw"
+                  className="object-cover"
+                />
+              </div>
+              <figcaption className="mt-2.5 text-[13px] leading-relaxed text-muted-foreground">
+                {site.image.credit}
+              </figcaption>
+            </figure>
+
+            <div>
+              <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
+                What comes out of {site.city} houses
+              </h2>
+              <div className="mt-6 space-y-5">
+                {site.localAngle.map((para, i) => (
+                  <p key={i} className="max-w-[62ch] text-[15.5px] leading-[1.75] text-muted-foreground">
+                    {para}
+                  </p>
+                ))}
+              </div>
+              <div className="mt-8 border-t border-border pt-6">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Neighbourhoods we work in
+                </p>
+                <ul className="mt-3.5 flex flex-wrap gap-2">
+                  {site.neighborhoods.map((n) => (
+                    <li
+                      key={n}
+                      className="rounded-full border border-border px-3.5 py-1.5 text-[13.5px] text-muted-foreground"
+                    >
+                      {n}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -288,6 +312,27 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
           </dl>
         </div>
       </section>
+
+      {/* ── Testimonials: only real ones, only when there are some ── */}
+      {site.testimonials.length > 0 && (
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-6xl px-5 py-12 sm:py-16">
+            <h2 className="font-display text-[1.7rem] tracking-tight sm:text-4xl">
+              From {site.city} families
+            </h2>
+            <ul className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {site.testimonials.map((t) => (
+                <li key={t.name + t.place} className="rounded-2xl border border-border bg-card p-6">
+                  <blockquote className="text-[15.5px] leading-[1.7]">“{t.quote}”</blockquote>
+                  <p className="mt-4 text-[13.5px] text-muted-foreground">
+                    <span className="font-semibold text-foreground">{t.name}</span> · {t.place}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* ── Process — numbered because it is a real sequence ─────── */}
       <section className="border-b border-border">
@@ -350,13 +395,15 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                 If there is a deadline — a closing, a clearance, a probate date — say so and we will
                 work to it.
               </p>
-              <a
+              <CallLink
                 href={BUSINESS.phoneHref}
-                className="mt-6 inline-flex h-12 items-center gap-2.5 rounded-lg bg-primary px-6 text-[16px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                site={site.slug}
+                placement="section"
+                className={`${PHONE_BUTTON} mt-6 bg-primary px-6 text-primary-foreground hover:opacity-90`}
               >
                 <Phone className="h-4 w-4" />
                 <span className="tabular-nums">{BUSINESS.phone}</span>
-              </a>
+              </CallLink>
             </div>
             <div data-lead-form>
               <CityConsignForm site={site.slug} city={site.city} placement="section" />
@@ -385,18 +432,20 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
               Request a free appraisal
               <ArrowRight className="h-4 w-4" />
             </a>
-            <a
+            <CallLink
               href={BUSINESS.phoneHref}
+              site={site.slug}
+              placement="faq"
               className="inline-flex h-12 items-center gap-2 rounded-lg border border-border px-5 text-[15px] font-semibold transition-colors hover:bg-secondary"
             >
               <Phone className="h-4 w-4" />
               <span className="tabular-nums">{BUSINESS.phone}</span>
-            </a>
+            </CallLink>
           </div>
         </div>
       </section>
 
-      <StickyCallBar phone={BUSINESS.phone} phoneHref={BUSINESS.phoneHref} />
+      <StickyCallBar site={site.slug} phone={BUSINESS.phone} phoneHref={BUSINESS.phoneHref} />
     </main>
   );
 }

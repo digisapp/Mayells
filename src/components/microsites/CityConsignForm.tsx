@@ -60,7 +60,21 @@ export function CityConsignForm({ site, city, placement }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [estimate, setEstimate] = useState<EstimateResult | null>(null);
   const [stage, setStage] = useState<'uploading' | 'analyzing' | 'submitting' | null>(null);
+  // Honeypot. Real visitors never see the field; bots that fill every input
+  // do, and the server drops those silently. Exact-match domains attract
+  // form spam, and every fake lead lands in the admin prospects funnel.
+  const [hp, setHp] = useState('');
+  const started = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // First interaction with any field, once per form — gives the funnel a
+  // "started" step between page view and lead, so a drop-off shows up as
+  // a form problem rather than a traffic problem.
+  const handleFormStart = () => {
+    if (started.current) return;
+    started.current = true;
+    track('microsite_form_start', { site, placement });
+  };
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -122,6 +136,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
           items: `${form.items}${photoNote}`.slice(0, 5000),
           photoPaths,
           site,
+          hp,
         }),
       });
 
@@ -164,7 +179,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
                 : `${formatUsd(estimate.estimateLow)} – ${formatUsd(estimate.estimateHigh)}`}
             </p>
             <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{estimate.summary}</p>
-            <p className="mt-5 border-t border-border pt-4 text-[13px] leading-relaxed text-muted-foreground">
+            <p className="mt-5 border-t border-border pt-4 text-[13.5px] leading-relaxed text-muted-foreground">
               An automated first pass, not an appraisal. A specialist will confirm it and call you.
             </p>
           </>
@@ -193,7 +208,8 @@ export function CityConsignForm({ site, city, placement }: Props) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7"
+      onFocusCapture={handleFormStart}
+      className="relative rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-7"
     >
       <p className="font-display text-xl tracking-tight sm:text-2xl">Get a free appraisal</p>
       <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">
@@ -269,6 +285,15 @@ export function CityConsignForm({ site, city, placement }: Props) {
         onChange={handlePhotoSelect} className="hidden" id={`${uid}-photos`}
       />
 
+      {/* Honeypot — off-screen, out of the tab order, hidden from readers. */}
+      <div aria-hidden="true" className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden">
+        <label htmlFor={`${uid}-hp`}>Company</label>
+        <input
+          id={`${uid}-hp`} name="company" type="text" tabIndex={-1} autoComplete="off"
+          value={hp} onChange={(e) => setHp(e.target.value)}
+        />
+      </div>
+
       <div className="mt-5 flex flex-col gap-2.5 sm:flex-row-reverse">
         <button
           type="submit" disabled={submitting}
@@ -289,7 +314,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
         </button>
       </div>
 
-      <p className="mt-3.5 text-[12.5px] leading-relaxed text-muted-foreground">
+      <p className="mt-3.5 text-[13.5px] leading-relaxed text-muted-foreground">
         Photos get you a faster and far more accurate answer — up to {MAX_PHOTOS}.
       </p>
     </form>

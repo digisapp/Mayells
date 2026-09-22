@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { Phone } from 'lucide-react';
-import { Toaster } from 'sonner';
+import { ArrowRight, Phone } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { getMicrositeBySlug, MICROSITE_SLUGS } from '@/lib/microsites/config';
+import { CallLink } from '@/components/microsites/CallLink';
 
 export function generateStaticParams() {
   return MICROSITE_SLUGS.map((city) => ({ city }));
@@ -22,6 +22,10 @@ const footerLinks = [
  * a city landing page carrying the full catalogue navigation invites the
  * visitor to leave for mayells.com before they have done the one thing the
  * page exists for, which is start a consignment conversation.
+ *
+ * No <Toaster> here: the root layout already mounts one, and sonner renders
+ * every toast once per mounted Toaster — the form's error messages were
+ * appearing twice, top-centre and bottom-right.
  */
 export default async function MicrositeLayout({
   children,
@@ -44,13 +48,29 @@ export default async function MicrositeLayout({
               {site.city}, {site.state}
             </span>
           </Link>
-          <a
-            href={BUSINESS.phoneHref}
-            className="inline-flex h-11 items-center gap-2 rounded-lg border border-border px-4 text-[15px] font-semibold transition-colors hover:bg-secondary"
-          >
-            <Phone className="h-4 w-4" />
-            <span className="tabular-nums">{BUSINESS.phone}</span>
-          </a>
+          <div className="flex items-center gap-2.5">
+            <CallLink
+              href={BUSINESS.phoneHref}
+              site={site.slug}
+              placement="header"
+              className="inline-flex h-11 items-center gap-2 rounded-lg border border-border px-4 text-[15px] font-semibold transition-colors hover:bg-secondary"
+            >
+              <Phone className="h-4 w-4" />
+              <span className="tabular-nums">{BUSINESS.phone}</span>
+            </CallLink>
+            {/*
+              Desktop gets its persistent call to action here; phones have the
+              sticky bottom bar instead, so this stays hidden below lg to keep
+              the header to one row.
+            */}
+            <a
+              href="#appraisal"
+              className="hidden h-11 items-center gap-2 rounded-lg bg-primary px-4 text-[15px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 lg:inline-flex"
+            >
+              Free appraisal
+              <ArrowRight className="h-4 w-4" />
+            </a>
+          </div>
         </div>
       </header>
 
@@ -70,13 +90,15 @@ export default async function MicrositeLayout({
                 {site.brand} is the {site.city} practice of Mayells, an auction house serving Palm
                 Beach County and New York. Consignments are catalogued and sold through mayells.com.
               </p>
-              <a
+              <CallLink
                 href={BUSINESS.phoneHref}
+                site={site.slug}
+                placement="footer"
                 className="mt-5 inline-flex h-11 items-center gap-2 text-[16px] font-semibold tabular-nums"
               >
                 <Phone className="h-4 w-4" />
                 {BUSINESS.phone}
-              </a>
+              </CallLink>
             </div>
             <nav className="flex flex-col">
               {footerLinks.map((l) => (
@@ -106,7 +128,6 @@ export default async function MicrositeLayout({
           </div>
         </div>
       </footer>
-      <Toaster position="top-center" />
     </div>
   );
 }

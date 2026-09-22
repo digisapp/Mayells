@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
     let service: string | undefined;
     let message: string | undefined;
     let site: string | undefined;
+    let hp: unknown;
     let photoUrls: string[] = [];
     let aiImageUrls: string[] = [];
 
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
       service = (formData.get('service') as string) || undefined;
       message = (formData.get('message') as string) || undefined;
       site = (formData.get('site') as string) || undefined;
+      hp = formData.get('hp');
 
       const photos = formData.getAll('photos') as File[];
       if (photos.length > 0) {
@@ -121,6 +123,7 @@ export async function POST(req: NextRequest) {
       service = body.service;
       message = body.message;
       site = body.site;
+      hp = body.hp;
 
       // Preferred flow: photos were already uploaded directly to storage via
       // signed URLs (Vercel caps request bodies at ~4.5MB, so file bytes
@@ -149,6 +152,16 @@ export async function POST(req: NextRequest) {
           after(() => sanitizeStoredImages(verified));
         }
       }
+    }
+
+    // Honeypot (see CityConsignForm). A filled field means a bot, so answer
+    // exactly as a success would — a distinguishable response just teaches
+    // the bot which field to leave blank — and write nothing.
+    if (typeof hp === 'string' && hp.trim().length > 0) {
+      return NextResponse.json(
+        { data: { message: 'Request submitted successfully', estimate: null } },
+        { status: 201 },
+      );
     }
 
     const parsed = appraisalSchema.safeParse({ name, phone, email, items, service, message, site });
