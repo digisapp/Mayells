@@ -22,7 +22,7 @@ export const alt = 'Mayells — free estate appraisals and auction consignment';
 export default async function OGImage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
   const site = getMicrositeBySlug(city);
-  const cover = await loadOgImage(site?.images.hero.src);
+  const cover = await loadOgImage(site?.image.src);
 
   const headline = site ? `Free estate appraisals in ${site.city}` : 'Free estate appraisals';
   const sub = site

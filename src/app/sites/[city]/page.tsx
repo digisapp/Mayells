@@ -60,7 +60,7 @@ function steps(site: Microsite) {
     {
       n: '03',
       t: 'We recommend a route',
-      d: 'Live auction, gallery or private sale, chosen per piece — and an honest no on whatever will not sell.',
+      d: 'Live auction, gallery or private sale, chosen per piece — and a straight answer on whatever will not sell.',
     },
     {
       n: '04',
@@ -92,7 +92,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
 
   const { showcase, soldCount, soldTotal } = await getMicrositeData(site);
   const origin = `https://${site.domain}`;
-  const { hero, feature } = site.images;
+  const hero = site.image;
 
   const trust = [
     'Free appraisal, no obligation',
@@ -201,11 +201,19 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
       <section className="border-b border-border/60 bg-ivory">
         <div className="mx-auto grid max-w-6xl gap-5 px-5 py-8 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-10">
           <p className="text-[15.5px] leading-relaxed">{site.serviceCopy}</p>
-          <div>
-            <Eyebrow>Also covering</Eyebrow>
-            <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">
-              {site.nearby.join(' · ')}
-            </p>
+          <div className="space-y-4">
+            <div>
+              <Eyebrow>Also covering</Eyebrow>
+              <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">
+                {site.nearby.join(' · ')}
+              </p>
+            </div>
+            <div>
+              <Eyebrow>Neighbourhoods we work in</Eyebrow>
+              <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">
+                {site.neighborhoods.join(' · ')}
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -277,53 +285,6 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
           </div>
         </section>
       )}
-
-      {/* ── Why this town ────────────────────────────────────────── */}
-      <section className="border-b border-border/60">
-        <div className="mx-auto max-w-6xl px-5 py-14 sm:py-20">
-          <div className="grid gap-9 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
-            <figure>
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-secondary shadow-luxury lg:aspect-[4/5]">
-                <Image
-                  src={feature.src}
-                  alt={feature.alt}
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 40vw"
-                  className="object-cover"
-                />
-              </div>
-              <figcaption className="mt-2.5 text-[13px] leading-relaxed text-muted-foreground">
-                {feature.credit}
-              </figcaption>
-            </figure>
-
-            <div>
-              <Eyebrow>{site.city}, {site.state}</Eyebrow>
-              <h2 className={H2}>What comes out of {site.city} houses</h2>
-              <div className="mt-6 space-y-5">
-                {site.localAngle.map((para, i) => (
-                  <p key={i} className="max-w-[62ch] text-[15.5px] leading-[1.75] text-muted-foreground">
-                    {para}
-                  </p>
-                ))}
-              </div>
-              <div className="mt-8 border-t border-border pt-6">
-                <Eyebrow>Neighbourhoods we work in</Eyebrow>
-                <ul className="mt-3.5 flex flex-wrap gap-2">
-                  {site.neighborhoods.map((n) => (
-                    <li
-                      key={n}
-                      className="rounded-full border border-border bg-ivory px-3.5 py-1.5 text-[13.5px]"
-                    >
-                      {n}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* ── Specialties: the page's second dark moment ───────────── */}
       <section className="relative overflow-hidden bg-charcoal text-white">
