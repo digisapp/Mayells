@@ -25,7 +25,7 @@ const businessJsonLd = {
   name: 'Mayells',
   url: BASE_URL,
   logo: `${BASE_URL}/icon.svg`,
-  telephone: '+15612204622',
+  telephone: '+15619877200',
   email: 'info@mayells.com',
   description: 'Luxury auction house in Palm Beach, Florida and New York specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles.',
   priceRange: '$$$$',

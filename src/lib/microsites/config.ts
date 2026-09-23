@@ -123,7 +123,7 @@ export const MICROSITES: Microsite[] = [
     brand: 'Mayells Delray Beach',
     metaDescription:
       'Free in-home estate appraisals and auction consignment in Delray Beach, FL. Estate contents, ' +
-      'Highwaymen paintings, signed jewelry. Call (561) 220-4622.',
+      'Highwaymen paintings, signed jewelry. Call (561) 987-7200.',
     hero: {
       headline: 'Estate appraisals and auctions in Delray Beach',
       sub:
@@ -216,7 +216,7 @@ export const MICROSITES: Microsite[] = [
     brand: 'Mayells Jupiter',
     metaDescription:
       'Free in-home estate appraisals and auction consignment in Jupiter and Tequesta, FL. Marine art, ' +
-      'ship models, watches, vintage tackle. Call (561) 220-4622.',
+      'ship models, watches, vintage tackle. Call (561) 987-7200.',
     hero: {
       headline: 'Estate appraisals and auctions in Jupiter',
       sub:
@@ -310,7 +310,7 @@ export const MICROSITES: Microsite[] = [
     brand: 'Mayells West Palm Beach',
     metaDescription:
       'Free in-home estate appraisals and auction consignment in West Palm Beach, FL. Estate jewelry, silver, ' +
-      'Regency and European furniture. Call (561) 220-4622.',
+      'Regency and European furniture. Call (561) 987-7200.',
     hero: {
       headline: 'Estate appraisals and auctions in West Palm Beach',
       sub:
@@ -403,7 +403,7 @@ export const MICROSITES: Microsite[] = [
     brand: 'Mayells Winter Park',
     metaDescription:
       'Estate appraisals and auction consignment for Winter Park, FL. Tiffany and leaded glass, American art ' +
-      'pottery, silver and pictures. Call (561) 220-4622.',
+      'pottery, silver and pictures. Call (561) 987-7200.',
     hero: {
       headline: 'Estate appraisals and auctions for Winter Park',
       sub:

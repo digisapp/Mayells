@@ -2,8 +2,8 @@
 export const BUSINESS = {
   name: 'Mayells',
   tagline: 'Fine Art Antiques Design Fashion Collectibles',
-  phone: '(561) 220-4622',
-  phoneHref: 'tel:+15612204622',
+  phone: '(561) 987-7200',
+  phoneHref: 'tel:+15619877200',
   email: 'info@mayells.com',
   servicesEmail: 'services@mayells.com',
   // Everyone who should receive admin notifications (new appraisal requests,
