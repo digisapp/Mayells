@@ -156,8 +156,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
         <div className="relative mx-auto max-w-6xl px-5 pb-14 pt-9 sm:pb-16 sm:pt-14 lg:py-24">
           <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_minmax(400px,0.95fr)] lg:gap-16">
             <div>
-              <Eyebrow dark>{site.hero.eyebrow}</Eyebrow>
-              <h1 className="mt-5 text-balance font-display text-[2.5rem] leading-[1.04] tracking-tight sm:text-[3.25rem] lg:text-[3.75rem]">
+              <h1 className="text-balance font-display text-[2.5rem] leading-[1.04] tracking-tight sm:text-[3.25rem] lg:text-[3.75rem]">
                 {site.hero.headline}
               </h1>
               <p className="mt-6 max-w-[46ch] text-[16px] leading-[1.65] text-white/75 sm:text-[17px]">

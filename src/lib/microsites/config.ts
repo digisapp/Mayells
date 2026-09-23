@@ -73,7 +73,6 @@ export interface Microsite {
   /** Search-result snippet. Keep under ~155 characters or the phone number is cut. */
   metaDescription: string;
   hero: {
-    eyebrow: string;
     /**
      * Says what we do and where, in those words. A visitor arriving from a
      * search or an ad decides in about two seconds whether this is the right
@@ -109,7 +108,6 @@ export const MICROSITES: Microsite[] = [
       'Free in-home estate appraisals and auction consignment in Delray Beach, FL. Estate contents, ' +
       'Highwaymen paintings, signed jewelry. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Mayells · Palm Beach County auction house',
       headline: 'Estate appraisals and auctions in Delray Beach',
       sub:
         'Most Delray estates are not a single painting — they are a whole house, and a family with a closing date. ' +
@@ -203,7 +201,6 @@ export const MICROSITES: Microsite[] = [
       'Free in-home estate appraisals and auction consignment in Jupiter and Tequesta, FL. Marine art, ' +
       'ship models, watches, vintage tackle. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Mayells · Palm Beach County auction house',
       headline: 'Estate appraisals and auctions in Jupiter',
       sub:
         'Jupiter estates are built on water and golf: sportfishing pictures, ship models, club silver, tackle ' +
@@ -298,7 +295,6 @@ export const MICROSITES: Microsite[] = [
       'Free in-home estate appraisals and auction consignment in West Palm Beach, FL. Estate jewelry, silver, ' +
       'Regency and European furniture. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Mayells · Palm Beach County auction house',
       headline: 'Estate appraisals and auctions in West Palm Beach',
       sub:
         'Estate jewelry, silver, European furniture and the Palm Beach Regency look. The county’s trade has ' +
@@ -392,7 +388,6 @@ export const MICROSITES: Microsite[] = [
       'Estate appraisals and auction consignment for Winter Park, FL. Tiffany and leaded glass, American art ' +
       'pottery, silver and pictures. Call (561) 220-4622.',
     hero: {
-      eyebrow: 'Mayells · Palm Beach County auction house',
       headline: 'Estate appraisals and auctions for Winter Park',
       sub:
         'A Tiffany town, and it shows in the estates: leaded glass, American art pottery and decorative arts ' +
