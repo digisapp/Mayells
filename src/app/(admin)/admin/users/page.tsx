@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { Search, ChevronLeft, ChevronRight, Users, Shield, Ban, ShieldCheck, EyeOff, AlertTriangle } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
+import { Search, ChevronLeft, ChevronRight, Shield, Ban, ShieldCheck, EyeOff, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/types';
 import { isSentinelEmail } from '@/lib/sellers/sentinel';
@@ -76,13 +77,15 @@ function AdminUsersPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlFilter = searchParams.get('filter');
+  // ?q= deep link (⌘K command menu) seeds the search box
+  const urlQuery = searchParams.get('q')?.trim() ?? '';
 
   const [userList, setUserList] = useState<UserRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 50, total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [searchInput, setSearchInput] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState(urlQuery);
+  const [searchQuery, setSearchQuery] = useState(urlQuery);
   const [filter, setFilter] = useState<Filter>(isFilter(urlFilter) ? urlFilter : 'all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [pending, setPending] = useState<{ user: UserRow; updates: { role?: string; accountStatus?: string }; title: string; description: string } | null>(null);
@@ -93,6 +96,23 @@ function AdminUsersPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlFilter]);
 
+  // Same for ?q= — a new command-menu search while already on this page
+  useEffect(() => {
+    if (urlQuery !== searchQuery) {
+      setSearchInput(urlQuery);
+      setSearchQuery(urlQuery);
+      setPagination((p) => ({ ...p, page: 1 }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlQuery]);
+
+  function replaceQuery(q: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (q) params.set('q', q);
+    else params.delete('q');
+    router.replace(`/admin/users${params.size ? `?${params}` : ''}`);
+  }
+
   const fetchUsers = useCallback((page: number, search: string, currentFilter: Filter) => {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page) });
@@ -101,7 +121,7 @@ function AdminUsersPageInner() {
 
     fetch(`/api/admin/users?${params}`)
       .then(async (r) => {
-        if (!r.ok) throw new Error(await readError(r, 'Failed to load users'));
+        if (!r.ok) throw new Error(await readError(r, 'Failed to load clients'));
         return r.json();
       })
       .then((d) => {
@@ -111,7 +131,7 @@ function AdminUsersPageInner() {
       })
       .catch((err: Error) => {
         setLoadError(err.message);
-        toast.error(err.message || 'Failed to load users');
+        toast.error(err.message || 'Failed to load clients');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -123,8 +143,10 @@ function AdminUsersPageInner() {
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    setSearchQuery(searchInput);
+    const q = searchInput.trim();
+    setSearchQuery(q);
     setPagination((p) => ({ ...p, page: 1 }));
+    replaceQuery(q);
   }
 
   function switchFilter(next: Filter) {
@@ -201,36 +223,30 @@ function AdminUsersPageInner() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm flex items-center gap-3">
-            <Users className="h-6 w-6" />
-            Users
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {pagination.total} {filter === 'all' ? 'total users' : `${FILTERS.find((f) => f.value === filter)?.label.toLowerCase()}`}
-          </p>
-        </div>
-
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search name, email, company, paddle..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="pl-8 pr-3 py-1.5 border rounded-md text-sm bg-background w-64 max-w-full"
-            />
-          </div>
-          <Button type="submit" size="sm" variant="outline">Search</Button>
-          {searchQuery && (
-            <Button type="button" size="sm" variant="ghost" onClick={() => { setSearchInput(''); setSearchQuery(''); setPagination((p) => ({ ...p, page: 1 })); }}>
-              Clear
-            </Button>
-          )}
+      <PageHeader
+        title="Clients"
+        description={`${pagination.total} ${filter === 'all' ? 'total' : `${FILTERS.find((f) => f.value === filter)?.label.toLowerCase()}`}`}
+        actions={
+          <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search name, email, company, paddle..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                className="pl-8 pr-3 py-1.5 border rounded-md text-sm bg-background w-64 max-w-full"
+              />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Search</Button>
+            {searchQuery && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setSearchInput(''); setSearchQuery(''); setPagination((p) => ({ ...p, page: 1 })); replaceQuery(''); }}>
+                Clear
+              </Button>
+            )}
         </form>
-      </div>
+        }
+      />
 
       <div className="mb-4">{chips}</div>
 
@@ -286,7 +302,7 @@ function AdminUsersPageInner() {
             })}
             {userList.length === 0 && (
               <Card><CardContent className="py-8 text-center text-muted-foreground">
-                {searchQuery ? `No users matching "${searchQuery}"` : 'No users match this filter.'}
+                {searchQuery ? `No clients matching "${searchQuery}"` : 'No clients match this filter.'}
               </CardContent></Card>
             )}
           </div>
@@ -394,7 +410,7 @@ function AdminUsersPageInner() {
                 {userList.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                      {searchQuery ? `No users matching "${searchQuery}"` : 'No users match this filter.'}
+                      {searchQuery ? `No clients matching "${searchQuery}"` : 'No clients match this filter.'}
                     </TableCell>
                   </TableRow>
                 )}

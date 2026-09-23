@@ -12,6 +12,8 @@ import {
   getMicrositeTrackingStart,
 } from '@/lib/admin/microsite-stats';
 import { ExternalLink } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { PageHeader } from '@/components/admin/PageHeader';
 
 const RANGES = [
   { value: '7d', label: 'Last 7 days', days: 7 },
@@ -79,69 +81,72 @@ export default async function AdminMicrositesPage({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-display-sm">City microsites</h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+      <PageHeader
+        className="mb-0"
+        title="Microsites"
+        description={
+          <span className="block max-w-2xl">
             Traffic, call taps and appraisal requests from the four city domains, {range.label.toLowerCase()}.
             {trackingStart
               ? ` Tracking since ${dateTime.format(trackingStart)}.`
               : ' No visits recorded yet; tracking starts with the first visit after this release.'}
-          </p>
-        </div>
-        <div className="inline-flex rounded-md border bg-muted/40 p-0.5" role="group" aria-label="Time range">
-          {RANGES.map((r) => (
-            <Link
-              key={r.value}
-              href={r.value === '30d' ? '/admin/microsites' : `/admin/microsites?range=${r.value}`}
-              aria-current={r.value === range.value ? 'page' : undefined}
-              className={cn(
-                'px-3 py-1 rounded text-xs font-medium transition-colors',
-                r.value === range.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {r.label}
-            </Link>
+          </span>
+        }
+        actions={
+          <div className="inline-flex rounded-md border bg-muted/40 p-0.5" role="group" aria-label="Time range">
+            {RANGES.map((r) => (
+              <Link
+                key={r.value}
+                href={r.value === '30d' ? '/admin/microsites' : `/admin/microsites?range=${r.value}`}
+                aria-current={r.value === range.value ? 'page' : undefined}
+                className={cn(
+                  'px-3 py-1 rounded text-xs font-medium transition-colors',
+                  r.value === range.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {r.label}
+              </Link>
+            ))}
+          </div>
+        }
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {tiles.map((t) => (
+            <Card key={t.label}>
+              <CardContent className="py-4">
+                <p className="text-xs uppercase tracking-wider text-muted-foreground">{t.label}</p>
+                <p className="text-2xl font-semibold tabular-nums mt-1">
+                  {typeof t.value === 'number' ? t.value.toLocaleString() : t.value}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t.sub}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {tiles.map((t) => (
-          <Card key={t.label}>
-            <CardContent className="py-4">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">{t.label}</p>
-              <p className="text-2xl font-semibold tabular-nums mt-1">
-                {typeof t.value === 'number' ? t.value.toLocaleString() : t.value}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">{t.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      </PageHeader>
 
       <Card>
         <CardHeader>
           <CardTitle>By city</CardTitle>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="py-2 pr-4 font-medium">Site</th>
-                <th className="py-2 px-3 font-medium text-right">Visitors</th>
-                <th className="py-2 px-3 font-medium text-right">Views</th>
-                <th className="py-2 px-3 font-medium text-right">Mobile</th>
-                <th className="py-2 px-3 font-medium text-right">Call taps</th>
-                <th className="py-2 px-3 font-medium text-right">Form starts</th>
-                <th className="py-2 px-3 font-medium text-right">Leads</th>
-                <th className="py-2 pl-3 font-medium text-right">Lead rate</th>
-              </tr>
-            </thead>
-            <tbody>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="py-2 pr-4 text-xs uppercase tracking-wider text-muted-foreground">Site</TableHead>
+                <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Visitors</TableHead>
+                <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Views</TableHead>
+                <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Mobile</TableHead>
+                <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Call taps</TableHead>
+                <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Form starts</TableHead>
+                <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Leads</TableHead>
+                <TableHead className="py-2 pl-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Lead rate</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((r) => (
-                <tr key={r.slug} className="border-t">
-                  <td className="py-3 pr-4">
+                <TableRow key={r.slug}>
+                  <TableCell className="py-3 pr-4">
                     <p className="font-medium">{r.city}</p>
                     <a
                       href={`https://${r.domain}`}
@@ -151,13 +156,13 @@ export default async function AdminMicrositesPage({
                     >
                       {r.domain} <ExternalLink className="h-3 w-3" />
                     </a>
-                  </td>
-                  <td className="py-3 px-3 text-right tabular-nums">{r.visitors.toLocaleString()}</td>
-                  <td className="py-3 px-3 text-right tabular-nums">{r.views.toLocaleString()}</td>
-                  <td className="py-3 px-3 text-right tabular-nums text-muted-foreground">{pct(r.mobileViews, r.views)}</td>
-                  <td className="py-3 px-3 text-right tabular-nums">{r.calls.toLocaleString()}</td>
-                  <td className="py-3 px-3 text-right tabular-nums">{r.formStarts.toLocaleString()}</td>
-                  <td className="py-3 px-3 text-right tabular-nums">
+                  </TableCell>
+                  <TableCell className="py-3 px-3 text-right tabular-nums">{r.visitors.toLocaleString()}</TableCell>
+                  <TableCell className="py-3 px-3 text-right tabular-nums">{r.views.toLocaleString()}</TableCell>
+                  <TableCell className="py-3 px-3 text-right tabular-nums text-muted-foreground">{pct(r.mobileViews, r.views)}</TableCell>
+                  <TableCell className="py-3 px-3 text-right tabular-nums">{r.calls.toLocaleString()}</TableCell>
+                  <TableCell className="py-3 px-3 text-right tabular-nums">{r.formStarts.toLocaleString()}</TableCell>
+                  <TableCell className="py-3 px-3 text-right tabular-nums">
                     {r.leads > 0 ? (
                       <Link href={`/admin/prospects?site=${r.slug}`} className="font-medium underline underline-offset-2">
                         {r.leads}
@@ -165,22 +170,22 @@ export default async function AdminMicrositesPage({
                     ) : (
                       0
                     )}
-                  </td>
-                  <td className="py-3 pl-3 text-right tabular-nums">{pct(r.leads + r.calls, r.visitors)}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell className="py-3 pl-3 text-right tabular-nums">{pct(r.leads + r.calls, r.visitors)}</TableCell>
+                </TableRow>
               ))}
-              <tr className="border-t font-medium">
-                <td className="py-3 pr-4">All cities</td>
-                <td className="py-3 px-3 text-right tabular-nums">{total.visitors.toLocaleString()}</td>
-                <td className="py-3 px-3 text-right tabular-nums">{total.views.toLocaleString()}</td>
-                <td className="py-3 px-3" />
-                <td className="py-3 px-3 text-right tabular-nums">{total.calls.toLocaleString()}</td>
-                <td className="py-3 px-3 text-right tabular-nums">{total.formStarts.toLocaleString()}</td>
-                <td className="py-3 px-3 text-right tabular-nums">{total.leads.toLocaleString()}</td>
-                <td className="py-3 pl-3 text-right tabular-nums">{pct(total.leads + total.calls, total.visitors)}</td>
-              </tr>
-            </tbody>
-          </table>
+              <TableRow className="font-medium hover:bg-transparent">
+                <TableCell className="py-3 pr-4">All cities</TableCell>
+                <TableCell className="py-3 px-3 text-right tabular-nums">{total.visitors.toLocaleString()}</TableCell>
+                <TableCell className="py-3 px-3 text-right tabular-nums">{total.views.toLocaleString()}</TableCell>
+                <TableCell className="py-3 px-3" />
+                <TableCell className="py-3 px-3 text-right tabular-nums">{total.calls.toLocaleString()}</TableCell>
+                <TableCell className="py-3 px-3 text-right tabular-nums">{total.formStarts.toLocaleString()}</TableCell>
+                <TableCell className="py-3 px-3 text-right tabular-nums">{total.leads.toLocaleString()}</TableCell>
+                <TableCell className="py-3 pl-3 text-right tabular-nums">{pct(total.leads + total.calls, total.visitors)}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
           <p className="text-xs text-muted-foreground mt-4 max-w-3xl">
             Visitors are counted once per person per day. A call tap means someone tapped the number; whether the call
             connected is not known. Lead rate counts call taps plus form leads against visitors.
@@ -197,24 +202,24 @@ export default async function AdminMicrositesPage({
             {sources.length === 0 ? (
               <p className="text-sm text-muted-foreground">No visits in this period.</p>
             ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="py-2 pr-4 font-medium">Source</th>
-                    <th className="py-2 px-3 font-medium text-right">Visitors</th>
-                    <th className="py-2 pl-3 font-medium text-right">Call taps</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="py-2 pr-4 text-xs uppercase tracking-wider text-muted-foreground">Source</TableHead>
+                    <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Visitors</TableHead>
+                    <TableHead className="py-2 pl-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Call taps</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {sources.map((s) => (
-                    <tr key={s.source} className="border-t">
-                      <td className="py-2 pr-4 truncate max-w-[220px]">{s.source}</td>
-                      <td className="py-2 px-3 text-right tabular-nums">{s.visitors.toLocaleString()}</td>
-                      <td className="py-2 pl-3 text-right tabular-nums">{s.calls.toLocaleString()}</td>
-                    </tr>
+                    <TableRow key={s.source}>
+                      <TableCell className="py-2 pr-4 truncate max-w-[220px]">{s.source}</TableCell>
+                      <TableCell className="py-2 px-3 text-right tabular-nums">{s.visitors.toLocaleString()}</TableCell>
+                      <TableCell className="py-2 pl-3 text-right tabular-nums">{s.calls.toLocaleString()}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           </CardContent>
         </Card>

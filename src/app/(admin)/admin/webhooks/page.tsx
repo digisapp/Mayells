@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
+import { PageHeader } from '@/components/admin/PageHeader';
 import {
   RefreshCw,
   ChevronLeft,
@@ -203,7 +204,7 @@ export default function AdminWebhooksPage() {
       const res = await fetch(`/api/admin/webhooks?${params}`);
       const data = await res.json().catch(() => ({}));
       if (seq !== requestSeq.current) return;
-      if (!res.ok) throw new Error(data.error || 'Failed to load webhook logs');
+      if (!res.ok) throw new Error(data.error || 'Failed to load the system log');
       setLoadError(null);
       setLogs(data.data ?? []);
       setTotal(data.pagination?.total ?? 0);
@@ -212,7 +213,7 @@ export default function AdminWebhooksPage() {
       setLastRefreshed(new Date());
     } catch (err) {
       if (seq !== requestSeq.current) return;
-      const message = err instanceof Error ? err.message : 'Failed to load webhook logs';
+      const message = err instanceof Error ? err.message : 'Failed to load the system log';
       setLoadError(message);
       if (!opts.silent) toast.error(message);
     } finally {
@@ -325,66 +326,68 @@ export default function AdminWebhooksPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm">Webhook Logs</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Stripe and Resend webhook event history with replay
+      <PageHeader
+        title="System log"
+        description={
+          <>
+            Delivery log for Stripe, email (Resend) and other webhooks, with replay
             {filters.provider && <> · showing {providerConfig[filters.provider]?.label ?? filters.provider} only</>}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={autoRefresh}
-              onClick={() => setAutoRefresh((v) => !v)}
-              className={cn(
-                'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
-                autoRefresh ? 'bg-champagne' : 'bg-muted',
-              )}
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoRefresh}
+                onClick={() => setAutoRefresh((v) => !v)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors',
+                  autoRefresh ? 'bg-champagne' : 'bg-muted',
+                )}
+              >
+                <span className={cn('pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', autoRefresh ? 'translate-x-4' : 'translate-x-0')} />
+              </button>
+              Auto-refresh (30s)
+            </label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchLogs(offset, filters)}
+              disabled={refreshing}
+              className="gap-2"
+              title={lastRefreshed ? `Last refreshed ${lastRefreshed.toLocaleTimeString()}` : undefined}
             >
-              <span className={cn('pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform', autoRefresh ? 'translate-x-4' : 'translate-x-0')} />
-            </button>
-            Auto-refresh (30s)
-          </label>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => fetchLogs(offset, filters)}
-            disabled={refreshing}
-            className="gap-2"
-            title={lastRefreshed ? `Last refreshed ${lastRefreshed.toLocaleTimeString()}` : undefined}
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
-            Refresh
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats — clicks keep the current provider filter */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          {statCard('Total', stats.total, () => applyFilters({ status: '' }), { active: !filters.status && hasFilters })}
-          {statCard('Succeeded', stats.success, () => applyFilters({ status: 'success' }), { className: 'text-emerald-600', active: filters.status === 'success' })}
-          {statCard('Failed', stats.failed, () => applyFilters({ status: 'failed' }), {
-            className: 'text-red-600',
-            active: filters.status === 'failed',
-            sub: (
-              <>
-                {stats.failed_today > 0 && <p className="text-xs text-red-500 mt-0.5">{stats.failed_today} in the last 24h</p>}
-                {stats.failed_resolved > 0 && <p className="text-xs text-muted-foreground mt-0.5">+{stats.failed_resolved} fixed by replay</p>}
-              </>
-            ),
-          })}
-          {statCard('Ignored', stats.ignored, () => applyFilters({ status: 'ignored' }), {
-            className: 'text-muted-foreground',
-            active: filters.status === 'ignored',
-            sub: stats.processing > 0 && <p className="text-xs text-amber-700 mt-0.5">{stats.processing} processing</p>,
-          })}
-        </div>
-      )}
+              <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} />
+              Refresh
+            </Button>
+          </div>
+        }
+      >
+        {/* Stats — clicks keep the current provider filter */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {statCard('Total', stats.total, () => applyFilters({ status: '' }), { active: !filters.status && hasFilters })}
+            {statCard('Succeeded', stats.success, () => applyFilters({ status: 'success' }), { className: 'text-emerald-600', active: filters.status === 'success' })}
+            {statCard('Failed', stats.failed, () => applyFilters({ status: 'failed' }), {
+              className: 'text-red-600',
+              active: filters.status === 'failed',
+              sub: (
+                <>
+                  {stats.failed_today > 0 && <p className="text-xs text-red-500 mt-0.5">{stats.failed_today} in the last 24h</p>}
+                  {stats.failed_resolved > 0 && <p className="text-xs text-muted-foreground mt-0.5">+{stats.failed_resolved} fixed by replay</p>}
+                </>
+              ),
+            })}
+            {statCard('Ignored', stats.ignored, () => applyFilters({ status: 'ignored' }), {
+              className: 'text-muted-foreground',
+              active: filters.status === 'ignored',
+              sub: stats.processing > 0 && <p className="text-xs text-amber-700 mt-0.5">{stats.processing} processing</p>,
+            })}
+          </div>
+        )}
+      </PageHeader>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -480,7 +483,7 @@ export default function AdminWebhooksPage() {
         <Card>
           <CardContent className="py-16 text-center">
             <XCircle className="h-10 w-10 text-red-500 mx-auto mb-3" />
-            <p className="text-muted-foreground mb-1">Failed to load webhook logs.</p>
+            <p className="text-muted-foreground mb-1">Failed to load the system log.</p>
             <p className="text-xs text-muted-foreground mb-4">{loadError}</p>
             <Button variant="outline" size="sm" onClick={() => fetchLogs(offset, filters)}>
               Try again

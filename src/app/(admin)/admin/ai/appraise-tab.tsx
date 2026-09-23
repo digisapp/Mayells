@@ -78,21 +78,21 @@ export default function AppraiseTab() {
             <div className="space-y-2"><Label>Artist/Maker</Label><Input placeholder="Artist name" value={artist} onChange={(e) => setArtist(e.target.value)} /></div>
           </div>
           <Button onClick={handleAppraise} disabled={loading} className="bg-champagne text-charcoal hover:bg-champagne/90">
-            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Appraising...</> : <><DollarSign className="h-4 w-4 mr-2" />Generate Appraisal</>}
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Appraising...</> : <><DollarSign className="h-4 w-4 mr-2" />Generate appraisal</>}
           </Button>
         </CardContent>
       </Card>
       {result && (
         <Card>
-          <CardHeader><CardTitle>Appraisal Result</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Appraisal result</CardTitle></CardHeader>
           <CardContent className="space-y-4 text-sm">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-muted rounded-lg text-center">
-                <p className="text-muted-foreground text-xs">Low Estimate</p>
+                <p className="text-muted-foreground text-xs">Low estimate</p>
                 <p className="font-display text-2xl">{formatCurrency(result.estimateLow as number)}</p>
               </div>
               <div className="p-4 bg-muted rounded-lg text-center">
-                <p className="text-muted-foreground text-xs">High Estimate</p>
+                <p className="text-muted-foreground text-xs">High estimate</p>
                 <p className="font-display text-2xl">{formatCurrency(result.estimateHigh as number)}</p>
               </div>
             </div>

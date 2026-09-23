@@ -54,13 +54,13 @@ export default function CatalogTab() {
             </div>
           </div>
           <Button onClick={handleCatalog} disabled={loading} className="bg-champagne text-charcoal hover:bg-champagne/90">
-            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Analyzing...</> : <><Brain className="h-4 w-4 mr-2" />Generate Catalog Entry</>}
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Analyzing...</> : <><Brain className="h-4 w-4 mr-2" />Generate catalogue entry</>}
           </Button>
         </CardContent>
       </Card>
       {result && (
         <Card>
-          <CardHeader><CardTitle>Generated Catalog</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Generated catalogue</CardTitle></CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div><strong>Title:</strong> {String(result.title ?? '')}</div>
             {result.subtitle ? <div><strong>Subtitle:</strong> {String(result.subtitle)}</div> : null}

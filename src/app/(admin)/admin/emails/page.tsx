@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -1426,7 +1427,7 @@ function AdminEmailsPageInner() {
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back
             </Button>
-            <h1 className="font-display text-display-sm truncate">{threadSubject}</h1>
+            <h1 className="font-display text-display-sm leading-tight truncate">{threadSubject}</h1>
           </div>
           {threadEmails.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
@@ -1559,30 +1560,30 @@ function AdminEmailsPageInner() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm">Email</h1>
-          {tab === 'inbox' && pagination.total > 0 && (
-            <p className="text-sm text-muted-foreground mt-1">
-              {pagination.total} {pagination.total === 1 ? 'email' : 'emails'}
-              {unreadCount > 0 && ` · ${unreadCount} unread`}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="hidden lg:flex items-center gap-1 text-[11px] text-muted-foreground" title="Keyboard: j/k next & previous, r reply, f forward, e archive">
-            <Keyboard className="h-3.5 w-3.5" />
-            j/k · r · f · e
-          </span>
-          <Button
-            onClick={() => (composing ? closeCompose() : setComposing(true))}
-            className="bg-champagne text-charcoal hover:bg-champagne/90"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Compose
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Inbox"
+        description={tab === 'inbox' && pagination.total > 0 && (
+          <>
+            {pagination.total} {pagination.total === 1 ? 'email' : 'emails'}
+            {unreadCount > 0 && ` · ${unreadCount} unread`}
+          </>
+        )}
+        actions={
+          <>
+            <span className="hidden lg:flex items-center gap-1 text-[11px] text-muted-foreground" title="Keyboard: j/k next & previous, r reply, f forward, e archive">
+              <Keyboard className="h-3.5 w-3.5" />
+              j/k · r · f · e
+            </span>
+            <Button
+              onClick={() => (composing ? closeCompose() : setComposing(true))}
+              className="bg-champagne text-charcoal hover:bg-champagne/90"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Compose
+            </Button>
+          </>
+        }
+      />
 
       {composeCard}
 

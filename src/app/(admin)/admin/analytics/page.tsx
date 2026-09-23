@@ -14,6 +14,7 @@ import {
 } from '@/db/schema';
 import { sql, type SQL } from 'drizzle-orm';
 import { requireAdminPage } from '@/lib/auth/require-admin';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { fmt } from './fmt';
 import { KeyMetrics, type KeyMetric } from './key-metrics';
 import { StatsBreakdownCards, type StatsSection } from './stats-breakdown-cards';
@@ -439,15 +440,11 @@ export default async function AdminAnalyticsPage({
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
-        <div>
-          <h1 className="font-display text-display-sm">Analytics</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Money tiles marked &ldquo;{rangeTag}&rdquo; cover {rangeLabel.toLowerCase()}; everything else is current state.
-          </p>
-        </div>
-        <RangeSwitch current={range} />
-      </div>
+      <PageHeader
+        title="Analytics"
+        description={<>Money tiles marked &ldquo;{rangeTag}&rdquo; cover {rangeLabel.toLowerCase()}; everything else is current state.</>}
+        actions={<RangeSwitch current={range} />}
+      />
 
       <KeyMetrics metrics={keyMetrics} />
 

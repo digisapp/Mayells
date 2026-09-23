@@ -12,7 +12,7 @@ export function TopDepartmentsCard({ categories }: { categories: Category[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Top Departments</CardTitle>
+        <CardTitle>Top departments</CardTitle>
         <CardDescription>By lots catalogued, all time. Amount is hammer on sold lots.</CardDescription>
       </CardHeader>
       <CardContent>

@@ -4,102 +4,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { useAdminBadges, type AdminBadges } from '@/hooks/useAdminBadges';
-import {
-  LayoutDashboard,
-  Gavel,
-  Image,
-  Users,
-  UserPlus,
-  FileText,
-  BarChart3,
-  Brain,
-  Radio,
-  Mail,
-  Inbox,
-  ClipboardCheck,
-  Truck,
-  Banknote,
-  Settings,
-  Webhook,
-  Menu,
-  X,
-  ExternalLink,
-  Globe,
-  type LucideIcon,
-} from 'lucide-react';
-
-export interface AdminLink {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  /** Which badge count to show next to the item, if any. */
-  badge?: (b: AdminBadges) => number;
-  /** Amber (attention) vs red (problem) badge. */
-  badgeTone?: 'attention' | 'problem';
-}
-
-export interface AdminNavGroup {
-  label: string | null;
-  links: AdminLink[];
-}
-
-// Ordered the way work flows through the house: intake → catalogue → sale →
-// settlement → people → reporting → system.
-export const adminNav: AdminNavGroup[] = [
-  {
-    label: null,
-    links: [{ href: '/admin', label: 'Dashboard', icon: LayoutDashboard }],
-  },
-  {
-    label: 'Intake',
-    links: [
-      { href: '/admin/prospects', label: 'Prospects', icon: UserPlus, badge: (b) => b.prospects.awaiting + b.prospects.signed },
-      { href: '/admin/appraisals', label: 'Appraisals', icon: ClipboardCheck, badge: (b) => b.appraisals.review },
-      { href: '/admin/microsites', label: 'Microsites', icon: Globe },
-    ],
-  },
-  {
-    label: 'Catalogue & Sales',
-    links: [
-      { href: '/admin/lots', label: 'Lots', icon: Image, badge: (b) => b.lots.pendingReview },
-      { href: '/admin/auctions', label: 'Auctions', icon: Gavel, badge: (b) => b.auctions.settling },
-      { href: '/admin/live', label: 'Live Console', icon: Radio, badge: (b) => b.auctions.live, badgeTone: 'problem' },
-      { href: '/admin/ai', label: 'AI Tools', icon: Brain },
-    ],
-  },
-  {
-    label: 'Post-sale',
-    links: [
-      { href: '/admin/invoices', label: 'Invoices', icon: FileText, badge: (b) => b.invoices.overdue, badgeTone: 'problem' },
-      { href: '/admin/payouts', label: 'Payouts', icon: Banknote, badge: (b) => b.payouts.pending },
-      { href: '/admin/shipments', label: 'Shipments', icon: Truck, badge: (b) => b.shipments.toShip + b.shipments.exception },
-    ],
-  },
-  {
-    label: 'People',
-    links: [
-      { href: '/admin/emails', label: 'Inbox', icon: Inbox, badge: (b) => b.inbox.unread },
-      { href: '/admin/users', label: 'Users', icon: Users },
-      { href: '/admin/outreach', label: 'Outreach', icon: Mail, badge: (b) => b.outreach.due },
-    ],
-  },
-  {
-    label: 'Reports & System',
-    links: [
-      { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
-      { href: '/admin/settings', label: 'Settings', icon: Settings },
-      { href: '/admin/webhooks', label: 'Webhooks', icon: Webhook, badge: (b) => b.webhooks.failed24h, badgeTone: 'problem' },
-    ],
-  },
-];
-
-/** Flat list, kept for the topbar's "current page" lookup. */
-export const adminLinks: AdminLink[] = adminNav.flatMap((g) => g.links);
-
-export function isActiveAdminLink(href: string, pathname: string) {
-  return href === '/admin' ? pathname === '/admin' : pathname === href || pathname.startsWith(`${href}/`);
-}
+import { useAdminBadges } from '@/hooks/useAdminBadges';
+import { Menu, X, ExternalLink } from 'lucide-react';
+import { adminNav, adminSettingsLink, isActiveAdminLink, type AdminLink } from './admin-nav';
 
 function CountBadge({ count, tone }: { count: number; tone: 'attention' | 'problem' }) {
   if (count <= 0) return null;
@@ -112,6 +19,37 @@ function CountBadge({ count, tone }: { count: number; tone: 'attention' | 'probl
     >
       {count > 99 ? '99+' : count}
     </span>
+  );
+}
+
+function NavItem({
+  link,
+  pathname,
+  count,
+  onNavigate,
+}: {
+  link: AdminLink;
+  pathname: string;
+  count: number;
+  onNavigate?: () => void;
+}) {
+  const active = isActiveAdminLink(link, pathname);
+  return (
+    <Link
+      href={link.href}
+      onClick={onNavigate}
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors',
+        active
+          ? 'bg-accent/20 text-foreground font-medium'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent/10',
+      )}
+    >
+      <link.icon className="h-4 w-4 shrink-0" />
+      <span className="truncate">{link.label}</span>
+      <CountBadge count={count} tone={link.badgeTone ?? 'attention'} />
+    </Link>
   );
 }
 
@@ -136,39 +74,26 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
               </p>
             )}
             <div className="space-y-0.5">
-              {group.links.map((link) => {
-                const active = isActiveAdminLink(link.href, pathname);
-                const count = badges && link.badge ? link.badge(badges) : 0;
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={onNavigate}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors',
-                      active
-                        ? 'bg-accent/20 text-foreground font-medium'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/10',
-                    )}
-                  >
-                    <link.icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{link.label}</span>
-                    <CountBadge count={count} tone={link.badgeTone ?? 'attention'} />
-                  </Link>
-                );
-              })}
+              {group.links.map((link) => (
+                <NavItem key={link.href} link={link} pathname={pathname} count={badges && link.badge ? link.badge(badges) : 0} onNavigate={onNavigate} />
+              ))}
             </div>
           </div>
         ))}
       </nav>
 
-      <div className="pt-4 mt-4 border-t border-border/50">
+      <div className="pt-3 mt-3 border-t border-border/50 space-y-0.5">
+        <NavItem
+          link={adminSettingsLink}
+          pathname={pathname}
+          count={badges && adminSettingsLink.badge ? adminSettingsLink.badge(badges) : 0}
+          onNavigate={onNavigate}
+        />
         <a
           href="/"
           target="_blank"
           rel="noreferrer"
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-colors"
+          className="flex items-center gap-3 px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/10 transition-colors"
         >
           <ExternalLink className="h-4 w-4" />
           View public site

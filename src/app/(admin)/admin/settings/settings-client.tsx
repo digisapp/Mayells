@@ -1,10 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { MfaSettings } from '@/components/admin/MfaSettings';
+import { PageHeader } from '@/components/admin/PageHeader';
+import { useAdminBadges } from '@/hooks/useAdminBadges';
 import {
   Receipt,
   Truck,
@@ -16,6 +19,7 @@ import {
   Save,
   Loader2,
   XCircle,
+  ScrollText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -150,6 +154,7 @@ const AUTO_REPLY_CATEGORIES = [
 ];
 
 export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
+  const adminBadges = useAdminBadges();
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [loaded, setLoaded] = useState<LiveSettings | null>(null);
   const [form, setForm] = useState<FormValues | null>(null);
@@ -264,6 +269,8 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
       })}`
     : null;
 
+  const failedWebhooks = adminBadges?.webhooks.failed24h ?? 0;
+
   const saveButton = (size: 'default' | 'lg' = 'default') => (
     <Button onClick={save} disabled={!canSave} size={size}>
       {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
@@ -273,27 +280,29 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            What runs automatically, what the house charges, and who gets told.
-          </p>
-          {lastUpdated && <p className="text-xs text-muted-foreground mt-1">{lastUpdated}</p>}
-        </div>
-        <div className="flex items-center gap-3">
-          {dirty && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-amber-700" role="status">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
-              Unsaved changes
-            </span>
-          )}
-          {saveButton()}
-        </div>
-      </div>
+      <PageHeader
+        title="Settings"
+        description={
+          <>
+            <p>What runs automatically, what the house charges, and who gets told.</p>
+            {lastUpdated && <p className="text-xs mt-1">{lastUpdated}</p>}
+          </>
+        }
+        actions={
+          <>
+            {dirty && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-amber-700" role="status">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+                Unsaved changes
+              </span>
+            )}
+            {saveButton()}
+          </>
+        }
+      />
 
       <Tabs value={tab} onValueChange={selectTab}>
-        <div className="overflow-x-auto -mx-1 px-1 pb-1 mb-6">
+        <div className="overflow-x-auto -mx-1 px-1 pb-1 mb-6 flex items-center gap-2">
           <TabsList>
             {SETTINGS_TABS.map(({ value, label, icon: Icon }) => (
               <TabsTrigger key={value} value={value} className="gap-2">
@@ -302,6 +311,22 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
               </TabsTrigger>
             ))}
           </TabsList>
+          {/* The webhook delivery log lives at its own route but belongs to Settings. */}
+          <Link
+            href="/admin/webhooks"
+            className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium whitespace-nowrap text-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <ScrollText className="h-4 w-4" />
+            <span className="hidden sm:inline">System log</span>
+            {failedWebhooks > 0 && (
+              <span
+                className="rounded-full bg-red-100 px-1.5 text-[11px] font-semibold tabular-nums text-red-800"
+                title={`${failedWebhooks} failed in the last 24 hours`}
+              >
+                {failedWebhooks}
+              </span>
+            )}
+          </Link>
         </div>
 
         {/* Security has its own data source; everything else waits for the settings row. */}

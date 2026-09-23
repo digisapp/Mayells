@@ -17,6 +17,7 @@ import {
   statusColors, categoryLabels, statusLabels, statusOptions, categoryOptions,
   type OutreachStatus,
 } from '@/lib/config/outreach';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { BulkEmailDialog } from './bulk-email-dialog';
 import { ImportDialog } from './import-dialog';
 import { readFailure, formatDay, todayLocal } from './form-utils';
@@ -201,38 +202,39 @@ export function OutreachClient() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
-        <h1 className="font-display text-display-sm">Outreach</h1>
-        <div className="flex flex-wrap items-center gap-2">
-          <ImportDialog onImported={load} />
-          <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5">
-            <Download className="h-3.5 w-3.5" /> Export CSV
-          </Button>
-          <Link href="/admin/outreach/new">
-            <Button className="gap-2" size="sm"><Plus className="h-4 w-4" /> Add Contact</Button>
-          </Link>
+      <PageHeader
+        title="Outreach"
+        actions={
+          <>
+            <ImportDialog onImported={load} />
+            <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5">
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </Button>
+            <Link href="/admin/outreach/new">
+              <Button className="gap-2" size="sm"><Plus className="h-4 w-4" /> New contact</Button>
+            </Link>
+          </>
+        }
+      >
+        {/* Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[
+            { label: 'Total', value: stats.total, color: 'text-foreground', onClick: () => setParams({ status: null, due: null }) },
+            { label: 'New', value: stats.new, color: 'text-blue-600', onClick: () => setParams({ status: 'new', due: null }) },
+            { label: 'Follow up', value: stats.followUp, color: 'text-orange-600', onClick: () => setParams({ status: 'follow_up', due: null }) },
+            { label: 'Interested', value: stats.interested, color: 'text-green-600', onClick: () => setParams({ status: 'interested', due: null }) },
+            { label: 'Converted', value: stats.converted, color: 'text-emerald-600', onClick: () => setParams({ status: 'converted', due: null }) },
+            { label: 'Due or overdue', value: stats.due, color: stats.due > 0 ? 'text-red-600' : 'text-foreground', onClick: () => setParams({ due: '1', status: null }) },
+          ].map((s) => (
+            <Card key={s.label} className="cursor-pointer hover:border-champagne/60 transition-colors" onClick={s.onClick}>
+              <CardContent className="pt-4 pb-3 text-center">
+                <p className={`text-2xl font-semibold ${s.color}`}>{s.value}</p>
+                <p className="text-xs text-muted-foreground">{s.label}</p>
+              </CardContent>
+            </Card>
+          ))}
         </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-        {[
-          { label: 'Total', value: stats.total, color: 'text-foreground', onClick: () => setParams({ status: null, due: null }) },
-          { label: 'New', value: stats.new, color: 'text-blue-600', onClick: () => setParams({ status: 'new', due: null }) },
-          { label: 'Follow Up', value: stats.followUp, color: 'text-orange-600', onClick: () => setParams({ status: 'follow_up', due: null }) },
-          { label: 'Interested', value: stats.interested, color: 'text-green-600', onClick: () => setParams({ status: 'interested', due: null }) },
-          { label: 'Converted', value: stats.converted, color: 'text-emerald-600', onClick: () => setParams({ status: 'converted', due: null }) },
-          { label: 'Due / Overdue', value: stats.due, color: stats.due > 0 ? 'text-red-600' : 'text-foreground', onClick: () => setParams({ due: '1', status: null }) },
-        ].map((s) => (
-          <Card key={s.label} className="cursor-pointer hover:border-champagne/60 transition-colors" onClick={s.onClick}>
-            <CardContent className="pt-4 pb-3 text-center">
-              <p className={`text-2xl font-semibold ${s.color}`}>{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      </PageHeader>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -250,7 +252,7 @@ export function OutreachClient() {
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="all">All statuses</SelectItem>
             {statusOptions.map((s) => (
               <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
             ))}
@@ -261,7 +263,7 @@ export function OutreachClient() {
             <SelectValue placeholder="All Categories" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
+            <SelectItem value="all">All categories</SelectItem>
             {categoryOptions.map((c) => (
               <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
             ))}
@@ -348,7 +350,7 @@ export function OutreachClient() {
               <TableHead>Status</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead>Follow Up</TableHead>
+              <TableHead>Follow-up</TableHead>
               <TableHead className="w-[60px]"></TableHead>
             </TableRow>
           </TableHeader>

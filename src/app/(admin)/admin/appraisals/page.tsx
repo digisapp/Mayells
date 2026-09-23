@@ -6,7 +6,9 @@ import { estateVisits } from '@/db/schema';
 import { desc, eq, sql } from 'drizzle-orm';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { Plus, ClipboardCheck, ChevronLeft, ChevronRight, Users2 } from 'lucide-react';
 import { formatCurrency } from '@/types';
 import { cn } from '@/lib/utils';
@@ -84,20 +86,15 @@ export default async function AppraisalsPage({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm">Estate Appraisals</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            In-person appraisals with AI-powered analysis
-          </p>
-        </div>
-        <Link href="/admin/appraisals/new">
-          <Button className="bg-champagne text-charcoal hover:bg-champagne/90">
-            <Plus className="h-4 w-4 mr-2" />
-            New Appraisal
+      <PageHeader
+        title="Appraisals"
+        description={`${total} ${status ? 'matching' : 'total'} · in-person estate appraisals with AI-powered analysis`}
+        actions={
+          <Button asChild className="bg-champagne text-charcoal hover:bg-champagne/90 gap-2">
+            <Link href="/admin/appraisals/new"><Plus className="h-4 w-4" /> New appraisal</Link>
           </Button>
-        </Link>
-      </div>
+        }
+      />
 
       {/* Status filter */}
       <div className="flex flex-wrap gap-2 mb-6">
@@ -139,92 +136,80 @@ export default async function AppraisalsPage({
               {status ? 'Try another status filter.' : 'Create your first estate appraisal to get started.'}
             </p>
             {!status && (
-              <Link href="/admin/appraisals/new">
-                <Button className="bg-champagne text-charcoal hover:bg-champagne/90">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Appraisal
-                </Button>
-              </Link>
+              <Button asChild className="bg-champagne text-charcoal hover:bg-champagne/90 gap-2">
+                <Link href="/admin/appraisals/new"><Plus className="h-4 w-4" /> New appraisal</Link>
+              </Button>
             )}
           </CardContent>
         </Card>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {from}–{to} of {total} appraisal{total !== 1 ? 's' : ''}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Client</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Location</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Date</th>
-                    <th className="text-center px-6 py-3 font-medium text-muted-foreground">Items</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Estimate</th>
-                    <th className="text-left px-6 py-3 font-medium text-muted-foreground">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visits.map((visit) => (
-                    <tr key={visit.id} className="border-b last:border-0 hover:bg-accent/5">
-                      <td className="px-6 py-4">
+        <div className="border rounded-lg overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Client</TableHead>
+                <TableHead>Location</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="text-center">Items</TableHead>
+                <TableHead>Estimate</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visits.map((visit) => (
+                <TableRow key={visit.id}>
+                  <TableCell>
+                    <Link
+                      href={`/admin/appraisals/${visit.id}`}
+                      className="font-medium hover:text-champagne transition-colors"
+                    >
+                      {visit.clientName}
+                    </Link>
+                    {visit.clientEmail && (
+                      <p className="text-xs text-muted-foreground">{visit.clientEmail}</p>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {[visit.clientCity, visit.clientState].filter(Boolean).join(', ') || '—'}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {formatVisitDate(visit.visitDate)}
+                  </TableCell>
+                  <TableCell className="text-center tabular-nums">
+                    {visit.processedCount}/{visit.itemCount}
+                  </TableCell>
+                  <TableCell>
+                    {visit.totalEstimateHigh > 0
+                      ? `${formatCurrency(visit.totalEstimateLow)} – ${formatCurrency(visit.totalEstimateHigh)}`
+                      : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className={statusColors[visit.status] || ''}>
+                        {visit.status}
+                      </Badge>
+                      {visit.prospectId && (
                         <Link
-                          href={`/admin/appraisals/${visit.id}`}
-                          className="font-medium hover:text-champagne transition-colors"
+                          href={`/admin/prospects/${visit.prospectId}`}
+                          className="text-muted-foreground hover:text-foreground"
+                          title="Open the prospect created from this visit"
                         >
-                          {visit.clientName}
+                          <Users2 className="h-3.5 w-3.5" />
                         </Link>
-                        {visit.clientEmail && (
-                          <p className="text-xs text-muted-foreground">{visit.clientEmail}</p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
-                        {[visit.clientCity, visit.clientState].filter(Boolean).join(', ') || '—'}
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
-                        {formatVisitDate(visit.visitDate)}
-                      </td>
-                      <td className="px-6 py-4 text-center tabular-nums">
-                        {visit.processedCount}/{visit.itemCount}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {visit.totalEstimateHigh > 0
-                          ? `${formatCurrency(visit.totalEstimateLow)} – ${formatCurrency(visit.totalEstimateHigh)}`
-                          : '—'}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={statusColors[visit.status] || ''}>
-                            {visit.status}
-                          </Badge>
-                          {visit.prospectId && (
-                            <Link
-                              href={`/admin/prospects/${visit.prospectId}`}
-                              className="text-muted-foreground hover:text-foreground"
-                              title="Open the prospect created from this visit"
-                            >
-                              <Users2 className="h-3.5 w-3.5" />
-                            </Link>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       {totalPages > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-2 mt-4 text-sm">
           <p className="text-muted-foreground">
-            Page {page} of {totalPages}
+            {from}–{to} of {total} · page {page} of {totalPages}
           </p>
           <div className="flex gap-2">
             {page > 1 ? (

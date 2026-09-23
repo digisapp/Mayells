@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Radio } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 
 function formatWhen(d: Date | null) {
   if (!d) return null;
@@ -31,12 +32,10 @@ export default async function AdminLivePage() {
 
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="font-display text-display-sm">Live Auctions</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Auctioneer console for live-format sales. Timed sales open and settle automatically and are managed under Auctions.
-        </p>
-      </div>
+      <PageHeader
+        title="Live console"
+        description="Where live sales are run: open the console for a live-format auction to take it live and hammer lots. Timed sales open and settle automatically and are managed under Auctions."
+      />
 
       {liveAuctions.length === 0 ? (
         <Card>

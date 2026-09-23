@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { categoryOptions } from '@/lib/config/outreach';
@@ -68,20 +68,15 @@ export default function NewOutreachContactPage() {
 
   return (
     <div className="max-w-3xl">
-      <Link href="/admin/outreach" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="h-4 w-4" />
-        Back to Outreach
-      </Link>
-
-      <h1 className="font-display text-display-sm mb-8">Add Contact</h1>
+      <PageHeader title="New contact" />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {errors._form?.[0] && <p className="text-sm text-destructive">{errors._form[0]}</p>}
         <Card>
-          <CardHeader><CardTitle>Company Information</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Company</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Company Name *</Label>
+              <Label>Company name *</Label>
               <Input value={form.companyName} onChange={(e) => update('companyName', e.target.value)} required placeholder="e.g., Smith & Associates Law Firm" aria-invalid={!!errors.companyName} />
               <FieldError errors={errors} name="companyName" />
             </div>
@@ -113,10 +108,10 @@ export default function NewOutreachContactPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Contact Person</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Contact person</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Contact Name</Label>
+              <Label>Contact name</Label>
               <Input value={form.contactName} onChange={(e) => update('contactName', e.target.value)} placeholder="Full name" />
               <FieldError errors={errors} name="contactName" />
             </div>

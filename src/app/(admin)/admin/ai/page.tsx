@@ -6,16 +6,15 @@ import CatalogTab from './catalog-tab';
 import AppraiseTab from './appraise-tab';
 import SearchTab from './search-tab';
 import AuthenticateTab from './authenticate-tab';
+import { PageHeader } from '@/components/admin/PageHeader';
 
 export default function AdminAIPage() {
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="font-display text-display-sm">AI Tools</h1>
-        <p className="text-muted-foreground mt-1">
-          AI-powered cataloging, appraisal, search, and authentication. The chat concierge is configured under Settings → AI.
-        </p>
-      </div>
+      <PageHeader
+        title="AI assist"
+        description="Quick one-off checks: catalogue, appraise, search and authenticate. Results aren't saved — use the AI actions on a prospect or lot to keep them."
+      />
 
       <Tabs defaultValue="catalog">
         <TabsList className="mb-6">

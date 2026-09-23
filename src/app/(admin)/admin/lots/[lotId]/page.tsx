@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { ArrowLeft, Trash2, ExternalLink, Loader2 } from 'lucide-react';
+import { Trash2, ExternalLink, Loader2 } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { toast } from 'sonner';
 import { formatCurrency, formatCurrencyWithCents } from '@/types';
 
@@ -343,12 +344,10 @@ export default function EditLotPage() {
   if (loadError) {
     return (
       <div className="max-w-3xl">
-        <Link href="/admin/lots" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Lots
+        <PageHeader title="Lot not found" description="This lot does not exist or could not be loaded." />
+        <Link href="/admin/lots" className="text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground">
+          All lots
         </Link>
-        <h1 className="font-display text-display-sm mb-4">Lot Not Found</h1>
-        <p className="text-muted-foreground">This lot does not exist or could not be loaded.</p>
       </div>
     );
   }
@@ -430,24 +429,19 @@ export default function EditLotPage() {
 
   return (
     <div className="max-w-3xl">
-      <Link href="/admin/lots" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="h-4 w-4" />
-        Back to Lots
-      </Link>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-display text-display-sm">Edit Lot</h1>
-          <Badge className={statusColors[status]}>{status.replace('_', ' ')}</Badge>
-        </div>
-        {lot.publicPath && (
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <a href={lot.publicPath} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="h-3.5 w-3.5" /> View on site
-            </a>
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        title={lot.title || 'Untitled lot'}
+        badges={<Badge className={statusColors[status]}>{status.replace('_', ' ')}</Badge>}
+        actions={
+          lot.publicPath && (
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href={lot.publicPath} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" /> View on site
+              </a>
+            </Button>
+          )
+        }
+      />
 
       <Card className="mb-6">
         <CardHeader><CardTitle className="text-sm">Sale state</CardTitle></CardHeader>
@@ -606,7 +600,7 @@ export default function EditLotPage() {
         lotId={lotId}
         onSubmit={handleSubmit}
         isLoading={isLoading}
-        submitLabel="Save Lot"
+        submitLabel="Save lot"
         cancelHref="/admin/lots"
       />
 

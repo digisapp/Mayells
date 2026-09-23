@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
+import { PageHeader } from '@/components/admin/PageHeader';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Search,
   Plus,
@@ -179,11 +181,14 @@ function ProspectsPageInner() {
   const siteParam = searchParams.get('site') ?? '';
   const siteFilter = siteParam === 'any' || siteParam in MICROSITE_LABELS ? siteParam : '';
 
+  // ?q= deep link (⌘K command menu) seeds the search box; kept in sync below.
+  const urlQuery = searchParams.get('q')?.trim() ?? '';
+
   const [rows, setRows] = useState<ProspectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [search, setSearch] = useState(urlQuery);
+  const [debouncedSearch, setDebouncedSearch] = useState(urlQuery);
   const [offset, setOffset] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [stats, setStats] = useState<ProspectStats | null>(null);
@@ -234,6 +239,26 @@ function ProspectsPageInner() {
     setOffset(0);
     fetchProspects(0, debouncedSearch, statusFilter, siteFilter);
   }, [debouncedSearch, statusFilter, siteFilter, fetchProspects]);
+
+  // URL → box: a new ?q= arrived (command menu search while on this page).
+  useEffect(() => {
+    if (urlQuery !== debouncedSearch) {
+      setSearch(urlQuery);
+      setDebouncedSearch(urlQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlQuery]);
+
+  // Box → URL: keep ?q= shareable alongside ?status= and ?site=.
+  useEffect(() => {
+    if (debouncedSearch === urlQuery) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (debouncedSearch) params.set('q', debouncedSearch);
+    else params.delete('q');
+    const qs = params.toString();
+    router.replace(`/admin/prospects${qs ? `?${qs}` : ''}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch]);
 
   function setSiteFilter(next: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -403,65 +428,61 @@ function ProspectsPageInner() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm">Seller Prospects</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage consignment leads and upload links
-          </p>
+      <PageHeader
+        title="Prospects"
+        description="Consignment leads and their upload links"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setShowTermsDialog(true)}>
+              <QrCode className="h-4 w-4 mr-2" />
+              Terms link / QR
+            </Button>
+            <Button onClick={() => setShowDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add prospect
+            </Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="py-4 px-5 flex items-center gap-3">
+              <Users2 className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-2xl font-semibold">{total}</p>
+                <p className="text-xs text-muted-foreground">Total prospects</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4 px-5 flex items-center gap-3">
+              <Clock className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-2xl font-semibold">{newLeads}</p>
+                <p className="text-xs text-muted-foreground">New leads</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4 px-5 flex items-center gap-3">
+              <Package className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-2xl font-semibold">{awaitingReview}</p>
+                <p className="text-xs text-muted-foreground">Awaiting review</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="py-4 px-5 flex items-center gap-3">
+              <FileCheck className="h-5 w-5 text-muted-foreground shrink-0" />
+              <div>
+                <p className="text-2xl font-semibold">{signed}</p>
+                <p className="text-xs text-muted-foreground">Agreements signed</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setShowTermsDialog(true)}>
-            <QrCode className="h-4 w-4 mr-2" />
-            Terms Link / QR
-          </Button>
-          <Button onClick={() => setShowDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Prospect
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="py-4 px-5 flex items-center gap-3">
-            <Users2 className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-semibold">{total}</p>
-              <p className="text-xs text-muted-foreground">Total Prospects</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 px-5 flex items-center gap-3">
-            <Clock className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-semibold">{newLeads}</p>
-              <p className="text-xs text-muted-foreground">New Leads</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 px-5 flex items-center gap-3">
-            <Package className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-semibold">{awaitingReview}</p>
-              <p className="text-xs text-muted-foreground">Awaiting Review</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-4 px-5 flex items-center gap-3">
-            <FileCheck className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div>
-              <p className="text-2xl font-semibold">{signed}</p>
-              <p className="text-xs text-muted-foreground">Agreements Signed</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      </PageHeader>
 
       {/* Search */}
       <div className="relative mb-4">
@@ -557,20 +578,20 @@ function ProspectsPageInner() {
         </Card>
       ) : (
         <div className="border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-muted/50 text-left">
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Contact</th>
-                <th className="px-4 py-3 font-medium">Source</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium text-right">Items</th>
-                <th className="px-4 py-3 font-medium text-right">Est. Value</th>
-                <th className="px-4 py-3 font-medium">Created</th>
-                <th className="px-4 py-3 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Contact</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Items</TableHead>
+                <TableHead className="text-right">Est. Value</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map(({ prospect: p, uploadItemCount }) => {
                 const estLow = p.totalEstimateLow || 0;
                 const estHigh = p.totalEstimateHigh || 0;
@@ -578,18 +599,18 @@ function ProspectsPageInner() {
                 const href = `/admin/prospects/${p.id}`;
 
                 return (
-                  <tr
+                  <TableRow
                     key={p.id}
                     onClick={() => router.push(href)}
-                    className="border-t hover:bg-accent/5 transition-colors cursor-pointer"
+                    className="cursor-pointer"
                   >
-                    <td className="px-4 py-3">
+                    <TableCell>
                       <div className="font-medium">{p.fullName}</div>
                       {p.company && (
                         <div className="text-xs text-muted-foreground">{p.company}</div>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell>
                       {p.email && (
                         <div className="text-xs text-muted-foreground truncate max-w-[180px]">
                           {p.email}
@@ -601,8 +622,8 @@ function ProspectsPageInner() {
                       {!p.email && !p.phone && (
                         <span className="text-xs text-muted-foreground">--</span>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell>
                       <span className="text-xs text-muted-foreground">
                         {sourceLabels[p.source] || p.source}
                       </span>
@@ -611,8 +632,8 @@ function ProspectsPageInner() {
                           {micrositeCity(p.site)} site
                         </div>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell>
                       <span
                         className={cn(
                           'px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap',
@@ -621,19 +642,19 @@ function ProspectsPageInner() {
                       >
                         {p.status.replace(/_/g, ' ')}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
                       {uploadItemCount > 0 ? uploadItemCount : p.estimatedItemCount ?? '--'}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums whitespace-nowrap">
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums whitespace-nowrap">
                       {hasEstimate
                         ? `$${(estLow / 100).toLocaleString()} - $${(estHigh / 100).toLocaleString()}`
                         : '--'}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-muted-foreground text-xs">
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground text-xs">
                       {new Date(p.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <TableCell>
                       {/* Action buttons must not trigger the row navigation. */}
                       <div
                         className="flex items-center justify-end gap-1"
@@ -679,12 +700,12 @@ function ProspectsPageInner() {
                           )}
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -747,7 +768,7 @@ function ProspectsPageInner() {
         >
           <div className="bg-background rounded-lg w-full max-w-sm border shadow-lg">
             <div className="flex items-center justify-between p-6 pb-4 border-b">
-              <h2 className="text-lg font-semibold">Consignment Terms</h2>
+              <h2 className="text-lg font-semibold">Consignment terms</h2>
               <Button
                 variant="ghost"
                 size="icon"
@@ -802,7 +823,7 @@ function ProspectsPageInner() {
         >
           <div className="bg-background rounded-lg w-full max-w-md border shadow-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 pb-4 border-b">
-              <h2 className="text-lg font-semibold">Add Prospect</h2>
+              <h2 className="text-lg font-semibold">Add prospect</h2>
               <Button
                 variant="ghost"
                 size="icon"
@@ -894,7 +915,7 @@ function ProspectsPageInner() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="itemSummary">Item Summary</Label>
+                <Label htmlFor="itemSummary">Item summary</Label>
                 <textarea
                   id="itemSummary"
                   rows={2}

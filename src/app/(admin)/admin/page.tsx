@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { requireAdminPage } from '@/lib/auth/require-admin';
 import { getAdminBadges, type AdminBadges } from '@/lib/admin/badges';
 import { db } from '@/db';
-import { auctions, bids, lots, users, invoices, sellerProspects, estateVisits } from '@/db/schema';
+import { auctions, bids, lots, users, invoices, sellerProspects } from '@/db/schema';
 import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { formatCurrency, formatCurrencyWithCents } from '@/types';
 import { getMicrositeRows } from '@/lib/admin/microsite-stats';
@@ -90,7 +91,7 @@ function buildQueue(b: AdminBadges): QueueItem[] {
 export default async function AdminDashboardPage() {
   await requireAdminPage();
 
-  const [badges, salesInMotion, latestBids, recentlyPaid, latestProspects, latestAppraisals, microsites] = await Promise.all([
+  const [badges, salesInMotion, latestBids, recentlyPaid, latestProspects, microsites] = await Promise.all([
     getAdminBadges(),
     db
       .select({
@@ -150,17 +151,6 @@ export default async function AdminDashboardPage() {
       .from(sellerProspects)
       .orderBy(desc(sellerProspects.createdAt))
       .limit(5),
-    db
-      .select({
-        id: estateVisits.id,
-        clientName: estateVisits.clientName,
-        itemCount: estateVisits.itemCount,
-        status: estateVisits.status,
-        createdAt: estateVisits.createdAt,
-      })
-      .from(estateVisits)
-      .orderBy(desc(estateVisits.createdAt))
-      .limit(5),
     getMicrositeRows(30),
   ]);
 
@@ -170,23 +160,21 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-display-sm">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">{dateOnly.format(new Date())} · what needs you today</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild size="sm" className="gap-2">
-            <Link href="/admin/lots/new"><Plus className="h-4 w-4" />New lot</Link>
-          </Button>
-          <Button asChild size="sm" variant="outline" className="gap-2">
-            <Link href="/admin/auctions/new"><Plus className="h-4 w-4" />New auction</Link>
-          </Button>
-          <Button asChild size="sm" variant="outline" className="gap-2">
-            <Link href="/admin/appraisals/new"><Plus className="h-4 w-4" />New appraisal</Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-0"
+        title="Dashboard"
+        description={`${dateOnly.format(new Date())} · what needs you today`}
+        actions={
+          <>
+            <Button asChild size="sm" className="gap-2">
+              <Link href="/admin/lots/new"><Plus className="h-4 w-4" />New lot</Link>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="gap-2">
+              <Link href="/admin/auctions/new"><Plus className="h-4 w-4" />New auction</Link>
+            </Button>
+          </>
+        }
+      />
 
       {/* Action queue */}
       <section>
@@ -294,39 +282,7 @@ export default async function AdminDashboardPage() {
         </Card>
       </div>
 
-      {/* City microsites */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>City microsites · last 30 days</CardTitle>
-          <Link href="/admin/microsites" className="text-xs text-muted-foreground hover:text-foreground">Details</Link>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {microsites.map((m) => (
-              <Link key={m.slug} href="/admin/microsites" className="rounded-md border p-3 hover:border-champagne/60 transition-colors">
-                <p className="text-sm font-medium truncate">{m.city}</p>
-                <p className="text-[11px] text-muted-foreground truncate">{m.domain}</p>
-                <div className="mt-2 grid grid-cols-3 gap-1 text-center">
-                  <div>
-                    <p className="text-base font-semibold tabular-nums">{m.visitors}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Visitors</p>
-                  </div>
-                  <div>
-                    <p className="text-base font-semibold tabular-nums">{m.calls}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Calls</p>
-                  </div>
-                  <div>
-                    <p className="text-base font-semibold tabular-nums">{m.leads}</p>
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Leads</p>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>New prospects</CardTitle>
@@ -346,30 +302,6 @@ export default async function AdminDashboardPage() {
                       </p>
                     </div>
                     <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0">{p.site ? `${micrositeCity(p.site)} site` : p.source.replace('_', ' ')}</span>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Recent appraisals</CardTitle>
-            <Link href="/admin/appraisals" className="text-xs text-muted-foreground hover:text-foreground">View all</Link>
-          </CardHeader>
-          <CardContent>
-            {latestAppraisals.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No appraisals yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {latestAppraisals.map((a) => (
-                  <Link key={a.id} href={`/admin/appraisals/${a.id}`} className="flex items-center justify-between gap-3 group">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium group-hover:underline truncate">{a.clientName}</p>
-                      <p className="text-xs text-muted-foreground">{a.itemCount} items · {relative(a.createdAt)}</p>
-                    </div>
-                    <Badge variant={a.status === 'review' ? 'default' : 'secondary'} className="capitalize shrink-0">{a.status}</Badge>
                   </Link>
                 ))}
               </div>
@@ -401,6 +333,39 @@ export default async function AdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* City microsites */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Microsites · last 30 days</CardTitle>
+          <Link href="/admin/microsites" className="text-xs text-muted-foreground hover:text-foreground">Details</Link>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {microsites.map((m) => (
+              <Link key={m.slug} href="/admin/microsites" className="rounded-md border p-3 hover:border-champagne/60 transition-colors">
+                <p className="text-sm font-medium truncate">{m.city}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{m.domain}</p>
+                <div className="mt-2 grid grid-cols-3 gap-1 text-center">
+                  <div>
+                    <p className="text-base font-semibold tabular-nums">{m.visitors}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Visitors</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold tabular-nums">{m.calls}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Calls</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold tabular-nums">{m.leads}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Leads</p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
     </div>
   );
 }

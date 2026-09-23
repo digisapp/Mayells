@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Trash2, Plus, X, Download, ExternalLink, Radio, Ban, Play, Square, Search, Receipt } from 'lucide-react';
+import { Trash2, Plus, X, Download, ExternalLink, Radio, Ban, Play, Square, Search, Receipt } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/types';
 
@@ -153,12 +154,10 @@ function EditAuctionContent() {
   if (loadError) {
     return (
       <div className="max-w-4xl">
-        <Link href="/admin/auctions" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Auctions
+        <PageHeader title="Auction not found" description="This auction does not exist or could not be loaded." />
+        <Link href="/admin/auctions" className="text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground">
+          All auctions
         </Link>
-        <h1 className="font-display text-display-sm mb-4">Auction Not Found</h1>
-        <p className="text-muted-foreground">This auction does not exist or could not be loaded.</p>
       </div>
     );
   }
@@ -363,59 +362,56 @@ function EditAuctionContent() {
 
   return (
     <div className="max-w-5xl">
-      <Link href="/admin/auctions" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="h-4 w-4" />
-        Back to Auctions
-      </Link>
-
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-display-sm truncate">{auction.title as string}</h1>
+      <PageHeader
+        title={auction.title as string}
+        badges={
+          <>
             <Badge className={statusColors[status]}>{status}</Badge>
             {(auction.saleNumber as string) && (
               <span className="text-sm text-muted-foreground">Sale {auction.saleNumber as string}</span>
             )}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">{statusHelp[status]}</p>
+          </>
+        }
+        description={statusHelp[status]}
+        actions={
+          <>
+            {slug && !['draft', 'cancelled'].includes(status) && (
+              <Button asChild variant="outline" size="sm" className="gap-1.5">
+                <a href={`/auctions/${slug}`} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" /> View on site</a>
+              </Button>
+            )}
+            {type === 'live' && !finished && (
+              <Button asChild variant="outline" size="sm" className="gap-1.5">
+                <Link href={`/admin/live/${auctionId}`}><Radio className="h-3.5 w-3.5" /> Live console</Link>
+              </Button>
+            )}
+            {['closing', 'closed', 'completed'].includes(status) && (
+              <Button asChild size="sm" className="gap-1.5">
+                <Link href={`/admin/auctions/${auctionId}/settlement`}><Receipt className="h-3.5 w-3.5" /> Settlement</Link>
+              </Button>
+            )}
+          </>
+        }
+      >
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <Card><CardContent className="pt-5">
+            <p className="text-xs text-muted-foreground">Lots</p>
+            <p className="text-xl font-semibold">{assignedLots.length}</p>
+          </CardContent></Card>
+          <Card><CardContent className="pt-5">
+            <p className="text-xs text-muted-foreground">Total estimate</p>
+            <p className="text-xl font-semibold">{summary.low ? `${formatCurrency(summary.low)} – ${formatCurrency(summary.high)}` : '—'}</p>
+          </CardContent></Card>
+          <Card><CardContent className="pt-5">
+            <p className="text-xs text-muted-foreground">Bids · lots with bids</p>
+            <p className="text-xl font-semibold">{summary.bids} · {summary.withBids}/{assignedLots.length || 0}</p>
+          </CardContent></Card>
+          <Card><CardContent className="pt-5">
+            <p className="text-xs text-muted-foreground">{status === 'completed' ? 'Sold' : 'Current bids total'}</p>
+            <p className="text-xl font-semibold">{status === 'completed' ? `${summary.sold}/${assignedLots.length}` : summary.current ? formatCurrency(summary.current) : '—'}</p>
+          </CardContent></Card>
         </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          {slug && !['draft', 'cancelled'].includes(status) && (
-            <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <a href={`/auctions/${slug}`} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" /> View on site</a>
-            </Button>
-          )}
-          {type === 'live' && !finished && (
-            <Button asChild variant="outline" size="sm" className="gap-1.5">
-              <Link href={`/admin/live/${auctionId}`}><Radio className="h-3.5 w-3.5" /> Live console</Link>
-            </Button>
-          )}
-          {['closing', 'closed', 'completed'].includes(status) && (
-            <Button asChild size="sm" className="gap-1.5">
-              <Link href={`/admin/auctions/${auctionId}/settlement`}><Receipt className="h-3.5 w-3.5" /> Settlement</Link>
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <Card><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Lots</p>
-          <p className="text-xl font-semibold">{assignedLots.length}</p>
-        </CardContent></Card>
-        <Card><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Total estimate</p>
-          <p className="text-xl font-semibold">{summary.low ? `${formatCurrency(summary.low)} – ${formatCurrency(summary.high)}` : '—'}</p>
-        </CardContent></Card>
-        <Card><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">Bids · lots with bids</p>
-          <p className="text-xl font-semibold">{summary.bids} · {summary.withBids}/{assignedLots.length || 0}</p>
-        </CardContent></Card>
-        <Card><CardContent className="pt-5">
-          <p className="text-xs text-muted-foreground">{status === 'completed' ? 'Sold' : 'Current bids total'}</p>
-          <p className="text-xl font-semibold">{status === 'completed' ? `${summary.sold}/${assignedLots.length}` : summary.current ? formatCurrency(summary.current) : '—'}</p>
-        </CardContent></Card>
-      </div>
+      </PageHeader>
 
       {!finished && (
         <Card className="mb-6">

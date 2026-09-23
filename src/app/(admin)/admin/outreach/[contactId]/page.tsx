@@ -10,7 +10,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { ArrowLeft, Trash2, PhoneCall, Mail, ExternalLink } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
+import { Trash2, PhoneCall, Mail, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import type { OutreachContact } from '@/db/schema/outreach';
@@ -231,10 +232,6 @@ export default function EditOutreachContactPage() {
   if (loadState !== 'loaded' || !contact || !form) {
     return (
       <div className="max-w-3xl">
-        <Link href="/admin/outreach" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Outreach
-        </Link>
         {loadState === 'not_found' ? (
           <p className="text-muted-foreground">Contact not found. It may have been deleted.</p>
         ) : loadState === 'error' ? (
@@ -250,18 +247,14 @@ export default function EditOutreachContactPage() {
 
   return (
     <div className="max-w-3xl">
-      <Link href="/admin/outreach" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="h-4 w-4" />
-        Back to Outreach
-      </Link>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
-        <h1 className="font-display text-display-sm">Edit Contact</h1>
-        <Badge className={statusColors[status]}>{statusLabels[status] ?? status}</Badge>
-      </div>
+      <PageHeader
+        title={contact.companyName}
+        badges={<Badge className={statusColors[status]}>{statusLabels[status] ?? status}</Badge>}
+        description={[contact.contactName, contact.title].filter(Boolean).join(' · ') || undefined}
+      />
 
       <Card className="mb-6">
-        <CardHeader><CardTitle className="text-sm">Update Status</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Status</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {statusOptions.map((s) => (
@@ -293,10 +286,10 @@ export default function EditOutreachContactPage() {
       <form onSubmit={handleSubmit} className="space-y-6">
         {errors._form?.[0] && <p className="text-sm text-destructive">{errors._form[0]}</p>}
         <Card>
-          <CardHeader><CardTitle>Company Information</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Company</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Company Name *</Label>
+              <Label>Company name *</Label>
               <Input value={form.companyName} onChange={(e) => update('companyName', e.target.value)} required aria-invalid={!!errors.companyName} />
               <FieldError errors={errors} name="companyName" />
             </div>
@@ -328,9 +321,9 @@ export default function EditOutreachContactPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Contact Person</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Contact person</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Contact Name</Label><Input value={form.contactName} onChange={(e) => update('contactName', e.target.value)} /><FieldError errors={errors} name="contactName" /></div>
+            <div className="space-y-2"><Label>Contact name</Label><Input value={form.contactName} onChange={(e) => update('contactName', e.target.value)} /><FieldError errors={errors} name="contactName" /></div>
             <div className="space-y-2"><Label>Title</Label><Input value={form.title} onChange={(e) => update('title', e.target.value)} /><FieldError errors={errors} name="title" /></div>
             <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} aria-invalid={!!errors.email} /><FieldError errors={errors} name="email" /></div>
             <div className="space-y-2"><Label>Phone</Label><Input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} /><FieldError errors={errors} name="phone" /></div>
@@ -358,7 +351,7 @@ export default function EditOutreachContactPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Last Contacted</Label>
+                <Label>Last contacted</Label>
                 <Input type="date" value={form.lastContactedAt} onChange={(e) => update('lastContactedAt', e.target.value)} />
                 <FieldError errors={errors} name="lastContactedAt" />
               </div>

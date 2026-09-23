@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Plus, Pencil, ChevronLeft, ChevronRight, ExternalLink, Radio, Gavel } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 
 const PAGE_SIZE = 50;
 
@@ -111,17 +112,20 @@ export default async function AdminAuctionsPage({
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm">Auctions</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {total} {filtered ? 'matching' : 'total'}
-          </p>
-        </div>
-        <Button asChild className="gap-2">
-          <Link href="/admin/auctions/new"><Plus className="h-4 w-4" /> New Auction</Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Auctions"
+        description={`${total} ${filtered ? 'matching' : 'total'}`}
+        actions={
+          <>
+            <Button asChild variant="outline" className="gap-2">
+              <Link href="/admin/live"><Radio className="h-4 w-4" /> Live console</Link>
+            </Button>
+            <Button asChild className="gap-2">
+              <Link href="/admin/auctions/new"><Plus className="h-4 w-4" /> New auction</Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {Object.entries(STATUS_FILTERS).map(([key, f]) => (

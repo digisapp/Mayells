@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ArrowLeft, Gavel } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { requireAdminPage } from '@/lib/auth/require-admin';
 import { loadAuctionSettlement, type SettlementLotRow } from '@/lib/invoicing/settlement-report';
 import { Badge } from '@/components/ui/badge';
@@ -73,42 +73,34 @@ export default async function AuctionSettlementPage({
 
   return (
     <div className="max-w-6xl">
-      <Link
-        href={`/admin/auctions/${auction.id}`}
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to {auction.title}
-      </Link>
-
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">Settlement</p>
-          <h1 className="font-display text-display-sm flex items-center gap-3">
-            <Gavel className="h-6 w-6" />
+      <PageHeader
+        title="Settlement"
+        badges={
+          lots.open > 0 && (
+            <Badge className="bg-purple-100 text-purple-800">{lots.open} lot{lots.open === 1 ? '' : 's'} still settling</Badge>
+          )
+        }
+        description={
+          <>
             {auction.title}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {auction.saleNumber ? `Sale ${auction.saleNumber} · ` : ''}
+            {auction.saleNumber ? ` · Sale ${auction.saleNumber}` : ''}
+            {' · '}
             <span className="capitalize">{auction.status}</span>
             {auction.actualEndedAt || auction.biddingEndsAt
               ? ` · ended ${fmtDate(auction.actualEndedAt ?? auction.biddingEndsAt)}`
               : ''}
             {` · ${auction.buyerPremiumPercent}% buyer's premium`}
-          </p>
+          </>
+        }
+      >
+        {/* Headline numbers */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Tile label="Lots" value={`${lots.sold} / ${lots.offered} sold`} sub={`${lots.unsold} unsold · ${lots.withdrawn} withdrawn · ${sellThrough} sell-through`} />
+          <Tile label="Hammer total" value={formatCurrencyWithCents(totals.hammer)} sub={`vs est. ${formatCurrency(totals.soldEstimateLow)} – ${formatCurrency(totals.soldEstimateHigh)} (sold lots)`} />
+          <Tile label="Buyer's premium" value={formatCurrencyWithCents(totals.premium)} sub={`${formatCurrencyWithCents(totals.invoiced)} invoiced (live invoices)`} />
+          <Tile label="House commission" value={formatCurrencyWithCents(totals.commission)} sub={`house revenue ${formatCurrencyWithCents(totals.commission + totals.premium)}`} />
         </div>
-        {lots.open > 0 && (
-          <Badge className="bg-purple-100 text-purple-800">{lots.open} lot{lots.open === 1 ? '' : 's'} still settling</Badge>
-        )}
-      </div>
-
-      {/* Headline numbers */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <Tile label="Lots" value={`${lots.sold} / ${lots.offered} sold`} sub={`${lots.unsold} unsold · ${lots.withdrawn} withdrawn · ${sellThrough} sell-through`} />
-        <Tile label="Hammer total" value={formatCurrencyWithCents(totals.hammer)} sub={`vs est. ${formatCurrency(totals.soldEstimateLow)} – ${formatCurrency(totals.soldEstimateHigh)} (sold lots)`} />
-        <Tile label="Buyer's premium" value={formatCurrencyWithCents(totals.premium)} sub={`${formatCurrencyWithCents(totals.invoiced)} invoiced (live invoices)`} />
-        <Tile label="House commission" value={formatCurrencyWithCents(totals.commission)} sub={`house revenue ${formatCurrencyWithCents(totals.commission + totals.premium)}`} />
-      </div>
+      </PageHeader>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
         <MiniTable

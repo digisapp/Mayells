@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Camera, ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PhotoUploadPanel } from '../_components/PhotoUploadPanel';
+import { PageHeader } from '@/components/admin/PageHeader';
 
 export default function NewAppraisalPage() {
   const router = useRouter();
@@ -52,14 +53,14 @@ export default function NewAppraisalPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="font-display text-display-sm mb-6">New Estate Appraisal</h1>
+    <div className="max-w-2xl">
+      <PageHeader title="New appraisal" />
 
       {step === 'info' && (
         <form onSubmit={handleCreateVisit} className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Client Information</CardTitle>
+              <CardTitle>Client</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -124,7 +125,7 @@ export default function NewAppraisalPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="visitDate">Visit Date</Label>
+                <Label htmlFor="visitDate">Visit date</Label>
                 <Input
                   id="visitDate"
                   type="date"

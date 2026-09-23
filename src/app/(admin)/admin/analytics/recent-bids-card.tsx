@@ -15,7 +15,7 @@ export interface RecentBid {
 export function RecentBidsCard({ bids }: { bids: RecentBid[] }) {
   return (
     <Card>
-      <CardHeader><CardTitle>Recent Bids</CardTitle></CardHeader>
+      <CardHeader><CardTitle>Recent bids</CardTitle></CardHeader>
       <CardContent>
         <div className="space-y-3">
           {bids.map((bid) => (

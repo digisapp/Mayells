@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Plus, Pencil, ChevronLeft, ChevronRight, Search, Sparkles } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { formatCurrency } from '@/types';
 
 const PAGE_SIZE = 50;
@@ -185,20 +186,27 @@ export default async function AdminLotsPage({
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm">Lots</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+      <PageHeader
+        title="Lots"
+        description={
+          <>
             {total} {hasFilters ? 'matching' : 'total'}
             {hasFilters && (
               <> · <Link href="/admin/lots" className="underline underline-offset-2 hover:text-foreground">Clear filters</Link></>
             )}
-          </p>
-        </div>
-        <Button asChild className="gap-2">
-          <Link href="/admin/lots/new"><Plus className="h-4 w-4" /> New Lot</Link>
-        </Button>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <Button asChild variant="outline" className="gap-2">
+              <Link href="/admin/ai"><Sparkles className="h-4 w-4" /> AI assist</Link>
+            </Button>
+            <Button asChild className="gap-2">
+              <Link href="/admin/lots/new"><Plus className="h-4 w-4" /> New lot</Link>
+            </Button>
+          </>
+        }
+      />
 
       {/* Status chips */}
       <div className="flex flex-wrap gap-2 mb-4">

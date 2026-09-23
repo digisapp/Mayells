@@ -16,7 +16,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Truck, Package, ExternalLink, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Package, ExternalLink, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { SHIPMENT_TRANSITIONS, type ShipmentStatus } from '@/lib/shipping/transitions';
 import { formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
@@ -331,14 +332,7 @@ export default function AdminShipmentsPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm flex items-center gap-3">
-            <Truck className="h-6 w-6" />
-            Shipments
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">{pagination.total} matching</p>
-        </div>
+      <PageHeader title="Shipments" description={`${pagination.total} matching`}>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <Stat dot="bg-yellow-500" n={stats.pending} label="pending" />
           <Stat dot="bg-red-500" n={stats.needsAddress} label="need address" />
@@ -347,7 +341,7 @@ export default function AdminShipmentsPage() {
           <Stat dot="bg-orange-500" n={stats.exception} label="exception / returned" />
           <Stat dot="bg-gray-400" n={stats.cancelled} label="cancelled" />
         </div>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {STATUS_FILTERS.map((s) => (

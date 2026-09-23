@@ -11,7 +11,6 @@ export default function AdminLoading() {
         <div className="flex gap-2">
           <Skeleton className="h-8 w-24" />
           <Skeleton className="h-8 w-28" />
-          <Skeleton className="h-8 w-32" />
         </div>
       </div>
       <div>

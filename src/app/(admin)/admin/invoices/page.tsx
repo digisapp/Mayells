@@ -16,8 +16,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
+import { PageHeader } from '@/components/admin/PageHeader';
 import {
-  FileText, Copy, Loader2, ChevronLeft, ChevronRight, MoreHorizontal, Search, Download,
+  Copy, Loader2, ChevronLeft, ChevronRight, MoreHorizontal, Search, Download,
   ArrowUpDown, Mail, CheckCircle, XCircle, RotateCcw, CalendarPlus, Link2,
 } from 'lucide-react';
 import { formatCurrencyWithCents } from '@/types';
@@ -314,21 +315,14 @@ export default function AdminInvoicesPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm flex items-center gap-3">
-            <FileText className="h-6 w-6" />
-            Invoices
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">{pagination.total} matching</p>
-        </div>
+      <PageHeader title="Invoices" description={`${pagination.total} matching`}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <StatTile label="Outstanding" value={formatCurrencyWithCents(stats.outstandingAmount)} sub={`${stats.outstandingCount} open`} dot="bg-yellow-500" />
           <StatTile label="Overdue" value={formatCurrencyWithCents(stats.overdueAmount)} sub={`${stats.overdueCount} overdue`} dot="bg-red-500" />
           <StatTile label="Collected this month" value={formatCurrencyWithCents(stats.collectedThisMonth)} sub={`${stats.collectedThisMonthCount} paid`} dot="bg-green-500" />
           <StatTile label="Collected all time" value={formatCurrencyWithCents(stats.collectedAllTime)} sub={`${stats.collectedAllTimeCount} paid · ${stats.refundedCount} refunded`} dot="bg-emerald-700" />
         </div>
-      </div>
+      </PageHeader>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">

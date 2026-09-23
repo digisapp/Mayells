@@ -67,7 +67,7 @@ export default function AuthenticateTab() {
             <div className="space-y-2"><Label>Attributed to</Label><Input placeholder="Artist/maker" value={artist} onChange={(e) => setArtist(e.target.value)} /></div>
           </div>
           <Button onClick={handleAuth} disabled={loading} className="bg-champagne text-charcoal hover:bg-champagne/90">
-            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Analyzing...</> : <><Shield className="h-4 w-4 mr-2" />Run Authentication</>}
+            {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Analyzing...</> : <><Shield className="h-4 w-4 mr-2" />Run authentication</>}
           </Button>
         </CardContent>
       </Card>
@@ -75,7 +75,7 @@ export default function AuthenticateTab() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Authentication Report</CardTitle>
+              <CardTitle>Authentication report</CardTitle>
               <Badge className={verdictColor[(result.verdict as string)] ?? ''}>{(result.verdict as string).replace(/_/g, ' ')}</Badge>
             </div>
           </CardHeader>

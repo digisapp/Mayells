@@ -3,9 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LotForm } from '@/components/admin/LotForm';
-import { ArrowLeft } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 import { toast } from 'sonner';
-import Link from 'next/link';
 
 export default function NewLotPage() {
   const router = useRouter();
@@ -57,17 +56,12 @@ export default function NewLotPage() {
 
   return (
     <div className="max-w-3xl">
-      <Link href="/admin/lots" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="h-4 w-4" />
-        Back to Lots
-      </Link>
-
-      <h1 className="font-display text-display-sm mb-8">Create New Lot</h1>
+      <PageHeader title="New lot" />
 
       <LotForm
         onSubmit={handleSubmit}
         isLoading={isLoading}
-        submitLabel="Create Lot"
+        submitLabel="Create lot"
         cancelHref="/admin/lots"
       />
     </div>

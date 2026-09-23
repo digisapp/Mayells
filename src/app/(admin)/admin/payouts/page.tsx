@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { Banknote, CircleDollarSign, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
+import { CircleDollarSign, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
 import { formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
 
@@ -300,21 +301,17 @@ export default function AdminPayoutsPage() {
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="font-display text-display-sm flex items-center gap-3">
-            <Banknote className="h-6 w-6" />
-            Payouts
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">Consignor settlements — created when the buyer&apos;s invoice is paid</p>
-        </div>
+      <PageHeader
+        title="Payouts"
+        description={<>Consignor settlements — created when the buyer&apos;s invoice is paid</>}
+      >
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
           <StatTile label="Owed to consignors" value={formatCurrencyWithCents(stats.pendingNet)} sub={`${stats.pending} pending`} dot="bg-yellow-500" />
           <StatTile label="Paid out" value={formatCurrencyWithCents(stats.paidNet)} sub={`${stats.paid} paid${stats.reversed ? ` · ${stats.reversed} reversed` : ''}`} dot="bg-green-500" />
           <StatTile label="House commission (month)" value={formatCurrencyWithCents(stats.commissionEarnedThisMonth)} sub="on settled sales" dot="bg-champagne" />
           <StatTile label="House commission (all time)" value={formatCurrencyWithCents(stats.commissionEarned)} sub="pending + paid payouts" dot="bg-emerald-700" />
         </div>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {STATUS_FILTERS.map((s) => (

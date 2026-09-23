@@ -11,7 +11,8 @@ import { LiveChat } from '@/components/live/LiveChat';
 import { useRealtimeTopic } from '@/hooks/useRealtimeTopic';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
-import { ArrowLeft, Play, Square, ChevronLeft, ChevronRight, Gavel, Clock } from 'lucide-react';
+import { Play, Square, ChevronLeft, ChevronRight, Gavel, Clock } from 'lucide-react';
+import { PageHeader } from '@/components/admin/PageHeader';
 
 interface AuctionLot {
   lotNumber: number;
@@ -199,12 +200,10 @@ export default function AuctioneerDashboardPage() {
   if (notFound) {
     return (
       <div>
-        <Link href="/admin/live" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Live Auctions
+        <PageHeader title="Auction not found" description="This auction does not exist or could not be loaded." />
+        <Link href="/admin/live" className="text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground">
+          Live console
         </Link>
-        <h1 className="font-display text-display-sm mb-4">Auction Not Found</h1>
-        <p className="text-muted-foreground">This auction does not exist or could not be loaded.</p>
       </div>
     );
   }
@@ -221,11 +220,6 @@ export default function AuctioneerDashboardPage() {
     <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-120px)]">
       {/* Main panel */}
       <div className="flex-1 flex flex-col min-w-0">
-        <Link href={`/admin/auctions/${auctionId}`} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-3">
-          <ArrowLeft className="h-4 w-4" />
-          Back to auction
-        </Link>
-
         {/* Auction header */}
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div className="min-w-0">
@@ -246,7 +240,9 @@ export default function AuctioneerDashboardPage() {
           <div className="flex flex-wrap gap-2">
             {finished ? (
               <Button asChild variant="outline" size="sm">
-                <Link href={`/admin/auctions/${auctionId}`}>View settlement</Link>
+                <Link href={auction?.status === 'cancelled' ? `/admin/auctions/${auctionId}` : `/admin/auctions/${auctionId}/settlement`}>
+                  {auction?.status === 'cancelled' ? 'View auction' : 'View settlement'}
+                </Link>
               </Button>
             ) : !isLiveFormat ? (
               <p className="text-sm text-muted-foreground max-w-xs text-right">
@@ -254,11 +250,11 @@ export default function AuctioneerDashboardPage() {
               </p>
             ) : !isLive ? (
               <Button onClick={() => setPending('start')} className="bg-red-600 hover:bg-red-700 text-white gap-2" disabled={lots.length === 0}>
-                <Play className="h-4 w-4" /> Go Live
+                <Play className="h-4 w-4" /> Go live
               </Button>
             ) : (
               <Button onClick={() => setPending('end')} variant="destructive" className="gap-2">
-                <Square className="h-4 w-4" /> End Live
+                <Square className="h-4 w-4" /> End live
               </Button>
             )}
           </div>
@@ -324,7 +320,7 @@ export default function AuctioneerDashboardPage() {
                     </div>
                     <div className="mt-4 flex flex-wrap items-end gap-6">
                       <div>
-                        <p className="text-xs text-muted-foreground">Current Bid</p>
+                        <p className="text-xs text-muted-foreground">Current bid</p>
                         <p className="font-display text-3xl text-champagne">
                           {lot.currentBidAmount > 0 ? formatCurrency(lot.currentBidAmount) : '—'}
                         </p>

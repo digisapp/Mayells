@@ -16,7 +16,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  ArrowLeft,
   Loader2,
   Send,
   Copy,
@@ -37,6 +36,7 @@ import { ItemEditSheet } from '@/components/admin/ItemEditSheet';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { BUSINESS } from '@/lib/config';
 import { PhotoUploadPanel } from '../_components/PhotoUploadPanel';
+import { PageHeader } from '@/components/admin/PageHeader';
 
 interface EstateVisit {
   id: string;
@@ -357,7 +357,14 @@ export default function AppraisalDetailPage() {
   }
 
   if (!visit) {
-    return <p className="text-center py-20 text-muted-foreground">Appraisal not found</p>;
+    return (
+      <div>
+        <PageHeader title="Appraisal not found" description="This appraisal does not exist or could not be loaded." />
+        <Link href="/admin/appraisals" className="text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground">
+          All appraisals
+        </Link>
+      </div>
+    );
   }
 
   const progress = visit.itemCount > 0 ? (visit.processedCount / visit.itemCount) * 100 : 0;
@@ -370,17 +377,10 @@ export default function AppraisalDetailPage() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex flex-wrap items-start gap-3 mb-6">
-        <Link href="/admin/appraisals">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back
-          </Button>
-        </Link>
-        <div className="flex-1 min-w-[200px]">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="font-display text-display-sm">{visit.clientName}</h1>
+      <PageHeader
+        title={visit.clientName}
+        badges={
+          <>
             <Badge variant="outline" className={statusColors[visit.status] || ''}>
               {visit.status}
             </Badge>
@@ -393,48 +393,52 @@ export default function AppraisalDetailPage() {
             >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
-          </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          </>
+        }
+        description={
+          <>
             {[visit.clientCity, visit.clientState].filter(Boolean).join(', ')}
             {visit.visitDate && ` · ${formatVisitDate(visit.visitDate)}`}
             {!visit.clientEmail && (
               <span className="text-orange-600"> · No client email on file</span>
             )}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={handleCopyLink}>
-            <Copy className="h-4 w-4 mr-1" />
-            Copy Link
-          </Button>
-          {canConvert && (
-            visit.prospectId ? (
-              <Link href={`/admin/prospects/${visit.prospectId}`}>
-                <Button variant="outline" size="sm">
-                  <Users2 className="h-4 w-4 mr-1" />
-                  View Prospect
-                </Button>
-              </Link>
-            ) : (
-              <Button variant="outline" size="sm" onClick={handleConvert} disabled={converting || items.length === 0}>
-                {converting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Users2 className="h-4 w-4 mr-1" />}
-                Convert to Prospect
-              </Button>
-            )
-          )}
-          {canSend && (
-            <Button
-              size="sm"
-              className="bg-champagne text-charcoal hover:bg-champagne/90"
-              onClick={requestSendReport}
-              disabled={sending || !visit.clientEmail}
-            >
-              {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
-              {visit.status === 'sent' ? 'Resend Report' : 'Send to Client'}
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" size="sm" onClick={handleCopyLink}>
+              <Copy className="h-4 w-4 mr-1" />
+              Copy link
             </Button>
-          )}
-        </div>
-      </div>
+            {canConvert && (
+              visit.prospectId ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/admin/prospects/${visit.prospectId}`}>
+                    <Users2 className="h-4 w-4 mr-1" />
+                    View prospect
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" size="sm" onClick={handleConvert} disabled={converting || items.length === 0}>
+                  {converting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Users2 className="h-4 w-4 mr-1" />}
+                  Convert to prospect
+                </Button>
+              )
+            )}
+            {canSend && (
+              <Button
+                size="sm"
+                className="bg-champagne text-charcoal hover:bg-champagne/90"
+                onClick={requestSendReport}
+                disabled={sending || !visit.clientEmail}
+              >
+                {sending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                {visit.status === 'sent' ? 'Resend report' : 'Send to client'}
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {/* Progress Bar (during processing) */}
       {isBusy && (
@@ -509,7 +513,7 @@ export default function AppraisalDetailPage() {
         <Card>
           <CardContent className="py-4 text-center">
             <p className="text-2xl font-display">{visit.itemCount}</p>
-            <p className="text-xs text-muted-foreground">Total Items</p>
+            <p className="text-xs text-muted-foreground">Total items</p>
           </CardContent>
         </Card>
         <Card>
@@ -525,7 +529,7 @@ export default function AppraisalDetailPage() {
                 ? `${formatCurrency(visit.totalEstimateLow)} – ${formatCurrency(visit.totalEstimateHigh)}`
                 : '—'}
             </p>
-            <p className="text-xs text-muted-foreground">Total Estimate</p>
+            <p className="text-xs text-muted-foreground">Total estimate</p>
           </CardContent>
         </Card>
       </div>
@@ -638,7 +642,7 @@ export default function AppraisalDetailPage() {
       <Dialog open={editingClient} onOpenChange={(open) => !open && setEditingClient(false)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Client Info</DialogTitle>
+            <DialogTitle>Edit client info</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">

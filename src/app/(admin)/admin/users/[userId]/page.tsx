@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
+import { PageHeader } from '@/components/admin/PageHeader';
 import {
-  ArrowLeft, Mail, Package, Image as ImageIcon, DollarSign, CheckCircle, Gavel, Receipt,
+  Mail, Package, Image as ImageIcon, DollarSign, CheckCircle, Gavel, Receipt,
   Wallet, StickyNote, EyeOff, ShieldCheck, BadgeCheck, Hash, Loader2, ExternalLink, Users2,
 } from 'lucide-react';
 import { formatCurrency } from '@/types';
@@ -165,7 +166,6 @@ function EmptyRow({ children }: { children: React.ReactNode }) {
 
 export default function AdminUserDetailPage() {
   const { userId } = useParams<{ userId: string }>();
-  const router = useRouter();
   const [data, setData] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -304,11 +304,8 @@ export default function AdminUserDetailPage() {
   if (!data) {
     return (
       <div>
-        <Button variant="ghost" size="sm" onClick={() => router.push('/admin/users')}>
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Users
-        </Button>
         <p className="text-muted-foreground mt-8 text-center">
-          {notFound ? 'User not found.' : loadError || 'Failed to load user. Please try again.'}
+          {notFound ? 'Client not found.' : loadError || 'Failed to load user. Please try again.'}
         </p>
         {!notFound && (
           <div className="text-center mt-4">
@@ -325,48 +322,45 @@ export default function AdminUserDetailPage() {
 
   return (
     <div>
-      <Button variant="ghost" size="sm" className="mb-4" onClick={() => router.push('/admin/users')}>
-        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Users
-      </Button>
-
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-        <div className="min-w-0">
-          <h1 className="font-display text-display-sm flex flex-wrap items-center gap-2">
-            {name}
-            {user.isShadow && (
-              <Badge variant="outline" className="gap-1 font-sans text-xs font-normal"><EyeOff className="h-3 w-3" />no email on file</Badge>
+      <PageHeader
+        title={name}
+        badges={user.isShadow && (
+          <Badge variant="outline" className="gap-1 text-xs font-normal"><EyeOff className="h-3 w-3" />no email on file</Badge>
+        )}
+        description={
+          <>
+            {!user.isShadow && <p className="break-all">{user.email}</p>}
+            {user.companyName && <p>{user.companyName}</p>}
+            {user.phone && <p>{user.phone}</p>}
+            {(user.shippingAddress || user.shippingCity) && (
+              <p>
+                {[user.shippingAddress, user.shippingCity, user.shippingState, user.shippingZip].filter(Boolean).join(', ')}
+              </p>
             )}
-          </h1>
-          {!user.isShadow && <p className="text-muted-foreground break-all">{user.email}</p>}
-          {user.companyName && <p className="text-sm text-muted-foreground">{user.companyName}</p>}
-          {user.phone && <p className="text-sm text-muted-foreground">{user.phone}</p>}
-          {(user.shippingAddress || user.shippingCity) && (
-            <p className="text-sm text-muted-foreground">
-              {[user.shippingAddress, user.shippingCity, user.shippingState, user.shippingZip].filter(Boolean).join(', ')}
+            <p className="text-xs mt-1">
+              Member since {fmtDate(user.createdAt)}
+              {data.prospect && (
+                <>
+                  {' · '}
+                  <Link href={`/admin/prospects/${data.prospect.id}`} className="inline-flex items-center gap-1 text-champagne hover:underline">
+                    <Users2 className="h-3 w-3" /> Seller prospect ({humanize(data.prospect.status)})
+                  </Link>
+                </>
+              )}
             </p>
-          )}
-          <p className="text-xs text-muted-foreground mt-1">
-            Member since {fmtDate(user.createdAt)}
-            {data.prospect && (
-              <>
-                {' · '}
-                <Link href={`/admin/prospects/${data.prospect.id}`} className="inline-flex items-center gap-1 text-champagne hover:underline">
-                  <Users2 className="h-3 w-3" /> Seller prospect ({humanize(data.prospect.status)})
-                </Link>
-              </>
-            )}
-          </p>
-        </div>
-        <Button
-          onClick={() => setShowEmail(!showEmail)}
-          disabled={user.isShadow}
-          title={user.isShadow ? 'This account has no email on file' : undefined}
-          className="bg-champagne text-charcoal hover:bg-champagne/90"
-        >
-          <Mail className="h-4 w-4 mr-2" /> Email Summary
-        </Button>
-      </div>
+          </>
+        }
+        actions={
+          <Button
+            onClick={() => setShowEmail(!showEmail)}
+            disabled={user.isShadow}
+            title={user.isShadow ? 'This account has no email on file' : undefined}
+            className="bg-champagne text-charcoal hover:bg-champagne/90"
+          >
+            <Mail className="h-4 w-4 mr-2" /> Email summary
+          </Button>
+        }
+      />
 
       {/* Email Panel */}
       {showEmail && (
