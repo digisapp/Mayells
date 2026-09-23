@@ -5,6 +5,8 @@ import {
   bidSchema,
   lotSchema,
   auctionSchema,
+  auctionUpdateSchema,
+  lotUpdateSchema,
 } from '../schemas';
 
 describe('signupSchema', () => {
@@ -216,5 +218,25 @@ describe('auctionSchema', () => {
       buyerPremiumPercent: 60,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('partial update schemas', () => {
+  // zod 4 applies .default() inside .partial(); a status-only PATCH must not
+  // rewrite the buyer's premium, anti-snipe settings or sale type.
+  it('auction status-only update carries no other fields', () => {
+    const parsed = auctionUpdateSchema.parse({ status: 'open' });
+    expect(parsed).toEqual({ status: 'open' });
+  });
+
+  it('lot status-only update carries no other fields', () => {
+    const parsed = lotUpdateSchema.parse({ status: 'for_sale' });
+    expect(parsed).toEqual({ status: 'for_sale' });
+  });
+
+  it('create schemas still apply defaults', () => {
+    const auction = auctionSchema.parse({ title: 'T', slug: 't', type: 'timed' });
+    expect(auction.buyerPremiumPercent).toBe(25);
+    expect(auction.antiSnipeEnabled).toBe(true);
   });
 });

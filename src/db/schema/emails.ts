@@ -70,7 +70,15 @@ export const emails = pgTable('emails', {
   // Email delete re-parents replies by in_reply_to_id — without this it's a
   // table scan per delete.
   index('emails_in_reply_to_idx').on(table.inReplyToId),
-  index('emails_archived_at_idx').on(table.archivedAt),
+  // Resend delivery webhooks update by resend_id; inbound threading matches on it.
+  index('emails_resend_id_idx').on(table.resendId).where(sql`resend_id is not null`),
+  // Inbox lists: live mail newest-first. Almost every row has archived_at null,
+  // so a plain index on archived_at never helped them.
+  index('emails_live_created_idx').on(table.createdAt.desc()).where(sql`archived_at is null`),
+  index('emails_archived_at_idx').on(table.archivedAt).where(sql`archived_at is not null`),
+  // Inbound matching compares lower-cased addresses.
+  index('emails_from_email_lower_idx').on(sql`lower(${table.fromEmail})`),
+  index('emails_to_email_lower_idx').on(sql`lower(${table.toEmail})`),
 ]).enableRLS();
 
 export type Email = typeof emails.$inferSelect;

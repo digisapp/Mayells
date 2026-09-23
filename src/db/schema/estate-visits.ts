@@ -1,5 +1,6 @@
 import { pgTable, uuid, text, integer, timestamp, pgEnum, index, numeric } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
+import { sellerProspects } from './seller-prospects';
 
 export const estateVisitStatusEnum = pgEnum('estate_visit_status', [
   'draft',
@@ -36,13 +37,16 @@ export const estateVisits = pgTable('estate_visits', {
   sentAt: timestamp('sent_at'),
   // Set when the visit is converted into a seller prospect (admin
   // "Convert to prospect"); links the appraisal to the consignment funnel.
-  prospectId: uuid('prospect_id'),
+  // Set null when the prospect is deleted, so a visit never points at a
+  // missing row (convert would otherwise answer "already converted" forever).
+  prospectId: uuid('prospect_id').references(() => sellerProspects.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').default(sql`now()`),
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [
   index('estate_visits_status_idx').on(table.status),
   index('estate_visits_token_idx').on(table.reportToken),
   index('estate_visits_created_idx').on(table.createdAt),
+  index('estate_visits_prospect_idx').on(table.prospectId),
 ]).enableRLS();
 
 export const estateVisitItems = pgTable('estate_visit_items', {

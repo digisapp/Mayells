@@ -76,6 +76,7 @@ export const invoices = pgTable('invoices', {
   // so a later re-sale must be able to invoice it again.
   uniqueIndex('invoices_lot_unique_idx').on(table.lotId).where(sql`status not in ('cancelled', 'refunded')`),
   index('invoices_due_date_idx').on(table.dueDate),
+  index('invoices_stripe_pi_idx').on(table.stripePaymentIntentId).where(sql`stripe_payment_intent_id is not null`),
 ]).enableRLS();
 
 export const invoicesRelations = relations(invoices, ({ one }) => ({

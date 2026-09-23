@@ -240,7 +240,12 @@ function appraisalRequestTool({ ip, site, messages }: { ip: string; site?: Micro
             })
           : 0;
 
-        const uploadLinkEmailed = input.sendUploadLink && input.email
+        // Site-wide daily ceiling on top of the per-IP limit: the chat is
+        // public, and each send is Mayells-branded mail to a typed address.
+        const emailAllowed = input.sendUploadLink && input.email
+          ? (await rateLimit('ai:chat:upload-email:global', { maxRequests: 100, windowSeconds: 86400, failClosed: true })).success
+          : false;
+        const uploadLinkEmailed = emailAllowed && input.email
           ? await emailUploadLink({ id: prospectId, fullName: input.name, email: input.email })
           : false;
 

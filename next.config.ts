@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
     // Serve AVIF where the browser supports it (typically 20-30% smaller than
     // WebP for catalog photography), falling back to WebP.
     formats: ['image/avif', 'image/webp'],
+    // Without this, optimized images go out as max-age=0 and every repeat
+    // view revalidates each one. A week is safe: URLs carry the deployment
+    // id, and catalog photos are re-encoded before they are ever shown.
+    minimumCacheTTL: 604800,
     remotePatterns: [
       {
         protocol: 'https',
@@ -47,6 +51,11 @@ const nextConfig: NextConfig = {
 
     return [
       {
+        // Static catalog and site imagery in public/images.
+        source: '/images/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
+      },
+      {
         source: '/(.*)',
         headers: [
           { key: 'Content-Security-Policy', value: csp },
@@ -66,14 +75,8 @@ export default withSentryConfig(nextConfig, {
   // Suppress Sentry build output unless SENTRY_DSN is set
   silent: !process.env.SENTRY_DSN,
 
-  // Automatically tree-shake Sentry logger statements in production
-  disableLogger: true,
-
   // Upload source maps only when building for production with a DSN
   sourcemaps: {
     disable: !process.env.SENTRY_DSN,
   },
-
-  // Automatically instrument Next.js data fetching methods
-  autoInstrumentServerFunctions: true,
 });

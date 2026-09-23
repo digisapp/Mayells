@@ -56,6 +56,14 @@ export async function POST(
       }, { status: 422 });
     }
 
+    if (!log.payload) {
+      // Successful deliveries lose their payload after 30 days (retention cron).
+      return NextResponse.json(
+        { error: 'This event\'s payload has been cleared by the 30-day retention sweep, so it cannot be replayed.' },
+        { status: 410 },
+      );
+    }
+
     const startMs = Date.now();
     let status: 'success' | 'failed' | 'ignored' = 'ignored';
     let errorMessage: string | undefined;

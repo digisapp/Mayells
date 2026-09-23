@@ -51,7 +51,9 @@ const lotBaseSchema = z.object({
   estimateHigh: z.number().int().positive().nullable().optional(),
   reservePrice: z.number().int().positive().nullable().optional(),
   startingBid: z.number().int().positive().nullable().optional(),
-  saleType: z.enum(['auction', 'gallery', 'private']).default('auction'),
+  // No .default() on base fields: zod 4 applies defaults inside .partial(), so
+  // a status-only PATCH would silently rewrite them. Defaults live on create.
+  saleType: z.enum(['auction', 'gallery', 'private']).optional(),
   buyNowPrice: z.number().int().positive().nullable().optional(),
   isFeatured: z.boolean().optional(),
   isHighlight: z.boolean().optional(),
@@ -61,7 +63,9 @@ const estimatesOrdered = (d: { estimateLow?: number | null; estimateHigh?: numbe
   d.estimateLow == null || d.estimateHigh == null || d.estimateHigh >= d.estimateLow;
 const estimatesOrderedMsg = { message: 'High estimate must be at least the low estimate', path: ['estimateHigh'] };
 
-export const lotSchema = lotBaseSchema.refine(estimatesOrdered, estimatesOrderedMsg);
+export const lotSchema = lotBaseSchema
+  .extend({ saleType: z.enum(['auction', 'gallery', 'private']).default('auction') })
+  .refine(estimatesOrdered, estimatesOrderedMsg);
 
 const auctionBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -73,10 +77,11 @@ const auctionBaseSchema = z.object({
   previewStartsAt: z.string().datetime().optional(),
   biddingStartsAt: z.string().datetime().optional(),
   biddingEndsAt: z.string().datetime().optional(),
-  buyerPremiumPercent: z.number().int().min(0).max(50).default(25),
-  antiSnipeEnabled: z.boolean().default(true),
-  antiSnipeMinutes: z.number().int().min(1).max(10).default(2),
-  antiSnipeWindowMinutes: z.number().int().min(1).max(15).default(5),
+  // Defaults are applied by auctionSchema (create) only; see saleType above.
+  buyerPremiumPercent: z.number().int().min(0).max(50).optional(),
+  antiSnipeEnabled: z.boolean().optional(),
+  antiSnipeMinutes: z.number().int().min(1).max(10).optional(),
+  antiSnipeWindowMinutes: z.number().int().min(1).max(15).optional(),
   // Seconds between consecutive lot closes in a staggered timed sale (0 = all
   // lots close together).
   lotClosingIntervalSeconds: z.number().int().min(0).max(3600).optional(),
@@ -93,6 +98,12 @@ const previewBeforeBidding = (d: { previewStartsAt?: string; biddingStartsAt?: s
 const previewBeforeBiddingMsg = { message: 'Preview must open before bidding opens', path: ['previewStartsAt'] };
 
 export const auctionSchema = auctionBaseSchema
+  .extend({
+    buyerPremiumPercent: z.number().int().min(0).max(50).default(25),
+    antiSnipeEnabled: z.boolean().default(true),
+    antiSnipeMinutes: z.number().int().min(1).max(10).default(2),
+    antiSnipeWindowMinutes: z.number().int().min(1).max(15).default(5),
+  })
   .refine(endsAfterStart, endsAfterStartMsg)
   .refine(previewBeforeBidding, previewBeforeBiddingMsg);
 

@@ -13,10 +13,20 @@
  */
 export function isAdminProfile(
   profile:
-    | { role?: string | null; isAdmin?: boolean | null; is_admin?: boolean | null }
+    | {
+        role?: string | null;
+        isAdmin?: boolean | null;
+        is_admin?: boolean | null;
+        accountStatus?: string | null;
+        account_status?: string | null;
+      }
     | null
     | undefined,
 ): boolean {
   if (!profile) return false;
+  // A suspended or banned admin loses admin access. Absent status (an older
+  // cached middleware profile) counts as active; the DB default is 'active'.
+  const status = profile.accountStatus ?? profile.account_status;
+  if (status && status !== 'active') return false;
   return profile.role === 'admin' || profile.isAdmin === true || profile.is_admin === true;
 }

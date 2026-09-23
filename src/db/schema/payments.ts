@@ -30,6 +30,8 @@ export const payments = pgTable('payments', {
   index('payments_invoice_idx').on(table.invoiceId),
   index('payments_buyer_idx').on(table.buyerId),
   index('payments_status_idx').on(table.status),
+  // Every Stripe webhook looks its payment up by intent id.
+  index('payments_stripe_pi_idx').on(table.stripePaymentIntentId).where(sql`stripe_payment_intent_id is not null`),
 ]).enableRLS();
 
 export const paymentsRelations = relations(payments, ({ one }) => ({

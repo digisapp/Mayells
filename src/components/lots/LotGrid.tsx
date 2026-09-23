@@ -27,8 +27,9 @@ export function LotGrid({ lots, auctionSlug, columns = 4, isGallery }: LotGridPr
 
   return (
     <div className={`grid ${gridCols[columns]} gap-3 sm:gap-6`}>
-      {lots.map((lot) => (
-        <LotCard key={lot.id} lot={lot} auctionSlug={auctionSlug} isGallery={isGallery} />
+      {lots.map((lot, index) => (
+        // The first row is above the fold on every breakpoint (2 to 4 up).
+        <LotCard key={lot.id} lot={lot} auctionSlug={auctionSlug} isGallery={isGallery} eager={index < 4} />
       ))}
     </div>
   );

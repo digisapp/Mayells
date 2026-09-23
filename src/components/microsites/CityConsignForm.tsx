@@ -289,9 +289,11 @@ export function CityConsignForm({ site, city, placement }: Props) {
 
       {/* Honeypot — off-screen, out of the tab order, hidden from readers. */}
       <div aria-hidden="true" className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden">
-        <label htmlFor={`${uid}-hp`}>Company</label>
+        {/* Named so no browser autofill maps it: "Company" was filled by
+            address autofill, and those real leads were silently dropped. */}
+        <label htmlFor={`${uid}-hp`}>Leave this empty</label>
         <input
-          id={`${uid}-hp`} name="company" type="text" tabIndex={-1} autoComplete="off"
+          id={`${uid}-hp`} name="hp_confirm" type="text" tabIndex={-1} autoComplete="new-password"
           value={hp} onChange={(e) => setHp(e.target.value)}
         />
       </div>

@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * Subscribe to a private Supabase Realtime broadcast topic and invoke
@@ -17,7 +16,6 @@ export function useRealtimeTopic(
   onEvent: (event: string, payload: unknown) => void,
 ): { connected: boolean } {
   const [subscribed, setSubscribed] = useState(false);
-  const supabase = useMemo(() => createClient(), []);
   // Latest handler without resubscribing on every render (assigned in an
   // effect — the React compiler forbids touching refs during render).
   const handlerRef = useRef(onEvent);
@@ -29,27 +27,39 @@ export function useRealtimeTopic(
     if (!topic) return;
 
     let disposed = false;
-    // Private channels need the caller's JWT (or the anon key) so Realtime can
-    // evaluate the receive-only RLS policy.
-    supabase.realtime.setAuth();
-    const channel = supabase.channel(topic, { config: { private: true } });
+    let cleanup: (() => void) | null = null;
 
-    channel
-      .on('broadcast', { event: '*' }, (message) => {
-        if (disposed) return;
-        handlerRef.current(message.event, message.payload);
-      })
-      .subscribe((status) => {
-        if (disposed) return;
-        setSubscribed(status === 'SUBSCRIBED');
-      });
+    // Loaded on demand: the Supabase browser client (auth + realtime) is
+    // ~60KB compressed, and most lot pages never subscribe to anything.
+    import('@/lib/supabase/client').then(({ createClient }) => {
+      if (disposed) return;
+      const supabase = createClient();
+      // Private channels need the caller's JWT (or the anon key) so Realtime
+      // can evaluate the receive-only RLS policy.
+      supabase.realtime.setAuth();
+      const channel = supabase.channel(topic, { config: { private: true } });
+
+      channel
+        .on('broadcast', { event: '*' }, (message) => {
+          if (disposed) return;
+          handlerRef.current(message.event, message.payload);
+        })
+        .subscribe((status) => {
+          if (disposed) return;
+          setSubscribed(status === 'SUBSCRIBED');
+        });
+
+      cleanup = () => {
+        supabase.removeChannel(channel);
+      };
+    });
 
     return () => {
       disposed = true;
       setSubscribed(false);
-      supabase.removeChannel(channel);
+      cleanup?.();
     };
-  }, [topic, supabase]);
+  }, [topic]);
 
   return { connected: !!topic && subscribed };
 }

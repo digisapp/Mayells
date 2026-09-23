@@ -7,6 +7,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
+import { publicLotPath } from '@/lib/lots/urls';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -153,11 +154,7 @@ export default async function HomePage() {
   // down to the How It Works section. With no featured imagery the form stays
   // in the hero as before.
   const heroLot = featuredLots.find((lot) => lot.primaryImageUrl) ?? null;
-  const heroLotHref = heroLot
-    ? heroLot.saleType === 'gallery' || heroLot.saleType === 'private'
-      ? `/gallery/${heroLot.slug || heroLot.id}`
-      : `/lots/${heroLot.slug || heroLot.id}`
-    : null;
+  const heroLotHref = heroLot ? publicLotPath(heroLot) : null;
 
   return (
     <div>

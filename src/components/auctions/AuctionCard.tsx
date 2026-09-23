@@ -6,6 +6,8 @@ import type { Auction } from '@/db/schema/auctions';
 
 interface AuctionCardProps {
   auction: Auction;
+  /** Above the fold: load the cover straight away, since it is likely the LCP. */
+  eager?: boolean;
 }
 
 function formatDate(date: Date | null) {
@@ -31,7 +33,7 @@ function getStatusLabel(status: string) {
   }
 }
 
-export function AuctionCard({ auction }: AuctionCardProps) {
+export function AuctionCard({ auction, eager }: AuctionCardProps) {
   const status = getStatusLabel(auction.status);
 
   return (
@@ -46,6 +48,8 @@ export function AuctionCard({ auction }: AuctionCardProps) {
               fill
               className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              loading={eager ? 'eager' : undefined}
+              fetchPriority={eager ? 'high' : undefined}
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-charcoal via-charcoal/95 to-graphite flex items-center justify-center">

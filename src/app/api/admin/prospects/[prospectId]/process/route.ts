@@ -101,10 +101,17 @@ export async function POST(
       }
 
       try {
-        await db
+        // Claim atomically: skip the item if another run, or Create lots,
+        // changed its status since the list above was read.
+        const [claimed] = await db
           .update(uploadItems)
           .set({ status: 'processing', updatedAt: new Date() })
-          .where(eq(uploadItems.id, item.id));
+          .where(and(eq(uploadItems.id, item.id), eq(uploadItems.status, item.status)))
+          .returning({ id: uploadItems.id });
+        if (!claimed) {
+          skipped++;
+          continue;
+        }
 
         const catalog = await catalogLotFromImages(item.images);
 
@@ -151,7 +158,7 @@ export async function POST(
             reviewedAt: null,
             updatedAt: new Date(),
           })
-          .where(eq(uploadItems.id, item.id));
+          .where(and(eq(uploadItems.id, item.id), eq(uploadItems.status, 'processing')));
 
         processed++;
       } catch (err) {
@@ -159,7 +166,7 @@ export async function POST(
         await db
           .update(uploadItems)
           .set({ status: 'uploaded', updatedAt: new Date() })
-          .where(eq(uploadItems.id, item.id));
+          .where(and(eq(uploadItems.id, item.id), eq(uploadItems.status, 'processing')));
         failed++;
       }
     }

@@ -10,9 +10,11 @@ interface LotCardProps {
   auctionSlug?: string;
   showBidInfo?: boolean;
   isGallery?: boolean;
+  /** First row of a grid: load the image straight away, since it is likely the LCP. */
+  eager?: boolean;
 }
 
-export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: LotCardProps) {
+export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery, eager }: LotCardProps) {
   const galleryMode = isGallery || lot.saleType === 'gallery' || lot.saleType === 'private';
   // Prefer a known auction slug (grid-level or per-lot) so the card links
   // straight to the canonical URL; /lots/{slug} is a resolver+redirect hop.
@@ -34,6 +36,8 @@ export function LotCard({ lot, auctionSlug, showBidInfo = true, isGallery }: Lot
               fill
               className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.04]"
               sizes="(max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+              loading={eager ? 'eager' : undefined}
+              fetchPriority={eager ? 'high' : undefined}
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-muted to-muted/60 flex items-center justify-center">

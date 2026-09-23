@@ -2,6 +2,7 @@ import type { MetadataRoute } from 'next';
 import { db } from '@/db';
 import { auctions, lots, categories } from '@/db/schema';
 import { inArray, eq, and } from 'drizzle-orm';
+import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -68,14 +69,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     // Auction lots (in_auction or sold)
     const auctionLots = await db
-      .select({ slug: lots.slug, updatedAt: lots.updatedAt })
+      .select({ slug: lots.slug, updatedAt: lots.updatedAt, auctionSlug: bestAuctionSlugSql })
       .from(lots)
       .where(inArray(lots.status, ['in_auction', 'sold']));
 
     for (const lot of auctionLots) {
       if (lot.slug) {
         entries.push({
-          url: `${BASE_URL}/lots/${lot.slug}`,
+          // Canonical lot URL; /lots/{slug} is only a resolver that redirects.
+          url: lot.auctionSlug
+            ? `${BASE_URL}/auctions/${lot.auctionSlug}/lots/${lot.slug}`
+            : `${BASE_URL}/lots/${lot.slug}`,
           lastModified: lot.updatedAt ?? undefined,
           changeFrequency: 'hourly',
           priority: 0.7,

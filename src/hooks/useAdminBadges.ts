@@ -13,8 +13,9 @@ let cachedAt = 0;
 const listeners = new Set<(b: AdminBadges | null) => void>();
 let inFlight: Promise<void> | null = null;
 
-async function refresh(force = false) {
-  if (!force && Date.now() - cachedAt < 5_000) return;
+/** Fetch unless the cached counts are younger than `maxAgeMs` (0 = always). */
+async function refresh(maxAgeMs = 5_000) {
+  if (maxAgeMs > 0 && Date.now() - cachedAt < maxAgeMs) return;
   if (inFlight) return inFlight;
   inFlight = (async () => {
     try {
@@ -45,7 +46,11 @@ export function useAdminBadges(): AdminBadges | null {
   useEffect(() => {
     listeners.add(setBadges);
     refresh();
-    const timer = setInterval(() => refresh(true), POLL_MS);
+    // Every subscriber runs a timer, but the age check means only the first
+    // tick in each window fetches; hidden tabs don't poll at all.
+    const timer = setInterval(() => {
+      if (!document.hidden) refresh(POLL_MS - 2_000);
+    }, POLL_MS);
     const onFocus = () => refresh();
     window.addEventListener('focus', onFocus);
     return () => {
@@ -59,5 +64,5 @@ export function useAdminBadges(): AdminBadges | null {
 }
 
 export function refreshAdminBadges() {
-  return refresh(true);
+  return refresh(0);
 }

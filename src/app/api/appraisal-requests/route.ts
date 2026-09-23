@@ -159,6 +159,8 @@ export async function POST(req: NextRequest) {
     // exactly as a success would — a distinguishable response just teaches
     // the bot which field to leave blank — and write nothing.
     if (typeof hp === 'string' && hp.trim().length > 0) {
+      // Logged (no contact details) so a real visitor tripping it shows up.
+      logger.warn('Appraisal honeypot filled; request dropped', { site, hpLength: hp.length, hasEmail: !!email });
       return NextResponse.json(
         { data: { message: 'Request submitted successfully', estimate: null } },
         { status: 201 },
@@ -195,12 +197,16 @@ export async function POST(req: NextRequest) {
       logger.error('Failed to create prospect from appraisal request', err);
     }
 
-    sendAppraisalRequestNotification(
-      { name, phone, email, service, items, message, site: microsite ? { city: microsite.city, domain: microsite.domain } : undefined },
-      photoUrls,
-      estimate,
-    ).catch((err) =>
-      logger.error('Failed to send appraisal notification', err),
+    // after(): a promise left dangling past the response can be cut off
+    // when the function is frozen, and the admin never hears of the lead.
+    after(() =>
+      sendAppraisalRequestNotification(
+        { name, phone, email, service, items, message, site: microsite ? { city: microsite.city, domain: microsite.domain } : undefined },
+        photoUrls,
+        estimate,
+      ).catch((err) =>
+        logger.error('Failed to send appraisal notification', err),
+      ),
     );
 
     return NextResponse.json(

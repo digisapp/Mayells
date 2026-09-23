@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '@/db';
@@ -13,10 +13,13 @@ import { logger } from '@/lib/logger';
 const leadSchema = z.object({
   name: z.string().trim().min(1).max(200),
   phone: z.string().trim().max(50).optional(),
-  email: z.string().trim().email().max(320).optional().or(z.literal('')),
+  // Speech-to-text mangles emails ("john at gmail dot com") and counts. A bad
+  // optional field must not throw away the caller's name, number and items,
+  // so these are checked below and kept as a note when they don't parse.
+  email: z.string().trim().max(320).optional(),
   town: z.string().trim().max(200).optional(),
   items: z.string().trim().min(1).max(3000),
-  estimatedItemCount: z.number().int().min(1).max(100000).optional(),
+  estimatedItemCount: z.number().optional(),
   sendUploadLink: z.boolean().optional(),
 });
 
@@ -37,7 +40,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cal
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
   }
-  const input = parsed.data;
+  const raw = parsed.data;
+  const emailOk = !!raw.email && z.email().safeParse(raw.email).success;
+  const countOk = raw.estimatedItemCount !== undefined
+    && Number.isInteger(raw.estimatedItemCount) && raw.estimatedItemCount >= 1 && raw.estimatedItemCount <= 100000;
+  const unparsed = [
+    raw.email && !emailOk ? `Email as heard (did not parse): ${raw.email}` : null,
+    raw.estimatedItemCount !== undefined && !countOk ? `Item count as heard: ${raw.estimatedItemCount}` : null,
+  ].filter(Boolean);
+  const input = {
+    ...raw,
+    email: emailOk ? raw.email : undefined,
+    estimatedItemCount: countOk ? raw.estimatedItemCount : undefined,
+    items: unparsed.length ? `${raw.items}\n${unparsed.join('\n')}`.slice(0, 3200) : raw.items,
+  };
 
   try {
     const [call] = await db.select().from(calls).where(eq(calls.id, callId)).limit(1);
@@ -82,17 +98,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cal
     }
 
     const adminUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com'}/admin/prospects/${prospectId}`;
-    sendAppraisalRequestNotification({
-      name: input.name,
-      phone: phone ?? 'not given',
-      email: input.email || undefined,
-      service: `Phone call (${created ? 'new lead' : 'repeat contact, added to existing prospect'})`,
-      items: [input.items, input.town ? `Town: ${input.town}` : null, input.estimatedItemCount ? `About ${input.estimatedItemCount} items` : null]
-        .filter(Boolean)
-        .join('\n'),
-      message: `Taken by ${line}.${uploadLinkEmailed ? ' Upload link emailed to the caller.' : ''} Prospect: ${adminUrl}`,
-      site: site ? { city: site.city, domain: site.domain } : undefined,
-    }).catch((err) => logger.error('Failed to send phone lead notification', err, { callId }));
+    // after(): a dangling promise can be cut off once the response is sent.
+    after(() =>
+      sendAppraisalRequestNotification({
+        name: input.name,
+        phone: phone ?? 'not given',
+        email: input.email || undefined,
+        service: `Phone call (${created ? 'new lead' : 'repeat contact, added to existing prospect'})`,
+        items: [input.items, input.town ? `Town: ${input.town}` : null, input.estimatedItemCount ? `About ${input.estimatedItemCount} items` : null]
+          .filter(Boolean)
+          .join('\n'),
+        message: `Taken by ${line}.${uploadLinkEmailed ? ' Upload link emailed to the caller.' : ''} Prospect: ${adminUrl}`,
+        site: site ? { city: site.city, domain: site.domain } : undefined,
+      }).catch((err) => logger.error('Failed to send phone lead notification', err, { callId })),
+    );
 
     return NextResponse.json({ data: { prospectId, created, uploadLinkEmailed } });
   } catch (error) {

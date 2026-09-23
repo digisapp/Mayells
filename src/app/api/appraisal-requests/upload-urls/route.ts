@@ -44,6 +44,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
+    // The request limit above allows 150 batches of 50; this caps the files
+    // themselves, so the public bucket can't be used as free file hosting.
+    const { success: filesAllowed } = await rateLimit(`appraisal-upload-files:${ip}`, {
+      maxRequests: 200,
+      windowSeconds: 3600,
+      cost: parsed.data.files.length,
+    });
+    if (!filesAllowed) {
+      return NextResponse.json({ error: 'Too many photos uploaded. Please try again later.' }, { status: 429 });
+    }
+
     const admin = createAdminClient();
     const uploads: { index: number; path: string; signedUrl: string }[] = [];
 

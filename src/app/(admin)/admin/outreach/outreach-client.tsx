@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/admin/PageHeader';
 import { BulkEmailDialog } from './bulk-email-dialog';
 import { ImportDialog } from './import-dialog';
 import { readFailure, formatDay, todayLocal } from './form-utils';
+import { toCsv } from '@/lib/invoicing/csv';
 
 interface Stats {
   total: number;
@@ -180,12 +181,10 @@ export function OutreachClient() {
       return;
     }
 
-    const quote = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    // Shared writer: contacts come from imported third-party lists, so cells
+    // like =HYPERLINK(...) must not run as formulas when opened in Excel.
     const headers = Object.keys(rows[0]);
-    const csv = [
-      headers.map(quote).join(','),
-      ...rows.map((r) => headers.map((h) => quote((r as Record<string, string>)[h])).join(',')),
-    ].join('\n');
+    const csv = toCsv(headers, rows.map((r) => headers.map((h) => (r as Record<string, string>)[h])));
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);

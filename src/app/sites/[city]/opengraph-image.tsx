@@ -1,12 +1,20 @@
 import { ImageResponse } from 'next/og';
 import { BUSINESS } from '@/lib/config';
-import { getMicrositeBySlug, micrositePhone } from '@/lib/microsites/config';
+import { getMicrositeBySlug, micrositePhone, MICROSITE_SLUGS } from '@/lib/microsites/config';
 import { loadOgImage } from '@/lib/seo/og-image';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 export const alt = 'Mayells — free estate appraisals and auction consignment';
+
+// One card per city, built once and refreshed daily. Rendering on every
+// request re-fetched and re-encoded the hero photo for each crawler unfurl.
+export const dynamic = 'force-static';
+export const revalidate = 86400;
+export function generateStaticParams() {
+  return MICROSITE_SLUGS.map((city) => ({ city }));
+}
 
 /**
  * Share card for a city domain.

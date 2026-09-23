@@ -118,7 +118,7 @@ function validationError(error: z.ZodError) {
 /** The "due" predicate: follow-up on/before today and the lead is still open. */
 const dueCondition = and(
   isNotNull(outreachContacts.nextFollowUpAt),
-  lte(outreachContacts.nextFollowUpAt, sql`current_date`),
+  lte(outreachContacts.nextFollowUpAt, sql`(now() AT TIME ZONE 'America/New_York')::date`),
   notInArray(outreachContacts.status, [...OUTREACH_CLOSED_STATUSES]),
 );
 

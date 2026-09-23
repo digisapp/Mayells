@@ -12,7 +12,7 @@ const adminAuthRoutes = ['/admin/login'];
 // `mfa`: the account has a verified TOTP factor. Cached alongside the role so
 // enforcing two-factor on API calls costs one Redis GET, not an Auth round
 // trip; enroll/unenroll drop the key via /api/auth/mfa/refresh.
-type CachedProfile = { role: string | null; is_admin: boolean | null; mfa?: boolean };
+type CachedProfile = { role: string | null; is_admin: boolean | null; account_status?: string | null; mfa?: boolean };
 
 // Role changes are rare; a short TTL keeps every admin page load from paying
 // a Supabase REST round trip. Trade-off: revoking admin can take up to this
@@ -34,7 +34,7 @@ async function getUserProfile(userId: string): Promise<CachedProfile | null> {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
   const [{ data: row }, factorsResult] = await Promise.all([
-    adminClient.from('users').select('role, is_admin').eq('id', userId).single(),
+    adminClient.from('users').select('role, is_admin, account_status').eq('id', userId).single(),
     adminClient.auth.admin.mfa.listFactors({ userId }).catch(() => null),
   ]);
   if (!row) return null;
@@ -42,6 +42,7 @@ async function getUserProfile(userId: string): Promise<CachedProfile | null> {
   const profile: CachedProfile = {
     role: row.role,
     is_admin: row.is_admin,
+    account_status: row.account_status,
     mfa: hasVerifiedTotpFactor(factorsResult?.data?.factors),
   };
 

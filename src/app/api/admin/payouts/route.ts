@@ -34,14 +34,14 @@ export async function GET(req: NextRequest) {
       db
         .select({
           pending: sql<number>`count(*) filter (where ${payouts.status} = 'pending')::int`,
-          pendingNet: sql<number>`coalesce(sum(${payouts.netAmount}) filter (where ${payouts.status} = 'pending'), 0)::int`,
+          pendingNet: sql<number>`coalesce(sum(${payouts.netAmount}) filter (where ${payouts.status} = 'pending'), 0)::float8`,
           paid: sql<number>`count(*) filter (where ${payouts.status} = 'paid')::int`,
-          paidNet: sql<number>`coalesce(sum(${payouts.netAmount}) filter (where ${payouts.status} = 'paid'), 0)::int`,
+          paidNet: sql<number>`coalesce(sum(${payouts.netAmount}) filter (where ${payouts.status} = 'paid'), 0)::float8`,
           reversed: sql<number>`count(*) filter (where ${payouts.status} = 'reversed')::int`,
-          reversedNet: sql<number>`coalesce(sum(${payouts.netAmount}) filter (where ${payouts.status} = 'reversed'), 0)::int`,
+          reversedNet: sql<number>`coalesce(sum(${payouts.netAmount}) filter (where ${payouts.status} = 'reversed'), 0)::float8`,
           // House commission on live settlements (pending or paid out)
-          commissionEarned: sql<number>`coalesce(sum(${payouts.commissionAmount}) filter (where ${payouts.status} in ('pending', 'paid')), 0)::int`,
-          commissionEarnedThisMonth: sql<number>`coalesce(sum(${payouts.commissionAmount}) filter (where ${payouts.status} in ('pending', 'paid') and ${payouts.createdAt} >= date_trunc('month', now())), 0)::int`,
+          commissionEarned: sql<number>`coalesce(sum(${payouts.commissionAmount}) filter (where ${payouts.status} in ('pending', 'paid')), 0)::float8`,
+          commissionEarnedThisMonth: sql<number>`coalesce(sum(${payouts.commissionAmount}) filter (where ${payouts.status} in ('pending', 'paid') and ${payouts.createdAt} >= (date_trunc('month', now() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York')), 0)::float8`,
         })
         .from(payouts),
       db

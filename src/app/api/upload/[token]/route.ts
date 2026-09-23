@@ -102,6 +102,20 @@ export async function POST(
     }
     const { items } = parsed.data;
 
+    // Only photos this link's own signed URLs produced. Anything else would
+    // let a token holder point items at arbitrary URLs, or have the sanitizer
+    // below re-encode (and overwrite) objects that belong to other lots.
+    const ownPrefix = `uploads/${link.prospectId}/`;
+    const foreign = items
+      .flatMap((item) => item.images)
+      .find((url) => {
+        const path = storagePathFromPublicUrl(url);
+        return !path || !path.startsWith(ownPrefix) || path.includes('..');
+      });
+    if (foreign) {
+      return NextResponse.json({ error: 'One of the photos did not come from this upload link. Please upload it again.' }, { status: 400 });
+    }
+
     // Check maxItems limit
     if (link.maxItems !== null && link.itemCount + items.length > link.maxItems) {
       return NextResponse.json(

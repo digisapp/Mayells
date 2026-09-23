@@ -5,6 +5,8 @@ import { db } from '@/db';
 import { uploadLinks } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
+import { rateLimit } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/request-ip';
 import { z } from 'zod';
 
 const BUCKET = 'lot-images';
@@ -43,6 +45,16 @@ export async function POST(
 ) {
   try {
     const { token } = await params;
+
+    // One signed URL per file. Generous for a large estate shoot, but a hard
+    // wall against using a leaked or chat-minted link as unlimited storage.
+    const [{ success: tokenOk }, { success: ipOk }] = await Promise.all([
+      rateLimit(`upload-token-files:${token}`, { maxRequests: 500, windowSeconds: 3600 }),
+      rateLimit(`upload-ip-files:${getClientIp(request)}`, { maxRequests: 500, windowSeconds: 3600 }),
+    ]);
+    if (!tokenOk || !ipOk) {
+      return NextResponse.json({ error: 'Too many uploads. Please try again in an hour.' }, { status: 429 });
+    }
 
     const row = await validateLink(token);
     if (!row) {

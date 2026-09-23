@@ -56,6 +56,7 @@ export const users = pgTable('users', {
 }, (table) => [
   index('users_role_idx').on(table.role),
   index('users_email_idx').on(table.email),
+  index('users_email_lower_idx').on(sql`lower(${table.email})`),
 ]).enableRLS();
 
 // Relations defined in their respective schema files to avoid circular imports

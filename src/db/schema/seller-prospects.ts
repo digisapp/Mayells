@@ -76,6 +76,8 @@ export const sellerProspects = pgTable('seller_prospects', {
 }, (table) => [
   index('seller_prospects_status_idx').on(table.status),
   index('seller_prospects_email_idx').on(table.email),
+  // Lead dedupe (chat, phone, inbound email) matches lower-cased addresses.
+  index('seller_prospects_email_lower_idx').on(sql`lower(${table.email})`),
   index('seller_prospects_created_idx').on(table.createdAt),
   index('seller_prospects_site_idx').on(table.site),
 ]).enableRLS();

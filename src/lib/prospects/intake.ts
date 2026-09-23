@@ -39,6 +39,13 @@ function lastTenDigits(phone: string): string | null {
  * still in play with the same phone or email from the last 90 days gets the
  * new details appended to its notes rather than a duplicate row, so the
  * admin sees one person with one history.
+ *
+ * Nobody on a chat or a phone line has proved who they are, so a match only
+ * merges when the contact details agree: the same email, or a phone match
+ * with no conflicting email. Otherwise a stranger who typed someone's phone
+ * number next to their own address would take over that person's prospect,
+ * and the upload link emailed back would be the victim's. A conflicting
+ * lead becomes its own prospect, noted as a possible duplicate.
  */
 export async function recordConversationLead(lead: ConversationLead): Promise<{ prospectId: string; created: boolean }> {
   const phoneKey = lead.phone ? lastTenDigits(lead.phone) : null;
@@ -50,10 +57,12 @@ export async function recordConversationLead(lead: ConversationLead): Promise<{ 
     email ? sql`lower(${sellerProspects.email}) = ${email}` : null,
   ].filter((m) => m !== null);
 
+  let possibleDuplicateOf: string | null = null;
+
   if (matchers.length > 0) {
     const since = new Date(Date.now() - DEDUPE_DAYS * 24 * 60 * 60 * 1000);
     const [existing] = await db
-      .select({ id: sellerProspects.id, email: sellerProspects.email, notes: sellerProspects.notes })
+      .select({ id: sellerProspects.id, email: sellerProspects.email })
       .from(sellerProspects)
       .where(
         and(
@@ -65,7 +74,10 @@ export async function recordConversationLead(lead: ConversationLead): Promise<{ 
       .orderBy(desc(sellerProspects.createdAt))
       .limit(1);
 
-    if (existing) {
+    const existingEmail = existing?.email?.trim().toLowerCase() || null;
+    const agrees = existing && (!email || existingEmail === email);
+
+    if (existing && agrees) {
       const addition = [
         stamp,
         `Name given: ${lead.name}`,
@@ -75,14 +87,14 @@ export async function recordConversationLead(lead: ConversationLead): Promise<{ 
       await db
         .update(sellerProspects)
         .set({
-          notes: existing.notes ? `${existing.notes}\n\n${addition}` : addition,
-          // Fill a missing email, never overwrite one the admin has on file.
-          ...(existing.email ? {} : email ? { email } : {}),
+          // Appended in SQL so a call and a chat landing together both keep their notes.
+          notes: sql`concat_ws(E'\n\n', ${sellerProspects.notes}, ${addition}::text)`,
           updatedAt: new Date(),
         })
         .where(eq(sellerProspects.id, existing.id));
       return { prospectId: existing.id, created: false };
     }
+    if (existing) possibleDuplicateOf = existing.id;
   }
 
   const [prospect] = await db
@@ -98,6 +110,9 @@ export async function recordConversationLead(lead: ConversationLead): Promise<{ 
       itemSummary: lead.items,
       estimatedItemCount: lead.estimatedItemCount ?? null,
       status: 'new',
+      notes: possibleDuplicateOf
+        ? `Possible duplicate of prospect ${possibleDuplicateOf}: same phone or email, different contact details. Check before merging.`
+        : null,
     })
     .returning({ id: sellerProspects.id });
 

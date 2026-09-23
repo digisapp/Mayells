@@ -48,6 +48,9 @@ const shipmentPatchSchema = z.object({
   trackingNumber: z.string().trim().max(255).optional(),
   trackingUrl: z.string().trim().url('Valid tracking URL required').max(2048).or(z.literal('')).optional(),
   internalNotes: z.string().trim().max(5000).optional(),
+  // The notes as the form loaded them. Refunds append recall warnings to a
+  // shipment's notes, so a save from a sheet opened earlier must not erase them.
+  internalNotesBase: z.string().max(5000).optional(),
   weightLbs: optionalInt,
   weightOz: optionalInt,
   lengthIn: optionalInt,
@@ -72,7 +75,7 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, parseInt(sp.get('page') || '1', 10));
     const offset = (page - 1) * PAGE_SIZE;
     const statusParam = sp.get('status');
-    const bucket = statusParam && statusParam in SHIPMENT_STATUS_BUCKETS
+    const bucket = statusParam && Object.hasOwn(SHIPMENT_STATUS_BUCKETS, statusParam)
       ? SHIPMENT_STATUS_BUCKETS[statusParam as ShipmentBucket]
       : undefined;
     // `q` is canonical; `search` kept as an alias for older links.
@@ -223,6 +226,16 @@ export async function PATCH(request: NextRequest) {
     if (body.carrier !== undefined) updates.carrier = body.carrier;
     if (body.trackingNumber !== undefined) updates.trackingNumber = body.trackingNumber || null;
     if (body.trackingUrl !== undefined) updates.trackingUrl = body.trackingUrl || null;
+    if (
+      body.internalNotes !== undefined &&
+      body.internalNotesBase !== undefined &&
+      body.internalNotesBase.trim() !== (existing.internalNotes ?? '').trim()
+    ) {
+      return NextResponse.json(
+        { error: 'The notes on this shipment changed since you opened it. Reopen it to see the latest before saving.' },
+        { status: 409 },
+      );
+    }
     if (body.internalNotes !== undefined) updates.internalNotes = body.internalNotes || null;
     for (const key of ['weightLbs', 'weightOz', 'lengthIn', 'widthIn', 'heightIn'] as const) {
       if (body[key] !== undefined) updates[key] = body[key];
@@ -258,7 +271,7 @@ export async function PATCH(request: NextRequest) {
     // A destination that just became complete lifts needs_address automatically.
     const toStreet = updates.toStreet !== undefined ? updates.toStreet : existing.toStreet;
     const toZip = updates.toZip !== undefined ? updates.toZip : existing.toZip;
-    if (!body.status && existing.status === 'needs_address' && toStreet && toZip) {
+    if ((!body.status || body.status === existing.status) && existing.status === 'needs_address' && toStreet && toZip) {
       nextStatus = 'pending';
     }
 

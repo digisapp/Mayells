@@ -58,7 +58,7 @@ export async function getAdminBadges(): Promise<AdminBadges> {
                                                                                 as auctions_closing_24h,
       (select count(*) from auctions where status = 'live')::int                as auctions_live,
       (select count(*) from outreach_contacts
-        where next_follow_up_at <= now()
+        where next_follow_up_at <= (now() AT TIME ZONE 'America/New_York')::date
           and status not in ('converted', 'not_interested', 'do_not_contact'))::int
                                                                                 as outreach_due
   `);

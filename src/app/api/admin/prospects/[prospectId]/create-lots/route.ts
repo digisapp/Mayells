@@ -65,6 +65,7 @@ function uniqueViolationConstraint(err: unknown): string | null {
 
 /** Thrown inside the transaction to roll back and surface a 409. */
 class LotNumberConflictError extends Error {}
+class ItemsAlreadyClaimedError extends Error {}
 
 export async function POST(
   request: NextRequest,
@@ -187,6 +188,16 @@ export async function POST(
         // settle. Prospects usually have no account — mint (or link) one.
         const sellerId = await ensureProspectSellerUser(tx, prospect);
 
+        // Claim the items before creating anything. The list above was read
+        // outside this transaction, so a second click (or a second admin)
+        // could otherwise turn the same accepted items into lots twice.
+        const claimed = await tx
+          .update(uploadItems)
+          .set({ status: 'lot_created', updatedAt: new Date() })
+          .where(and(inArray(uploadItems.id, acceptedItems.map((i) => i.id)), eq(uploadItems.status, 'accepted')))
+          .returning({ id: uploadItems.id });
+        if (claimed.length !== acceptedItems.length) throw new ItemsAlreadyClaimedError();
+
         const created: { lotId: string; itemId: string }[] = [];
 
         for (const item of acceptedItems) {
@@ -306,6 +317,12 @@ export async function POST(
         return { created, sellerId };
       });
     } catch (err) {
+      if (err instanceof ItemsAlreadyClaimedError) {
+        return NextResponse.json(
+          { error: 'Some of these items were turned into lots or changed at the same time. Nothing was created. Refresh and try again.' },
+          { status: 409 },
+        );
+      }
       if (err instanceof LotNumberConflictError) {
         return NextResponse.json(
           { error: 'Another admin assigned lots to this sale at the same time. Nothing was created — try again.' },

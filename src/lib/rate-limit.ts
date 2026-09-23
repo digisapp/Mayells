@@ -11,6 +11,8 @@ interface RateLimitConfig {
    * an outage can't be used to bypass the limit and run up third-party spend.
    */
   failClosed?: boolean;
+  /** How much this call uses up (default 1), e.g. the number of files in a batch. */
+  cost?: number;
 }
 
 interface RateLimitResult {
@@ -20,8 +22,8 @@ interface RateLimitResult {
 }
 
 const RATE_LIMIT_SCRIPT = `
-local current = redis.call('INCR', KEYS[1])
-if current == 1 then
+local current = redis.call('INCRBY', KEYS[1], tonumber(ARGV[2]))
+if current == tonumber(ARGV[2]) then
   redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
 end
 return current
@@ -40,7 +42,7 @@ export async function rateLimit(
     // round-trips would otherwise leave a counter with no TTL (a key that
     // never expires and keeps counting).
     const current = Number(
-      await redis.eval(RATE_LIMIT_SCRIPT, [windowKey], [config.windowSeconds]),
+      await redis.eval(RATE_LIMIT_SCRIPT, [windowKey], [config.windowSeconds, Math.max(1, Math.floor(config.cost ?? 1))]),
     );
 
     const remaining = Math.max(0, config.maxRequests - current);

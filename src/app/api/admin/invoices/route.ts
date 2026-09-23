@@ -70,15 +70,15 @@ export async function GET(req: NextRequest) {
       db
         .select({
           outstandingCount: sql<number>`count(*) filter (where ${invoices.status} in ('pending', 'overdue'))::int`,
-          outstandingAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} in ('pending', 'overdue')), 0)::int`,
+          outstandingAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} in ('pending', 'overdue')), 0)::float8`,
           overdueCount: sql<number>`count(*) filter (where ${invoices.status} = 'overdue')::int`,
-          overdueAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'overdue'), 0)::int`,
+          overdueAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'overdue'), 0)::float8`,
           collectedAllTimeCount: sql<number>`count(*) filter (where ${invoices.status} = 'paid')::int`,
-          collectedAllTime: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'paid'), 0)::int`,
-          collectedThisMonthCount: sql<number>`count(*) filter (where ${invoices.status} = 'paid' and ${invoices.paidAt} >= date_trunc('month', now()))::int`,
-          collectedThisMonth: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'paid' and ${invoices.paidAt} >= date_trunc('month', now())), 0)::int`,
+          collectedAllTime: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'paid'), 0)::float8`,
+          collectedThisMonthCount: sql<number>`count(*) filter (where ${invoices.status} = 'paid' and ${invoices.paidAt} >= (date_trunc('month', now() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York'))::int`,
+          collectedThisMonth: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'paid' and ${invoices.paidAt} >= (date_trunc('month', now() AT TIME ZONE 'America/New_York') AT TIME ZONE 'America/New_York')), 0)::float8`,
           refundedCount: sql<number>`count(*) filter (where ${invoices.status} = 'refunded')::int`,
-          refundedAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'refunded'), 0)::int`,
+          refundedAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'refunded'), 0)::float8`,
         })
         .from(invoices),
       // Sales that have invoices, for the filter select

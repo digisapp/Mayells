@@ -390,20 +390,7 @@ async function handlePaymentIntentSucceeded(
 
   if (updated.length > 0) {
     await upsertSucceededPayment(paymentIntent, invoice.buyerId, chargeId);
-
-    const lotId = paymentIntent.metadata.lotId;
-    if (lotId) {
-      await db.update(lots).set({ status: 'sold', updatedAt: new Date() }).where(eq(lots.id, lotId));
-    }
-
-    // The shipment created below needs the address the buyer typed at
-    // checkout — fetch it now in case checkout.session.completed hasn't
-    // arrived yet.
-    await captureShippingAddressForInvoice(invoice, paymentIntent.id);
-
-    // Seller-side settlement: record the payout, create the shipment, send the
-    // seller statement + buyer confirmation. Internally guarded — never throws.
-    await processPaidInvoice(invoiceId, { sendBuyerConfirmation: true });
+    await settlePaidInvoice(invoice, paymentIntent, { sendBuyerConfirmation: true });
     return result;
   }
 
@@ -436,9 +423,21 @@ async function handlePaymentIntentSucceeded(
     // the seller-side settlement finished, this re-run completes it (every step
     // is idempotent). Skipped for refunded/cancelled invoices.
     if (invoice.status === 'paid') {
-      await captureShippingAddressForInvoice(invoice, paymentIntent.id);
-      await processPaidInvoice(invoiceId);
+      await settlePaidInvoice(invoice, paymentIntent);
     }
+    return result;
+  }
+
+  // A prior delivery marked the invoice paid with THIS intent but crashed
+  // before recording the payment. That is not a stray charge: record it and
+  // finish the settlement the first delivery never reached.
+  if (invoice.status === 'paid' && invoice.stripePaymentIntentId === paymentIntent.id) {
+    logger.warn('Resuming settlement of a paid invoice whose payment row was never recorded', {
+      invoiceId,
+      paymentIntentId: paymentIntent.id,
+    });
+    await upsertSucceededPayment(paymentIntent, invoice.buyerId, chargeId);
+    await settlePaidInvoice(invoice, paymentIntent, { sendBuyerConfirmation: true });
     return result;
   }
 
@@ -457,6 +456,30 @@ async function handlePaymentIntentSucceeded(
     await autoRefundStrayPayment(paymentIntent, invoiceId);
   }
   return result;
+}
+
+/**
+ * Everything that follows an invoice becoming paid. Each step is idempotent,
+ * so a webhook redelivery can re-run it to finish a settlement that crashed.
+ */
+async function settlePaidInvoice(
+  invoice: Parameters<typeof captureShippingAddressForInvoice>[0],
+  paymentIntent: Stripe.PaymentIntent,
+  opts: { sendBuyerConfirmation?: boolean } = {},
+) {
+  const lotId = paymentIntent.metadata.lotId;
+  if (lotId) {
+    await db.update(lots).set({ status: 'sold', updatedAt: new Date() }).where(eq(lots.id, lotId));
+  }
+
+  // The shipment created below needs the address the buyer typed at
+  // checkout — fetch it now in case checkout.session.completed hasn't
+  // arrived yet.
+  await captureShippingAddressForInvoice(invoice, paymentIntent.id);
+
+  // Seller-side settlement: record the payout, create the shipment, send the
+  // seller statement + buyer confirmation. Internally guarded — never throws.
+  await processPaidInvoice(invoice.id, opts);
 }
 
 /**

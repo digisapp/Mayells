@@ -37,6 +37,8 @@ export default async function AuctionsPage() {
   const openAuctions = allAuctions.filter((a) => a.status === 'open' || a.status === 'live');
   const upcomingAuctions = allAuctions.filter((a) => a.status === 'scheduled' || a.status === 'preview');
   const pastAuctions = allAuctions.filter((a) => a.status === 'closing' || a.status === 'closed' || a.status === 'completed');
+  // The first row of whichever section renders first is above the fold.
+  const firstSection = openAuctions.length > 0 ? openAuctions : upcomingAuctions.length > 0 ? upcomingAuctions : pastAuctions;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -46,8 +48,8 @@ export default async function AuctionsPage() {
         <section className="mb-12">
           <h2 className="font-display text-display-sm mb-6">Open for Bidding</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {openAuctions.map((auction) => (
-              <AuctionCard key={auction.id} auction={auction} />
+            {openAuctions.map((auction, index) => (
+              <AuctionCard key={auction.id} auction={auction} eager={openAuctions === firstSection && index < 3} />
             ))}
           </div>
         </section>
@@ -57,8 +59,8 @@ export default async function AuctionsPage() {
         <section className="mb-12">
           <h2 className="font-display text-display-sm mb-6">Upcoming</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {upcomingAuctions.map((auction) => (
-              <AuctionCard key={auction.id} auction={auction} />
+            {upcomingAuctions.map((auction, index) => (
+              <AuctionCard key={auction.id} auction={auction} eager={upcomingAuctions === firstSection && index < 3} />
             ))}
           </div>
         </section>
@@ -68,8 +70,8 @@ export default async function AuctionsPage() {
         <section>
           <h2 className="font-display text-display-sm mb-6">Past Auctions</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {pastAuctions.map((auction) => (
-              <AuctionCard key={auction.id} auction={auction} />
+            {pastAuctions.map((auction, index) => (
+              <AuctionCard key={auction.id} auction={auction} eager={pastAuctions === firstSection && index < 3} />
             ))}
           </div>
         </section>

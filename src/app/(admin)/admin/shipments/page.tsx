@@ -284,6 +284,7 @@ export default function AdminShipmentsPage() {
           trackingNumber: form.trackingNumber,
           trackingUrl: form.trackingUrl.trim(),
           internalNotes: form.internalNotes,
+          internalNotesBase: editing.shipment.internalNotes ?? '',
           weightLbs: intOrNull(form.weightLbs),
           weightOz: intOrNull(form.weightOz),
           lengthIn: intOrNull(form.lengthIn),

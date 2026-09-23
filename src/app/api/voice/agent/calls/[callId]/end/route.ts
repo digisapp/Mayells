@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { z } from 'zod';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '@/db';
 import { calls } from '@/db/schema';
 import { rejectUnlessVoiceAgent } from '@/lib/voice/agent-auth';
@@ -40,16 +40,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cal
 
     const turns = cleanTranscript(parsed.data.transcript);
     const endedAt = new Date();
-    await db
+    // Conditional on ended_at so two racing end requests write notes once.
+    // A transfer never hides a lead: the lead is what the admin filters on.
+    const [ended] = await db
       .update(calls)
       .set({
         endedAt,
         durationSeconds: Math.max(0, Math.round((endedAt.getTime() - call.startedAt.getTime()) / 1000)),
-        ...(parsed.data.transferred ? { outcome: 'transferred' as const } : {}),
+        ...(parsed.data.transferred
+          ? { outcome: sql`case when ${calls.outcome} = 'lead' then ${calls.outcome} else 'transferred' end` }
+          : {}),
       })
-      .where(eq(calls.id, callId));
+      .where(and(eq(calls.id, callId), isNull(calls.endedAt)))
+      .returning({ id: calls.id });
 
-    after(() => writeCallNotes(callId, turns));
+    if (ended) after(() => writeCallNotes(callId, turns));
     return NextResponse.json({ data: { ok: true } });
   } catch (error) {
     logger.error('Voice agent call end failed', error, { callId });

@@ -77,10 +77,12 @@ class MayellsApi:
             headers={"Authorization": f"Bearer {AGENT_SECRET}"},
         )
 
-    async def post(self, path: str, body: dict, attempts: int = 2) -> dict | None:
+    async def post(self, path: str, body: dict, attempts: int = 2, timeout: float | None = None) -> dict | None:
+        # Only override when asked: timeout=None would disable the session's 15 s limit.
+        extra = {"timeout": aiohttp.ClientTimeout(total=timeout)} if timeout else {}
         for attempt in range(attempts):
             try:
-                async with self._http.post(f"{API_URL}/api/voice/agent{path}", json=body) as res:
+                async with self._http.post(f"{API_URL}/api/voice/agent{path}", json=body, **extra) as res:
                     payload = await res.json(content_type=None)
                     if res.status < 300:
                         return payload.get("data")
@@ -251,6 +253,10 @@ async def entrypoint(ctx: agents.JobContext):
             **({"calledNumber": caller.attributes["sip.trunkPhoneNumber"]} if caller.attributes.get("sip.trunkPhoneNumber") else {}),
             **({"site": caller.attributes["mayells.site"]} if caller.attributes.get("mayells.site") else {}),
         },
+        # The caller hears silence until this returns, so fail fast rather
+        # than hold the line through a slow or down app.
+        attempts=1,
+        timeout=4,
     )
     call_id = started.get("callId") if started else None
     site = started.get("site") if started else None
@@ -270,6 +276,10 @@ async def entrypoint(ctx: agents.JobContext):
             await api.post(
                 f"/calls/{call_id}/end",
                 {"transcript": transcript_of(session), "transferred": concierge.transferred},
+                # Must finish inside the worker's shutdown window (10 s by
+                # default) or the job is killed and the call notes are lost.
+                attempts=1,
+                timeout=8,
             )
         await api.close()
 
@@ -278,6 +288,10 @@ async def entrypoint(ctx: agents.JobContext):
     await session.start(
         room=ctx.room,
         agent=concierge,
+        # Calls are noted, not recorded. Passing this explicitly keeps that
+        # true even if Agent Observability is switched on in LiveKit Cloud;
+        # left unset, the SDK follows that dashboard setting.
+        record=False,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
                 noise_cancellation=lambda params: noise_cancellation.BVCTelephony()

@@ -35,6 +35,9 @@ export async function generateMetadata({
     alternates: { canonical: origin },
     openGraph: { title, description, url: origin, siteName: site.brand, type: 'website', locale: 'en_US' },
     twitter: { card: 'summary_large_image', title, description },
+    // The root layout's /manifest.json 308s to mayells.com on a city domain,
+    // which the CSP then blocks (a console error on every visit).
+    manifest: null,
   };
 }
 
