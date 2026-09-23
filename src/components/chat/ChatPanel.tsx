@@ -1,14 +1,10 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport } from 'ai';
 import { X, Send, Loader2, Camera, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
-
-const transport = new DefaultChatTransport({
-  api: '/api/ai/chat',
-});
 
 interface ChatPanelProps {
   /** Panel stays mounted after first open (chat history survives close); this toggles visibility. */
@@ -17,6 +13,10 @@ interface ChatPanelProps {
   /** Message injected by an external open-chat event; sent once when the panel first loads. */
   pendingMessage: string | null;
   onPendingConsumed: () => void;
+  /** City microsite slug, so the concierge answers for that town and attributes any lead to it. */
+  site?: string;
+  /** Extra bottom offset (Tailwind classes) when the page has its own sticky bar. */
+  offsetClassName?: string;
 }
 
 /**
@@ -25,7 +25,7 @@ interface ChatPanelProps {
  * the shared public-page bundle, and the greeting fetch happens on first open
  * instead of on every page view.
  */
-export function ChatPanel({ visible, onClose, pendingMessage, onPendingConsumed }: ChatPanelProps) {
+export function ChatPanel({ visible, onClose, pendingMessage, onPendingConsumed, site, offsetClassName }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -38,6 +38,10 @@ export function ChatPanel({ visible, onClose, pendingMessage, onPendingConsumed 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const openChatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const transport = useMemo(
+    () => new DefaultChatTransport({ api: '/api/ai/chat', body: site ? { site } : undefined }),
+    [site],
+  );
   const { messages, sendMessage, status } = useChat({ transport });
 
   // Fetch custom greeting and enabled status — once, on first open (mount)
@@ -133,7 +137,7 @@ export function ChatPanel({ visible, onClose, pendingMessage, onPendingConsumed 
 
   return (
     <div
-      className="fixed bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)] right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-[370px] sm:w-[440px] sm:max-w-none max-h-[min(580px,calc(100dvh-7rem))] bg-white rounded-2xl shadow-2xl border border-black/10 flex flex-col overflow-hidden"
+      className={`${offsetClassName ?? 'bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)]'} fixed right-4 sm:right-6 z-50 w-[calc(100vw-2rem)] max-w-[370px] sm:w-[440px] sm:max-w-none max-h-[min(580px,calc(100dvh-7rem))] bg-white rounded-2xl shadow-2xl border border-black/10 flex flex-col overflow-hidden`}
       style={
         keyboard
           ? { transform: `translateY(-${keyboard.inset}px)`, maxHeight: `${keyboard.maxHeight}px` }

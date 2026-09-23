@@ -169,6 +169,13 @@
       "when": 1790122332519,
       "tag": "0023_microsite_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1790170927807,
+      "tag": "0024_voice_calls",
+      "breakpoints": true
     }
   ]
 }

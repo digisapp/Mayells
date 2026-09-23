@@ -13,6 +13,7 @@ import {
   Banknote,
   Settings,
   Globe,
+  Phone,
   type LucideIcon,
 } from 'lucide-react';
 import type { AdminBadges } from '@/hooks/useAdminBadges';
@@ -62,6 +63,7 @@ export const adminNav: AdminNavGroup[] = [
     label: 'Clients',
     links: [
       { href: '/admin/emails', label: 'Inbox', icon: Inbox, badge: (b) => b.inbox.unread },
+      { href: '/admin/calls', label: 'Calls', icon: Phone },
       { href: '/admin/users', label: 'Clients', icon: Users },
       { href: '/admin/outreach', label: 'Outreach', icon: Mail, badge: (b) => b.outreach.due },
     ],

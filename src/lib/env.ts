@@ -31,6 +31,8 @@ const envSchema = z.object({
   LIVEKIT_API_KEY: z.string().min(1).optional(),
   LIVEKIT_API_SECRET: z.string().min(1).optional(),
   NEXT_PUBLIC_LIVEKIT_URL: z.string().url().optional(),
+  // Shared secret the Python voice agent sends to /api/voice/agent/*.
+  VOICE_AGENT_SECRET: z.string().min(32).optional(),
   SHIPPO_API_KEY: z.string().min(1).optional(),
 });
 

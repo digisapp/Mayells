@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import crypto from 'crypto';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { sellerProspects, uploadLinks } from '@/db/schema';
-import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { sellerProspects } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { isSentinelEmail } from '@/lib/sellers/shadow';
 import { sendUploadLinkNotification } from '@/lib/email/notifications';
+import { getOrCreateUploadLink } from '@/lib/prospects/intake';
 
 const uploadLinkSchema = z.object({
   maxItems: z.number().int().min(1).max(1000).nullable().optional(),
@@ -45,53 +45,7 @@ export async function POST(
       return NextResponse.json({ error: 'Prospect not found' }, { status: 404 });
     }
 
-    // Reuse a link that is still usable instead of minting a second one —
-    // the seller may already have the first URL, and two live tokens for one
-    // consignment is one more to expire later.
-    const now = new Date();
-    const [existing] = await db
-      .select()
-      .from(uploadLinks)
-      .where(
-        and(
-          eq(uploadLinks.prospectId, prospectId),
-          eq(uploadLinks.status, 'active'),
-          or(isNull(uploadLinks.expiresAt), gt(uploadLinks.expiresAt, now)),
-        ),
-      )
-      .orderBy(desc(uploadLinks.createdAt))
-      .limit(1);
-
-    let link = existing;
-    let reused = true;
-
-    if (!link) {
-      reused = false;
-      let expiresAt: Date | null = null;
-      if (expiresInDays) {
-        expiresAt = new Date(now);
-        expiresAt.setDate(expiresAt.getDate() + expiresInDays);
-      }
-      [link] = await db
-        .insert(uploadLinks)
-        .values({
-          prospectId,
-          token: crypto.randomUUID(),
-          maxItems: maxItems ?? null,
-          expiresAt,
-        })
-        .returning();
-    }
-
-    // Only a fresh lead moves to upload_sent; a prospect that already has
-    // items (or an agreement) must not be dragged back up the funnel by a
-    // resend.
-    await db
-      .update(sellerProspects)
-      .set({ status: 'upload_sent', updatedAt: now })
-      .where(and(eq(sellerProspects.id, prospectId), inArray(sellerProspects.status, ['new', 'contacted'])));
-
-    const uploadUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com'}/upload/${link.token}`;
+    const { link, reused, url: uploadUrl } = await getOrCreateUploadLink(prospectId, { maxItems, expiresInDays });
 
     // Resend the email even when the link was reused — that's the point of
     // clicking "send" again. Never email a sentinel (no-email) address.

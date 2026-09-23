@@ -1,6 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { BUSINESS } from '@/lib/config';
-import { getMicrositeBySlug } from '@/lib/microsites/config';
+import { getMicrositeBySlug, micrositePhone } from '@/lib/microsites/config';
 import { loadOgImage } from '@/lib/seo/og-image';
 
 export const runtime = 'nodejs';
@@ -106,7 +106,7 @@ export default async function OGImage({ params }: { params: Promise<{ city: stri
           </div>
           <div style={{ fontSize: 24, color: 'rgba(255,255,255,0.72)', maxWidth: 1000 }}>{sub}</div>
           <div style={{ fontSize: 26, color: '#c9a96e', marginTop: 6 }}>
-            {`We come to the house, at no charge · ${BUSINESS.phone}`}
+            {`We come to the house, at no charge · ${site ? micrositePhone(site).display : BUSINESS.phone}`}
           </div>
         </div>
 

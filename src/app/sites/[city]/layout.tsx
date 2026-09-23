@@ -3,9 +3,10 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, Phone } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
-import { getMicrositeBySlug, MICROSITE_SLUGS } from '@/lib/microsites/config';
+import { getMicrositeBySlug, micrositePhone, MICROSITE_SLUGS } from '@/lib/microsites/config';
 import { CallLink } from '@/components/microsites/CallLink';
 import { MicrositeTracker } from '@/components/microsites/MicrositeTracker';
+import { ChatWidget } from '@/components/chat/ChatWidget';
 
 export function generateStaticParams() {
   return MICROSITE_SLUGS.map((city) => ({ city }));
@@ -39,6 +40,7 @@ export default async function MicrositeLayout({
   const { city } = await params;
   const site = getMicrositeBySlug(city);
   if (!site) notFound();
+  const phone = micrositePhone(site);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -53,13 +55,13 @@ export default async function MicrositeLayout({
           </Link>
           <div className="flex items-center gap-2.5">
             <CallLink
-              href={BUSINESS.phoneHref}
+              href={phone.href}
               site={site.slug}
               placement="header"
               className="inline-flex h-11 items-center gap-2 rounded-lg border border-border px-4 text-[15px] font-semibold transition-colors hover:bg-secondary"
             >
               <Phone className="h-4 w-4" />
-              <span className="tabular-nums">{BUSINESS.phone}</span>
+              <span className="tabular-nums">{phone.display}</span>
             </CallLink>
             {/*
               Desktop gets its persistent call to action here; phones have the
@@ -98,13 +100,13 @@ export default async function MicrositeLayout({
                 Beach County and New York. Consignments are catalogued and sold through mayells.com.
               </p>
               <CallLink
-                href={BUSINESS.phoneHref}
+                href={phone.href}
                 site={site.slug}
                 placement="footer"
                 className="mt-5 inline-flex h-11 items-center gap-2 text-[16px] font-semibold tabular-nums text-white transition-colors hover:text-champagne"
               >
                 <Phone className="h-4 w-4" />
-                {BUSINESS.phone}
+                {phone.display}
               </CallLink>
             </div>
             <nav className="flex flex-col">
@@ -135,6 +137,7 @@ export default async function MicrositeLayout({
           </div>
         </div>
       </footer>
+      <ChatWidget site={site.slug} aboveStickyBar />
     </div>
   );
 }

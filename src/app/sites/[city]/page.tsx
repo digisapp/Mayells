@@ -5,7 +5,7 @@ import { ArrowRight, Check, Phone } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { formatCurrency } from '@/types';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
-import { getMicrositeBySlug, micrositeOgImagePath, type Microsite } from '@/lib/microsites/config';
+import { getMicrositeBySlug, micrositeOgImagePath, micrositePhone, type Microsite } from '@/lib/microsites/config';
 import { getMicrositeData } from '@/lib/microsites/data';
 import { CallLink } from '@/components/microsites/CallLink';
 import { CityConsignForm } from '@/components/microsites/CityConsignForm';
@@ -91,6 +91,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
   if (!site) notFound();
 
   const { showcase, soldCount, soldTotal } = await getMicrositeData(site);
+  const phone = micrositePhone(site);
   const origin = `https://${site.domain}`;
   const hero = site.image;
 
@@ -111,7 +112,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
       url: origin,
       sameAs: [BUSINESS.url],
       image: `${origin}${micrositeOgImagePath(site)}`,
-      telephone: BUSINESS.phoneHref.replace(/^tel:/, ''),
+      telephone: phone.href.replace(/^tel:/, ''),
       email: BUSINESS.email,
       description:
         `Auction house serving ${site.city}, ${site.state}. Estate appraisals and consignment for ` +
@@ -173,13 +174,13 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
               </ul>
 
               <CallLink
-                href={BUSINESS.phoneHref}
+                href={phone.href}
                 site={site.slug}
                 placement="hero"
                 className="mt-8 inline-flex h-12 items-center gap-2.5 rounded-lg border-2 border-champagne px-5 text-[16px] font-semibold text-champagne transition-colors hover:bg-champagne hover:text-charcoal"
               >
                 <Phone className="h-4 w-4" />
-                <span className="tabular-nums">{BUSINESS.phone}</span>
+                <span className="tabular-nums">{phone.display}</span>
               </CallLink>
             </div>
 
@@ -370,13 +371,13 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                 work to it.
               </p>
               <CallLink
-                href={BUSINESS.phoneHref}
+                href={phone.href}
                 site={site.slug}
                 placement="section"
                 className="mt-7 inline-flex h-12 items-center gap-2.5 rounded-lg bg-primary px-6 text-[16px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
               >
                 <Phone className="h-4 w-4" />
-                <span className="tabular-nums">{BUSINESS.phone}</span>
+                <span className="tabular-nums">{phone.display}</span>
               </CallLink>
             </div>
             <div data-lead-form className="shadow-luxury rounded-2xl">
@@ -408,19 +409,19 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
               <ArrowRight className="h-4 w-4" />
             </a>
             <CallLink
-              href={BUSINESS.phoneHref}
+              href={phone.href}
               site={site.slug}
               placement="faq"
               className="inline-flex h-12 items-center gap-2 rounded-lg border border-border px-5 text-[15px] font-semibold transition-colors hover:bg-secondary"
             >
               <Phone className="h-4 w-4" />
-              <span className="tabular-nums">{BUSINESS.phone}</span>
+              <span className="tabular-nums">{phone.display}</span>
             </CallLink>
           </div>
         </div>
       </section>
 
-      <StickyCallBar site={site.slug} phone={BUSINESS.phone} phoneHref={BUSINESS.phoneHref} />
+      <StickyCallBar site={site.slug} phone={phone.display} phoneHref={phone.href} />
     </main>
   );
 }

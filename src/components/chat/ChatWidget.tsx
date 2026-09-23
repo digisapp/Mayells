@@ -11,7 +11,28 @@ const ChatPanel = dynamic(
   { ssr: false },
 );
 
-export function ChatWidget() {
+// On the city microsites a sticky call bar (StickyCallBar, below lg) owns the
+// bottom of a phone screen, so the bubble and panel sit above it there.
+// Literal class strings so Tailwind generates them.
+const OFFSETS = {
+  default: {
+    bubble: 'bottom-[max(1rem,env(safe-area-inset-bottom))]',
+    panel: 'bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)]',
+  },
+  aboveStickyBar: {
+    bubble: 'bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:bottom-[max(1rem,env(safe-area-inset-bottom))]',
+    panel: 'bottom-[calc(env(safe-area-inset-bottom)+9.5rem)] lg:bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)]',
+  },
+} as const;
+
+interface ChatWidgetProps {
+  /** City microsite slug; see ChatPanel. */
+  site?: string;
+  aboveStickyBar?: boolean;
+}
+
+export function ChatWidget({ site, aboveStickyBar = false }: ChatWidgetProps = {}) {
+  const offsets = aboveStickyBar ? OFFSETS.aboveStickyBar : OFFSETS.default;
   const [open, setOpen] = useState(false);
   // Once opened, the panel stays mounted (hidden on close) so the chat
   // history survives closing and reopening the bubble.
@@ -47,6 +68,8 @@ export function ChatWidget() {
           onClose={() => setOpen(false)}
           pendingMessage={pendingMessage}
           onPendingConsumed={() => setPendingMessage(null)}
+          site={site}
+          offsetClassName={offsets.panel}
         />
       )}
 
@@ -57,7 +80,7 @@ export function ChatWidget() {
           setEverOpened(true);
           setShowLabel(false);
         }}
-        className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 sm:right-6 z-50 bg-champagne text-charcoal shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 ${
+        className={`fixed ${offsets.bubble} right-4 sm:right-6 z-50 bg-champagne text-charcoal shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center gap-2 ${
           open ? 'rounded-full p-4' : 'rounded-full py-4 px-5'
         } ${!open && showLabel ? 'animate-bounce-gentle' : ''}`}
         aria-label="Chat with us"

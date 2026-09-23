@@ -24,6 +24,7 @@ import { PageHeader } from '@/components/admin/PageHeader';
 import { cn } from '@/lib/utils';
 import { MICROSITE_LABELS } from '@/lib/microsites/labels';
 import { LensButton } from '@/components/admin/LensButton';
+import { CallCard, type CallView } from '@/components/admin/CallCard';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
 import {
@@ -382,6 +383,7 @@ function ProspectDetail() {
   }
 
   const [prospect, setProspect] = useState<Prospect | null>(null);
+  const [calls, setCalls] = useState<CallView[]>([]);
   const [items, setItems] = useState<UploadItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [itemsLoading, setItemsLoading] = useState(true);
@@ -420,6 +422,7 @@ function ProspectDetail() {
       if (res.ok && json.data) {
         const data: Prospect = json.data;
         setProspect(data);
+        setCalls(Array.isArray(json.calls) ? json.calls : []);
         // Seed the commission input from the rate on file exactly once so an
         // admin mid-edit isn't overwritten by a background refetch.
         if (!commissionSeeded.current) {
@@ -1919,6 +1922,20 @@ function ProspectDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* Calls with the voice concierge */}
+          {calls.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Calls</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {calls.map((call) => (
+                  <CallCard key={call.id} call={call} showProspectLink={false} />
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Upload Links */}
           <Card>

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { sellerProspects, uploadItems } from '@/db/schema';
-import { and, eq, isNotNull, sql } from 'drizzle-orm';
+import { calls, sellerProspects, uploadItems } from '@/db/schema';
+import { and, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { getDefaultCommissionPercent } from '@/lib/settings/commission';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
@@ -37,8 +37,11 @@ export async function GET(
 
     // The commission the agreement should propose when this consignor has no
     // agreed rate yet — same source settlement uses, so the two can't drift.
-    const defaultCommissionPercent = await getDefaultCommissionPercent();
-    return NextResponse.json({ data: prospect, defaultCommissionPercent });
+    const [defaultCommissionPercent, prospectCalls] = await Promise.all([
+      getDefaultCommissionPercent(),
+      db.select().from(calls).where(eq(calls.prospectId, prospectId)).orderBy(desc(calls.startedAt)).limit(20),
+    ]);
+    return NextResponse.json({ data: prospect, defaultCommissionPercent, calls: prospectCalls });
   } catch (error) {
     logger.error('Admin prospect detail error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
