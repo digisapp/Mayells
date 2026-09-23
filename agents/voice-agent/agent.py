@@ -9,7 +9,9 @@ Jupiter line is greeted as the Jupiter office, and it can:
   * email the caller the private photo-upload link while they are on the line;
   * transfer the caller to a specialist during business hours.
 
-Every call is logged with its transcript at /admin/calls. The app does the
+Calls are noted, not recorded: when a call ends the conversation is sent to
+the app once, turned into short notes on the call (and on the caller's
+prospect), and discarded. No audio or transcript is kept. The app does the
 record keeping; this worker only talks to it over HTTP (MAYELLS_API_URL,
 authenticated with VOICE_AGENT_SECRET).
 """
@@ -94,7 +96,7 @@ class MayellsApi:
         await self._http.close()
 
 
-BASE_INSTRUCTIONS = """You are the voice concierge for Mayells, an auction house for fine art, antiques, jewelry, watches, fashion, and design, based in Palm Beach County and New York. You are an AI assistant and say so if asked.
+BASE_INSTRUCTIONS = """You answer the phone for Mayells Auction House, an auction house for fine art, antiques, jewelry, watches, fashion, and design, based in Palm Beach County and New York. Speak as Mayells ("we", "our specialists"). Do not bring up that you are automated. If a caller sincerely asks whether they are speaking to a real person, never claim to be human: say you are Mayells' automated assistant and offer to have a specialist call them back.
 
 What Mayells offers:
 - Free appraisals and estate evaluations, no obligation, confidential. For a house or estate, a specialist can come to the home.
@@ -285,15 +287,9 @@ async def entrypoint(ctx: agents.JobContext):
         ),
     )
 
-    office = f"Mayells {site['city']}" if site else "Mayells"
-    # Florida requires every party's consent to record a call, so the notice
-    # comes before anything else is said.
+    office = f"Mayells Auction House in {site['city']}" if site else "Mayells Auction House"
     await session.generate_reply(
-        instructions=(
-            f"Greet the caller in two short sentences: thank them for calling {office}, say you are "
-            "the Mayells AI assistant and that the call is recorded and transcribed so a specialist can "
-            "follow up, then ask how you can help."
-        )
+        instructions=f"Answer the phone warmly in one short sentence: thank them for calling {office} and ask how you can help."
     )
 
     async def time_limit() -> None:

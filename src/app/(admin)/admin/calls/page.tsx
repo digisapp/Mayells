@@ -69,8 +69,8 @@ export default async function AdminCallsPage({
         title="Calls"
         description={
           <span className="block max-w-2xl">
-            Conversations with the AI voice concierge on the Mayells and city phone lines, with a summary and
-            transcript of each. Figures cover the last 30 days.
+            Calls answered by the Mayells phone concierge, with notes on each. Calls are not recorded; leads
+            also appear in Prospects. Figures cover the last 30 days.
           </span>
         }
       >

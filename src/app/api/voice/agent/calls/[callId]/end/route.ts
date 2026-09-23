@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { calls } from '@/db/schema';
 import { rejectUnlessVoiceAgent } from '@/lib/voice/agent-auth';
-import { cleanTranscript, summariseCall } from '@/lib/voice/calls';
+import { cleanTranscript, writeCallNotes } from '@/lib/voice/calls';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { logger } from '@/lib/logger';
 
@@ -17,8 +17,9 @@ const endSchema = z.object({
 
 /**
  * Called by the agent when the call ends (hang-up, transfer, or the length
- * cap). Stores the transcript, then summarises it after responding so the
- * agent's shutdown is not held up by a model call.
+ * cap). Closes the call, then writes notes from the conversation after
+ * responding, so the agent's shutdown is not held up by a model call. The
+ * conversation is never stored; see writeCallNotes.
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ callId: string }> }) {
   const rejected = rejectUnlessVoiceAgent(req);
@@ -37,19 +38,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cal
     if (!call) return NextResponse.json({ error: 'Call not found' }, { status: 404 });
     if (call.endedAt) return NextResponse.json({ data: { ok: true } });
 
-    const transcript = cleanTranscript(parsed.data.transcript);
+    const turns = cleanTranscript(parsed.data.transcript);
     const endedAt = new Date();
     await db
       .update(calls)
       .set({
-        transcript,
         endedAt,
         durationSeconds: Math.max(0, Math.round((endedAt.getTime() - call.startedAt.getTime()) / 1000)),
         ...(parsed.data.transferred ? { outcome: 'transferred' as const } : {}),
       })
       .where(eq(calls.id, callId));
 
-    after(() => summariseCall(callId, transcript));
+    after(() => writeCallNotes(callId, turns));
     return NextResponse.json({ data: { ok: true } });
   } catch (error) {
     logger.error('Voice agent call end failed', error, { callId });

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, integer, timestamp, pgEnum, index, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, integer, timestamp, pgEnum, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { sellerProspects } from './seller-prospects';
 
@@ -11,16 +11,14 @@ export const callChannelEnum = pgEnum('call_channel', ['phone', 'web']);
  */
 export const callOutcomeEnum = pgEnum('call_outcome', ['info', 'lead', 'transferred']);
 
-export interface CallTranscriptTurn {
-  role: 'caller' | 'agent';
-  text: string;
-}
-
 /**
- * One conversation with the AI voice concierge (agents/voice-agent), opened
- * by the agent when it joins and closed when the caller hangs up. Holds the
- * transcript and an AI summary so a lead taken at 11pm is readable the next
- * morning without replaying anything. No audio is stored.
+ * One conversation with the voice concierge (agents/voice-agent), opened by
+ * the agent when it joins and closed when the caller hangs up.
+ *
+ * Deliberately no transcript and no audio: the call is not recorded, only
+ * noted. The conversation is held in memory just long enough to write
+ * `summary`, the way a receptionist writes a message slip, and the lead
+ * itself lands on the prospect.
  */
 export const calls = pgTable('calls', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -35,7 +33,6 @@ export const calls = pgTable('calls', {
   site: text('site'),
   prospectId: uuid('prospect_id').references(() => sellerProspects.id, { onDelete: 'set null' }),
   outcome: callOutcomeEnum('outcome').default('info').notNull(),
-  transcript: jsonb('transcript').$type<CallTranscriptTurn[]>(),
   summary: text('summary'),
   startedAt: timestamp('started_at').default(sql`now()`).notNull(),
   endedAt: timestamp('ended_at'),

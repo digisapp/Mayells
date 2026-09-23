@@ -1,6 +1,6 @@
 # Mayells voice concierge
 
-A LiveKit Agents worker that answers the Mayells phone lines with an xAI realtime voice. It takes appraisal requests (which become prospects in the admin), emails the caller a photo upload link, transfers callers to a specialist during business hours, and logs every call with a transcript and summary at `/admin/calls`.
+A LiveKit Agents worker that answers the Mayells phone lines with an xAI realtime voice. It takes appraisal requests (which become prospects in the admin), emails the caller a photo upload link, transfers callers to a specialist during business hours, and writes short notes on every call to `/admin/calls` and to the caller's prospect. Calls are not recorded: no audio or transcript is stored.
 
 ## Environment
 
@@ -42,5 +42,6 @@ python agent.py start    # production (the Dockerfile runs this)
 
 ## Compliance
 
-- The greeting says the caller is speaking to an AI assistant and that the call is recorded and transcribed. Florida requires every party's consent to record, so the notice must come first. Keep it if you change the greeting.
+- Calls are noted, not recorded. The conversation reaches the app once, at hang-up, is turned into notes, and is discarded; nothing verbatim is stored. That is why the greeting carries no recording notice (Florida requires every party's consent to *record* a call). If you ever store transcripts or audio, a notice has to come back first.
+- The agent answers as Mayells and does not volunteer that it is automated, but it never claims to be human when sincerely asked; it says it is Mayells' automated assistant and offers a specialist callback.
 - This agent answers inbound calls only. Outbound AI calls (for example, calling a form lead back) need the person's prior express consent under the TCPA. Add a consent checkbox to the form before building that.

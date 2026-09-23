@@ -176,6 +176,13 @@
       "when": 1790170927807,
       "tag": "0024_voice_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1790181457570,
+      "tag": "0025_calls_no_transcript",
+      "breakpoints": true
     }
   ]
 }

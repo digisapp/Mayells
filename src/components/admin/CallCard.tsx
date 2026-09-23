@@ -12,7 +12,6 @@ export interface CallView {
   site: string | null;
   prospectId: string | null;
   outcome: 'info' | 'lead' | 'transferred';
-  transcript: { role: 'caller' | 'agent'; text: string }[] | null;
   summary: string | null;
   startedAt: string | Date;
   endedAt: string | Date | null;
@@ -47,7 +46,8 @@ export function formatCaller(number: string | null): string {
 
 /**
  * One voice-concierge conversation: who, when, which line, what came of it,
- * the AI summary, and the full transcript behind a disclosure.
+ * and the notes written from it. Calls are noted, not recorded, so there is
+ * no transcript to show.
  */
 export function CallCard({ call, showProspectLink = true }: { call: CallView; showProspectLink?: boolean }) {
   const inProgress = !call.endedAt;
@@ -81,25 +81,9 @@ export function CallCard({ call, showProspectLink = true }: { call: CallView; sh
 
       {call.summary ? (
         <p className="text-sm max-w-3xl">{call.summary}</p>
-      ) : !inProgress && (call.transcript?.length ?? 0) === 0 ? (
-        <p className="text-sm text-muted-foreground">Nothing was said on this call.</p>
+      ) : !inProgress ? (
+        <p className="text-sm text-muted-foreground">No notes for this call.</p>
       ) : null}
-
-      {call.transcript && call.transcript.length > 0 && (
-        <details className="text-sm">
-          <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-            Transcript ({call.transcript.length} turns)
-          </summary>
-          <div className="mt-2 space-y-1.5 max-w-3xl">
-            {call.transcript.map((turn, i) => (
-              <p key={i}>
-                <span className="font-medium">{turn.role === 'agent' ? 'Concierge' : 'Caller'}:</span>{' '}
-                <span className="text-muted-foreground">{turn.text}</span>
-              </p>
-            ))}
-          </div>
-        </details>
-      )}
     </div>
   );
 }
