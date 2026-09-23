@@ -35,7 +35,7 @@ export function MediaThumbnail({ task, onRemove }: MediaThumbnailProps) {
     : fileUrl || undefined;
 
   return (
-    <div className="relative flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-[#272D35]/5">
+    <div className="relative flex-shrink-0 w-20 h-20 rounded-xl overflow-hidden bg-charcoal/5">
       {/* Preview image */}
       {previewUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
@@ -46,7 +46,7 @@ export function MediaThumbnail({ task, onRemove }: MediaThumbnailProps) {
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center">
-          <Video className="w-6 h-6 text-[#272D35]/30" />
+          <Video className="w-6 h-6 text-charcoal/30" />
         </div>
       )}
 

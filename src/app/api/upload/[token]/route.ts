@@ -106,7 +106,9 @@ export async function POST(
     if (link.maxItems !== null && link.itemCount + items.length > link.maxItems) {
       return NextResponse.json(
         {
-          error: `Exceeds maximum items. Limit: ${link.maxItems}, current: ${link.itemCount}, attempted: ${items.length}`,
+          error: link.maxItems - link.itemCount > 0
+            ? `This link can take ${link.maxItems - link.itemCount} more ${link.maxItems - link.itemCount === 1 ? 'item' : 'items'}. Remove some, or call us for a new link.`
+            : 'This link has reached its item limit. Call us and we will send you a new one.',
         },
         { status: 400 }
       );
