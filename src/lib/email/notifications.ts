@@ -516,6 +516,8 @@ export async function sendAppraisalRequestNotification(
     service?: string;
     items?: string;
     message?: string;
+    /** Set when the request came from a city microsite. */
+    site?: { city: string; domain: string };
   },
   photoUrls?: string[],
   aiEstimate?: {
@@ -527,6 +529,7 @@ export async function sendAppraisalRequestNotification(
   } | null,
 ) {
   const rows = [
+    params.site ? `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">From:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(params.site.city)} microsite (${escapeHtml(params.site.domain)})</td></tr>` : '',
     `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Name:</td><td style="padding: 6px 12px; font-weight: bold;">${escapeHtml(params.name)}</td></tr>`,
     `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Phone:</td><td style="padding: 6px 12px;">${escapeHtml(params.phone)}</td></tr>`,
     params.email ? `<tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Email:</td><td style="padding: 6px 12px;">${escapeHtml(params.email)}</td></tr>` : '',
@@ -553,13 +556,13 @@ export async function sendAppraisalRequestNotification(
         <tr><td style="padding: 6px 12px; color: #666;">Fit:</td><td style="padding: 6px 12px;">${aiEstimate.worthConsigning ? 'Looks consignable' : 'Possibly below threshold'}</td></tr>
         <tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Summary:</td><td style="padding: 6px 12px;">${escapeHtml(aiEstimate.summary)}</td></tr>
       </table>
-      <p style="font-size: 12px; color: #999;">This range was already shown to the prospect on mayells.com.</p>
+      <p style="font-size: 12px; color: #999;">This range was already shown to the prospect on ${params.site ? escapeHtml(params.site.domain) : 'mayells.com'}.</p>
     `
     : '';
 
   await sendAndLog({
     to: ADMIN_EMAIL,
-    subject: `New Service Request from ${params.name}${photoUrls?.length ? ` (${photoUrls.length} photos)` : ''}${aiEstimate ? ` — AI est. ${formatCurrency(aiEstimate.estimateLow)}–${formatCurrency(aiEstimate.estimateHigh)}` : ''}`,
+    subject: `${params.site ? `[${params.site.city}] ` : ''}New Service Request from ${params.name}${photoUrls?.length ? ` (${photoUrls.length} photos)` : ''}${aiEstimate ? ` — AI est. ${formatCurrency(aiEstimate.estimateLow)}–${formatCurrency(aiEstimate.estimateHigh)}` : ''}`,
     html: adminEmailLayout(`
         <table style="margin: 16px 0; border-collapse: collapse; width: 100%;">${rows}</table>
         ${estimateSection}

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/sheet';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { cn } from '@/lib/utils';
+import { MICROSITE_LABELS } from '@/lib/microsites/labels';
 import { LensButton } from '@/components/admin/LensButton';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
@@ -92,6 +93,7 @@ interface Prospect {
   zip: string | null;
   source: ProspectSource;
   sourceNotes: string | null;
+  site: string | null;
   status: ProspectStatus;
   totalItems: number;
   reviewedItems: number;
@@ -1220,6 +1222,13 @@ export default function AdminProspectDetailPage() {
                 <span>{[prospect.city, prospect.state].filter(Boolean).join(', ')}</span>
               )}
               <span className="capitalize">Source: {prospect.source.replace(/_/g, ' ')}</span>
+              {prospect.site && (
+                <Link href={`/admin/prospects?site=${prospect.site}`} className="text-champagne-deep font-medium hover:underline">
+                  {MICROSITE_LABELS[prospect.site]
+                    ? `${MICROSITE_LABELS[prospect.site].city} microsite (${MICROSITE_LABELS[prospect.site].domain})`
+                    : `${prospect.site} microsite`}
+                </Link>
+              )}
               {prospect.userId && (
                 <Link
                   href={`/admin/users/${prospect.userId}`}
@@ -1230,6 +1239,9 @@ export default function AdminProspectDetailPage() {
                 </Link>
               )}
             </div>
+            {prospect.sourceNotes && (
+              <p className="text-sm text-muted-foreground mt-2 max-w-2xl whitespace-pre-wrap">{prospect.sourceNotes}</p>
+            )}
             {prospect.notes && (
               <p className="text-sm text-muted-foreground mt-2 max-w-2xl whitespace-pre-wrap">{prospect.notes}</p>
             )}

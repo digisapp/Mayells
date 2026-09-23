@@ -29,6 +29,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { MICROSITE_LABELS, micrositeCity } from '@/lib/microsites/labels';
 import { toast } from 'sonner';
 import { BUSINESS } from '@/lib/config';
 
@@ -63,6 +64,7 @@ interface Prospect {
   phone: string | null;
   company: string | null;
   source: ProspectSource;
+  site: string | null;
   status: ProspectStatus;
   estimatedItemCount: number | null;
   itemSummary: string | null;
@@ -173,6 +175,10 @@ function ProspectsPageInner() {
     ? (statusParam as ProspectStatus)
     : '';
 
+  // Lead origin filter: '' (all), 'any' (every city microsite) or a city slug.
+  const siteParam = searchParams.get('site') ?? '';
+  const siteFilter = siteParam === 'any' || siteParam in MICROSITE_LABELS ? siteParam : '';
+
   const [rows, setRows] = useState<ProspectRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -191,7 +197,7 @@ function ProspectsPageInner() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingConfirm | null>(null);
 
-  const fetchProspects = useCallback(async (pageOffset = 0, searchTerm = '', status: ProspectStatus | '' = '') => {
+  const fetchProspects = useCallback(async (pageOffset = 0, searchTerm = '', status: ProspectStatus | '' = '', site = '') => {
     setLoading(true);
     setFetchError(false);
     try {
@@ -201,6 +207,7 @@ function ProspectsPageInner() {
       });
       if (searchTerm) params.set('search', searchTerm);
       if (status) params.set('status', status);
+      if (site) params.set('site', site);
       const res = await fetch(`/api/admin/prospects?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to load prospects');
@@ -225,8 +232,16 @@ function ProspectsPageInner() {
 
   useEffect(() => {
     setOffset(0);
-    fetchProspects(0, debouncedSearch, statusFilter);
-  }, [debouncedSearch, statusFilter, fetchProspects]);
+    fetchProspects(0, debouncedSearch, statusFilter, siteFilter);
+  }, [debouncedSearch, statusFilter, siteFilter, fetchProspects]);
+
+  function setSiteFilter(next: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next) params.set('site', next);
+    else params.delete('site');
+    const qs = params.toString();
+    router.replace(`/admin/prospects${qs ? `?${qs}` : ''}`, { scroll: false });
+  }
 
   function setStatusFilter(next: ProspectStatus | '') {
     const params = new URLSearchParams(searchParams.toString());
@@ -297,7 +312,7 @@ function ProspectsPageInner() {
       setForm(emptyForm);
       setShowDialog(false);
       setOffset(0);
-      fetchProspects(0, debouncedSearch, statusFilter);
+      fetchProspects(0, debouncedSearch, statusFilter, siteFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create prospect');
     } finally {
@@ -331,7 +346,7 @@ function ProspectsPageInner() {
             : 'Upload link copied to clipboard (no email on file)',
         );
       }
-      fetchProspects(offset, debouncedSearch, statusFilter);
+      fetchProspects(offset, debouncedSearch, statusFilter, siteFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to create upload link');
     } finally {
@@ -368,7 +383,7 @@ function ProspectsPageInner() {
       }
       toast.success('Prospect deleted');
       // Refetch so the stats cards and pagination reflect the removal.
-      fetchProspects(offset, debouncedSearch, statusFilter);
+      fetchProspects(offset, debouncedSearch, statusFilter, siteFilter);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete prospect');
     } finally {
@@ -495,6 +510,23 @@ function ProspectsPageInner() {
         })}
       </div>
 
+      {/* Lead origin filter */}
+      <div className="flex items-center gap-2 -mt-3 mb-6">
+        <label htmlFor="site-filter" className="text-xs text-muted-foreground">From</label>
+        <select
+          id="site-filter"
+          value={siteFilter}
+          onChange={(e) => setSiteFilter(e.target.value)}
+          className="h-8 rounded-md border bg-background px-2 text-xs"
+        >
+          <option value="">Anywhere</option>
+          <option value="any">Any city microsite</option>
+          {Object.entries(MICROSITE_LABELS).map(([slug, { city }]) => (
+            <option key={slug} value={slug}>{city} microsite</option>
+          ))}
+        </select>
+      </div>
+
       {/* Table */}
       {loading ? (
         <div className="space-y-3">
@@ -509,7 +541,7 @@ function ProspectsPageInner() {
             <p className="text-muted-foreground mb-4">
               Failed to load prospects. Please check your connection and try again.
             </p>
-            <Button variant="outline" onClick={() => fetchProspects(offset, debouncedSearch, statusFilter)}>
+            <Button variant="outline" onClick={() => fetchProspects(offset, debouncedSearch, statusFilter, siteFilter)}>
               Retry
             </Button>
           </CardContent>
@@ -519,7 +551,7 @@ function ProspectsPageInner() {
           <CardContent className="py-12 text-center">
             <Users2 className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="text-muted-foreground">
-              {debouncedSearch || statusFilter ? 'No prospects match your filters.' : 'No prospects yet.'}
+              {debouncedSearch || statusFilter || siteFilter ? 'No prospects match your filters.' : 'No prospects yet.'}
             </p>
           </CardContent>
         </Card>
@@ -574,6 +606,11 @@ function ProspectsPageInner() {
                       <span className="text-xs text-muted-foreground">
                         {sourceLabels[p.source] || p.source}
                       </span>
+                      {p.site && (
+                        <div className="text-[11px] font-medium text-champagne-deep whitespace-nowrap">
+                          {micrositeCity(p.site)} site
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -664,7 +701,7 @@ function ProspectsPageInner() {
               onClick={() => {
                 const next = Math.max(0, offset - PAGE_SIZE);
                 setOffset(next);
-                fetchProspects(next, debouncedSearch, statusFilter);
+                fetchProspects(next, debouncedSearch, statusFilter, siteFilter);
               }}
               className="gap-1"
             >
@@ -677,7 +714,7 @@ function ProspectsPageInner() {
               onClick={() => {
                 const next = offset + PAGE_SIZE;
                 setOffset(next);
-                fetchProspects(next, debouncedSearch, statusFilter);
+                fetchProspects(next, debouncedSearch, statusFilter, siteFilter);
               }}
               className="gap-1"
             >

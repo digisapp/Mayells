@@ -25,6 +25,7 @@ import {
   Menu,
   X,
   ExternalLink,
+  Globe,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -55,6 +56,7 @@ export const adminNav: AdminNavGroup[] = [
     links: [
       { href: '/admin/prospects', label: 'Prospects', icon: UserPlus, badge: (b) => b.prospects.awaiting + b.prospects.signed },
       { href: '/admin/appraisals', label: 'Appraisals', icon: ClipboardCheck, badge: (b) => b.appraisals.review },
+      { href: '/admin/microsites', label: 'Microsites', icon: Globe },
     ],
   },
   {

@@ -2,6 +2,7 @@
 
 import { useId, useRef, useState } from 'react';
 import { track } from '@vercel/analytics';
+import { sendMicrositeEvent } from '@/lib/microsites/beacon';
 import { toast } from 'sonner';
 import { Camera, CheckCircle, Loader2, Sparkles, X } from 'lucide-react';
 import { compressImage, uploadPhotosDirect, MAX_PHOTOS, MAX_FILE_SIZE } from '@/lib/upload/direct-upload';
@@ -74,6 +75,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
     if (started.current) return;
     started.current = true;
     track('microsite_form_start', { site, placement });
+    sendMicrositeEvent(site, 'form_start', placement);
   };
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {

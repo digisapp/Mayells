@@ -10,6 +10,8 @@ import { db } from '@/db';
 import { auctions, bids, lots, users, invoices, sellerProspects, estateVisits } from '@/db/schema';
 import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { formatCurrency, formatCurrencyWithCents } from '@/types';
+import { getMicrositeRows } from '@/lib/admin/microsite-stats';
+import { micrositeCity } from '@/lib/microsites/labels';
 import {
   Plus, Inbox, Image as ImageIcon, UserPlus, ClipboardCheck, FileText, Banknote, Truck,
   Webhook, Mail, AlertTriangle, CheckCircle2, Gavel, ArrowRight, type LucideIcon,
@@ -88,7 +90,7 @@ function buildQueue(b: AdminBadges): QueueItem[] {
 export default async function AdminDashboardPage() {
   await requireAdminPage();
 
-  const [badges, salesInMotion, latestBids, recentlyPaid, latestProspects, latestAppraisals] = await Promise.all([
+  const [badges, salesInMotion, latestBids, recentlyPaid, latestProspects, latestAppraisals, microsites] = await Promise.all([
     getAdminBadges(),
     db
       .select({
@@ -141,6 +143,7 @@ export default async function AdminDashboardPage() {
         fullName: sellerProspects.fullName,
         status: sellerProspects.status,
         source: sellerProspects.source,
+        site: sellerProspects.site,
         totalItems: sellerProspects.totalItems,
         createdAt: sellerProspects.createdAt,
       })
@@ -158,6 +161,7 @@ export default async function AdminDashboardPage() {
       .from(estateVisits)
       .orderBy(desc(estateVisits.createdAt))
       .limit(5),
+    getMicrositeRows(30),
   ]);
 
   const queue = buildQueue(badges);
@@ -290,6 +294,38 @@ export default async function AdminDashboardPage() {
         </Card>
       </div>
 
+      {/* City microsites */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>City microsites · last 30 days</CardTitle>
+          <Link href="/admin/microsites" className="text-xs text-muted-foreground hover:text-foreground">Details</Link>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {microsites.map((m) => (
+              <Link key={m.slug} href="/admin/microsites" className="rounded-md border p-3 hover:border-champagne/60 transition-colors">
+                <p className="text-sm font-medium truncate">{m.city}</p>
+                <p className="text-[11px] text-muted-foreground truncate">{m.domain}</p>
+                <div className="mt-2 grid grid-cols-3 gap-1 text-center">
+                  <div>
+                    <p className="text-base font-semibold tabular-nums">{m.visitors}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Visitors</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold tabular-nums">{m.calls}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Calls</p>
+                  </div>
+                  <div>
+                    <p className="text-base font-semibold tabular-nums">{m.leads}</p>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Leads</p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -309,7 +345,7 @@ export default async function AdminDashboardPage() {
                         {prospectStatusLabels[p.status] ?? p.status}{p.totalItems ? ` · ${p.totalItems} items` : ''} · {relative(p.createdAt)}
                       </p>
                     </div>
-                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0">{p.source.replace('_', ' ')}</span>
+                    <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0">{p.site ? `${micrositeCity(p.site)} site` : p.source.replace('_', ' ')}</span>
                   </Link>
                 ))}
               </div>

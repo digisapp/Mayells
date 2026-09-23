@@ -12,6 +12,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { instantEstimate, type InstantEstimate } from '@/lib/ai/instant-estimate';
 import { stripImageMetadata, sanitizeStoredImages } from '@/lib/images/sanitize';
 import { formatCurrency } from '@/types';
+import { getMicrositeBySlug } from '@/lib/microsites/config';
 
 // Photo uploads plus a vision-model estimate can exceed the default timeout.
 export const maxDuration = 60;
@@ -169,6 +170,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
     ({ name, phone, email, items, service, message, site } = parsed.data as typeof parsed.data & { name: string; phone: string });
+    // Only a live microsite slug attributes the lead; anything else is
+    // treated as mayells.com rather than stored as an unknown city.
+    const microsite = site ? getMicrositeBySlug(site) : undefined;
+    site = microsite?.slug;
 
     // Preliminary AI estimate for the prospect. Strictly best-effort: any
     // failure (model down, unparseable photos) must not fail the request.
@@ -191,7 +196,7 @@ export async function POST(req: NextRequest) {
     }
 
     sendAppraisalRequestNotification(
-      { name, phone, email, service, items, message },
+      { name, phone, email, service, items, message, site: microsite ? { city: microsite.city, domain: microsite.domain } : undefined },
       photoUrls,
       estimate,
     ).catch((err) =>
@@ -246,7 +251,7 @@ async function createProspectFromSubmission(
   const hasPhotos = photoUrls.length > 0;
 
   const origin = form.site
-    ? `Submitted via the ${form.site} city microsite`
+    ? `Submitted via the ${getMicrositeBySlug(form.site)?.domain ?? form.site} city microsite`
     : 'Submitted via mayells.com consign/appraisal form';
 
   const sourceNotes = [
@@ -269,6 +274,7 @@ async function createProspectFromSubmission(
       phone: form.phone,
       source: 'website',
       sourceNotes,
+      site: form.site ?? null,
       itemSummary: form.items || null,
       notes,
       // With photos the prospect goes straight to the needs-review state the

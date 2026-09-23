@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { track } from '@vercel/analytics';
+import { sendMicrositeEvent } from '@/lib/microsites/beacon';
 
 interface Props {
   href: string;
@@ -27,7 +28,10 @@ export function CallLink({ href, site, placement, className, tabIndex, children 
       href={href}
       className={className}
       tabIndex={tabIndex}
-      onClick={() => track('microsite_call', { site, placement })}
+      onClick={() => {
+        track('microsite_call', { site, placement });
+        sendMicrositeEvent(site, 'call', placement);
+      }}
     >
       {children}
     </a>

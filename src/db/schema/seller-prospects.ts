@@ -41,6 +41,9 @@ export const sellerProspects = pgTable('seller_prospects', {
   // How they reached out
   source: prospectSourceEnum('source').default('email').notNull(),
   sourceNotes: text('source_notes'),
+  // City microsite slug (src/lib/microsites/config.ts) when the lead came in
+  // through one of the city domains; null for mayells.com and manual entry.
+  site: text('site'),
 
   // Status tracking
   status: prospectStatusEnum('status').default('new').notNull(),
@@ -74,6 +77,7 @@ export const sellerProspects = pgTable('seller_prospects', {
   index('seller_prospects_status_idx').on(table.status),
   index('seller_prospects_email_idx').on(table.email),
   index('seller_prospects_created_idx').on(table.createdAt),
+  index('seller_prospects_site_idx').on(table.site),
 ]).enableRLS();
 
 export const sellerProspectsRelations = relations(sellerProspects, ({ many }) => ({

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
 import { sellerProspects, uploadLinks, uploadItems } from '@/db/schema';
-import { eq, desc, countDistinct, sql, or, ilike, and, inArray } from 'drizzle-orm';
+import { eq, desc, countDistinct, sql, or, ilike, and, inArray, isNotNull } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { parsePagination } from '@/lib/pagination';
 
@@ -93,6 +93,13 @@ export async function GET(request: NextRequest) {
     }
     if (statusFilter.length > 0) {
       filters.push(inArray(sellerProspects.status, statusFilter));
+    }
+    // Lead origin: ?site=any for every city microsite, or one city's slug.
+    const siteParam = request.nextUrl.searchParams.get('site')?.trim() ?? '';
+    if (siteParam === 'any') {
+      filters.push(isNotNull(sellerProspects.site));
+    } else if (/^[a-z0-9-]{1,40}$/.test(siteParam)) {
+      filters.push(eq(sellerProspects.site, siteParam));
     }
     const where = filters.length > 0 ? and(...filters) : undefined;
 
