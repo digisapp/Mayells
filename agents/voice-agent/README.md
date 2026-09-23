@@ -16,14 +16,23 @@ A LiveKit Agents worker that answers the Mayells phone lines with an xAI realtim
 
 ## Phone numbers and city lines
 
-`dispatch-rule.json` sends every inbound SIP call to this agent in a `call-*` room. The agent reads the number that was dialled (`sip.trunkPhoneNumber`) and asks the app which city it belongs to. To give a city microsite its own line:
+`dispatch-rule.json` mirrors the live rule `SDR_DDtuEmLMgvE4` in the Mayells LiveKit project: every call to +1 561 987 7200 (the number shown on every site) goes to this agent in its own `mayells-*` room. Apply edits with `lk sip dispatch update --project mayells --id SDR_DDtuEmLMgvE4 dispatch-rule.json`. The agent reads the number that was dialled (`sip.trunkPhoneNumber`) and asks the app which city it belongs to. To give a city microsite its own line:
 
 1. Buy or port the number in LiveKit and add it to the inbound trunk the dispatch rule covers.
 2. Set `phone: { display, e164 }` on that city in `src/lib/microsites/config.ts`, and update its `metaDescription`, which spells the number out.
 
 The city page then shows its own number, the agent greets callers as that city's office, and the calls and leads are attributed to the city.
 
-## Run
+## Deploy to LiveKit Cloud
+
+Secrets live in `.env.production` next to this file (gitignored). Then:
+
+```bash
+lk agent create --project mayells --secrets-file .env.production .   # first time
+lk agent deploy --project mayells --secrets-file .env.production .   # updates
+```
+
+## Run locally
 
 ```bash
 pip install -r requirements.txt
