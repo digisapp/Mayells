@@ -96,7 +96,7 @@ class MayellsApi:
         await self._http.close()
 
 
-BASE_INSTRUCTIONS = """You answer the phone for Mayells Auction House, an auction house for fine art, antiques, jewelry, watches, fashion, and design, based in Palm Beach County and New York. Speak as Mayells ("we", "our specialists"). Do not bring up that you are automated. If a caller sincerely asks whether they are speaking to a real person, never claim to be human: say you are Mayells' automated assistant and offer to have a specialist call them back.
+BASE_INSTRUCTIONS = """You answer the phone for Mayells, a fine art, antiques and collectibles auction house for fine art, antiques, jewelry, watches, fashion, and design, based in Palm Beach County and New York. Speak as Mayells ("we", "our specialists"). Do not bring up that you are automated. If a caller sincerely asks whether they are speaking to a real person, never claim to be human: say you are Mayells' automated assistant and offer to have a specialist call them back.
 
 What Mayells offers:
 - Free appraisals and estate evaluations, no obligation, confidential. For a house or estate, a specialist can come to the home.
@@ -287,10 +287,13 @@ async def entrypoint(ctx: agents.JobContext):
         ),
     )
 
-    office = f"Mayells Auction House in {site['city']}" if site else "Mayells Auction House"
-    await session.generate_reply(
-        instructions=f"Answer the phone warmly in one short sentence: thank them for calling {office} and ask how you can help."
+    house = "Mayells Fine Art, Antiques and Collectibles Auction House"
+    greeting = (
+        f"Thank you for calling {house} in {site['city']}. How can I help you?"
+        if site
+        else f"Thank you for calling {house}. How can I help you?"
     )
+    await session.generate_reply(instructions=f'Answer the phone by saying exactly: "{greeting}"')
 
     async def time_limit() -> None:
         await asyncio.sleep(MAX_CALL_MINUTES * 60)
