@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mayell-upload-v1';
+const CACHE_NAME = 'mayells-upload-v2';
 const PRECACHE_URLS = [
   '/manifest.json',
   '/icons/icon-192.png',
