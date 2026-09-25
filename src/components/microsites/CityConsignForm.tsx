@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { track } from '@vercel/analytics';
 import { sendMicrositeEvent } from '@/lib/microsites/beacon';
 import { toast } from 'sonner';
-import { Camera, CheckCircle, Loader2, Sparkles, X } from 'lucide-react';
+import { Camera, CheckCircle, Loader2, X } from 'lucide-react';
 import { MAX_PHOTOS } from '@/lib/upload/direct-upload';
 import {
   usePhotoAttachments,
@@ -16,21 +16,6 @@ import {
 } from '@/lib/upload/use-photo-attachments';
 import { keepScreenAwake } from '@/lib/upload/wake-lock';
 import { revealIfHidden } from '@/lib/upload/reveal-if-hidden';
-
-interface EstimateResult {
-  estimateLow: number;
-  estimateHigh: number;
-  confidence: 'low' | 'medium' | 'high';
-  summary: string;
-}
-
-function formatUsd(cents: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-}
 
 // text-base (16px) is load-bearing, not cosmetic: iOS Safari zooms the
 // viewport when a focused input's font-size is under 16px, which on a lead
@@ -54,8 +39,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [estimate, setEstimate] = useState<EstimateResult | null>(null);
-  const [stage, setStage] = useState<'uploading' | 'analyzing' | 'submitting' | null>(null);
+  const [stage, setStage] = useState<'uploading' | 'submitting' | null>(null);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [photoShortfall, setPhotoShortfall] = useState<PhotoUploadResult | null>(null);
   const { photos, preparing, add, remove, upload, submissionId } = usePhotoAttachments();
@@ -107,7 +91,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
         photoResult = await upload((done, total) => setUploadProgress({ done, total }));
       }
 
-      setStage(photoResult.paths.length > 0 ? 'analyzing' : 'submitting');
+      setStage('submitting');
       const res = await fetch('/api/appraisal-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -124,8 +108,6 @@ export function CityConsignForm({ site, city, placement }: Props) {
       });
 
       if (res.ok) {
-        const body = await res.json().catch(() => null);
-        setEstimate(body?.data?.estimate ?? null);
         // Reported in the confirmation, only once the lead is safely captured.
         setPhotoShortfall(photoResult.failed > 0 ? photoResult : null);
         setSubmitted(true);
@@ -147,36 +129,16 @@ export function CityConsignForm({ site, city, placement }: Props) {
   if (submitted) {
     return (
       <div ref={confirmationRef} className="scroll-mt-20 rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-8">
-        {estimate ? (
-          <>
-            <div className="mb-3 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-muted-foreground" />
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                Preliminary estimate
-              </span>
-            </div>
-            <p className="font-display text-4xl tabular-nums tracking-tight">
-              {estimate.estimateLow === estimate.estimateHigh
-                ? formatUsd(estimate.estimateLow)
-                : `${formatUsd(estimate.estimateLow)} – ${formatUsd(estimate.estimateHigh)}`}
+        <div className="flex items-start gap-3">
+          <CheckCircle className="mt-0.5 h-6 w-6 shrink-0" />
+          <div>
+            <p className="font-display text-2xl tracking-tight">Request received</p>
+            <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
+              A specialist will call you about your {city} estate. If there is a deadline, call us
+              directly and say so — we will work to it.
             </p>
-            <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{estimate.summary}</p>
-            <p className="mt-5 border-t border-border pt-4 text-[13.5px] leading-relaxed text-muted-foreground">
-              An automated first pass, not an appraisal. A specialist will confirm it and call you.
-            </p>
-          </>
-        ) : (
-          <div className="flex items-start gap-3">
-            <CheckCircle className="mt-0.5 h-6 w-6 shrink-0" />
-            <div>
-              <p className="font-display text-2xl tracking-tight">Request received</p>
-              <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
-                A specialist will call you about your {city} estate. If there is a deadline, call us
-                directly and say so — we will work to it.
-              </p>
-            </div>
           </div>
-        )}
+        </div>
         {photoShortfall && (
           <div role="status" className="mt-5 rounded-lg border border-border bg-secondary/60 px-4 py-3">
             <p className="text-[14px] font-semibold">{missingPhotosHeadline(photoShortfall)}</p>
@@ -197,7 +159,6 @@ export function CityConsignForm({ site, city, placement }: Props) {
   const busyLabel =
     preparing ? 'Preparing photos…'
     : stage === 'uploading' ? `Uploading photos… ${uploadProgress.done} of ${uploadProgress.total}`
-    : stage === 'analyzing' ? 'Reviewing photos…'
     : stage === 'submitting' ? 'Sending…'
     : null;
 
@@ -325,9 +286,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
       <p aria-live="polite" className="mt-3.5 text-[13.5px] leading-relaxed text-muted-foreground">
         {stage === 'uploading'
           ? 'Keep this page open while your photos upload.'
-          : stage === 'analyzing'
-            ? 'This can take up to a minute.'
-            : `Photos get you a faster and far more accurate answer — up to ${MAX_PHOTOS}.`}
+          : `Photos get you a faster and far more accurate answer — up to ${MAX_PHOTOS}.`}
       </p>
     </form>
   );

@@ -1,32 +1,31 @@
 import type { Metadata } from 'next';
+import { AuthError, AuthShell } from '@/components/auth/AuthShell';
 import { LoginForm } from '@/components/auth/LoginForm';
+import { redirectIfSignedIn } from '@/lib/auth/redirect-if-signed-in';
+import { safeNext } from '@/lib/auth/safe-next';
 
 export const metadata: Metadata = {
   title: 'Sign In | Mayells',
   robots: { index: false, follow: false },
 };
 
-function safeNext(next?: string): string {
-  // Only allow internal same-origin paths (block open redirects).
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return '/';
-  return next;
-}
-
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
-  const { next, error } = await searchParams;
+  const { next: rawNext, error } = await searchParams;
+  const next = safeNext(rawNext);
+  await redirectIfSignedIn(next);
 
   return (
-    <div className="min-h-[70vh] flex flex-col items-center justify-center px-4 py-16">
+    <AuthShell>
       {error && (
-        <div className="mb-4 w-full max-w-md rounded-md bg-red-500/10 p-3 text-center text-sm text-red-500">
-          Your session could not be verified. Please sign in again.
+        <div className="mb-6">
+          <AuthError>That link has expired or was already used. Please sign in, or request a new link.</AuthError>
         </div>
       )}
-      <LoginForm next={safeNext(next)} />
-    </div>
+      <LoginForm next={next} />
+    </AuthShell>
   );
 }

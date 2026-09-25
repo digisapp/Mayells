@@ -556,7 +556,7 @@ export async function sendAppraisalRequestNotification(
         <tr><td style="padding: 6px 12px; color: #666;">Fit:</td><td style="padding: 6px 12px;">${aiEstimate.worthConsigning ? 'Looks consignable' : 'Possibly below threshold'}</td></tr>
         <tr><td style="padding: 6px 12px; color: #666; vertical-align: top;">Summary:</td><td style="padding: 6px 12px;">${escapeHtml(aiEstimate.summary)}</td></tr>
       </table>
-      <p style="font-size: 12px; color: #999;">This range was already shown to the prospect on ${params.site ? escapeHtml(params.site.domain) : 'mayells.com'}.</p>
+      <p style="font-size: 12px; color: #999;">Internal first pass from the photos. It was not shown to the seller.</p>
     `
     : '';
 

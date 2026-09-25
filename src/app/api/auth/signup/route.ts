@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
     if (error) {
       // Supabase returns a generic message for existing users when confirmation
       // is on; surface its message but never leak internals.
+      if (error.code === 'over_email_send_rate_limit') {
+        return NextResponse.json({ error: 'We couldn’t send your confirmation email just now. Please try again in a few minutes.' }, { status: 429 });
+      }
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     if (!data.user) {

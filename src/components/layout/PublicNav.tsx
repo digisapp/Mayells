@@ -1,11 +1,24 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Search, Menu, X, Heart, Gavel, Phone, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BUSINESS } from '@/lib/config';
+import { hasSessionCookie, loadProfile, resetAccountProfile, sessionKey, signInHref } from './account-profile';
+
+// The dropdown (Radix) loads only for a signed-in visitor. The placeholder
+// holds the trigger's size so the header doesn't shift when it arrives.
+const AccountMenu = dynamic(() => import('./AccountMenu').then((m) => m.AccountMenu), {
+  ssr: false,
+  loading: () => (
+    <span aria-hidden className="inline-flex h-11 w-[3.75rem] items-center pl-1.5">
+      <span className="size-8 rounded-full bg-secondary" />
+    </span>
+  ),
+});
 
 const navLinks = [
   { label: 'Auctions', href: '/auctions' },
@@ -31,6 +44,9 @@ export function PublicNav() {
   const [scrolled, setScrolled] = useState(false);
   const [account, setAccount] = useState<Account | undefined>(undefined);
   const [signingOut, setSigningOut] = useState(false);
+  // Desktop account slot: undefined until mounted (the server can't see the
+  // cookie on a cached page), then the session cookie's key, or null.
+  const [session, setSession] = useState<string | null | undefined>(undefined);
   const headerRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -44,6 +60,20 @@ export function PublicNav() {
     setMenuPath(pathname);
     setMobileOpen(false);
   }
+
+  // Re-read on every navigation (signing in or out ends in one) and when the
+  // tab regains focus (a sign-in or sign-out in another tab).
+  useEffect(() => {
+    const check = () => setSession(sessionKey());
+    check();
+    window.addEventListener('focus', check);
+    return () => window.removeEventListener('focus', check);
+  }, [pathname]);
+
+  const handleSignedOut = useCallback(() => {
+    setSession(null);
+    setAccount(null);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -128,14 +158,17 @@ export function PublicNav() {
     };
   }, [mobileOpen]);
 
-  // supabase-js is loaded only when someone opens the menu, not on every
-  // page view; getSession() then reads the auth cookie locally. Re-checked on
-  // each open because the header persists across sign-in and sign-out.
+  // Re-checked on each open because the header persists across sign-in and
+  // sign-out. No cookie means signed out without asking the server.
   function refreshAccount() {
-    import('@/lib/supabase/client')
-      .then(({ createClient }) => createClient().auth.getSession())
-      .then(({ data }) => setAccount(data.session ? { email: data.session.user.email ?? null } : null))
-      .catch(() => setAccount(null));
+    if (!hasSessionCookie()) {
+      setAccount(null);
+      return;
+    }
+    loadProfile().then((p) => {
+      if (!p) resetAccountProfile();
+      setAccount(p ? { email: p.email || null } : null);
+    });
   }
 
   function toggleMenu() {
@@ -157,8 +190,9 @@ export function PublicNav() {
   async function signOut() {
     setSigningOut(true);
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+    resetAccountProfile();
     setSigningOut(false);
-    setAccount(null);
+    handleSignedOut();
     setMobileOpen(false);
     router.refresh();
   }
@@ -222,9 +256,21 @@ export function PublicNav() {
                 </Link>
               </Button>
 
-              <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex text-[13px] text-muted-foreground hover:text-foreground">
-                <Link href="/login">Sign In</Link>
-              </Button>
+              {/* Faded in once the session is known, so a signed-in
+                  visitor never sees "Sign In" flash on a cached page. */}
+              <div
+                className={`hidden sm:flex items-center transition-opacity duration-200 ${session === undefined ? 'opacity-0' : 'opacity-100'}`}
+              >
+                {session ? (
+                  // Keyed on the session, so a different sign-in (another
+                  // tab, another account) remounts it with a fresh profile.
+                  <AccountMenu key={session} onSignedOut={handleSignedOut} />
+                ) : (
+                  <Button asChild variant="ghost" size="sm" className="h-11 px-3 text-[13px] text-muted-foreground hover:bg-secondary hover:text-foreground">
+                    <Link href={signInHref(pathname)}>Sign In</Link>
+                  </Button>
+                )}
+              </div>
 
               <Button asChild variant="champagne" size="sm" className="hidden sm:inline-flex text-[13px]">
                 <Link href="/consign">Sell With Us</Link>
@@ -314,7 +360,7 @@ export function PublicNav() {
           <div className="mt-6 flex min-h-11 items-center justify-between gap-4 border-t border-border pt-3">
             {account === null && (
               <>
-                <Link href="/login" className="flex min-h-11 items-center text-[15px] font-medium text-foreground">
+                <Link href={signInHref(pathname)} className="flex min-h-11 items-center text-[15px] font-medium text-foreground">
                   Sign In
                 </Link>
                 <Link href="/signup" className="flex min-h-11 items-center text-[14px] text-muted-foreground transition-colors hover:text-foreground">

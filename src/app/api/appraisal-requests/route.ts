@@ -6,7 +6,6 @@ import { db } from '@/db';
 import { and, arrayOverlaps, asc, desc, eq, like, sql } from 'drizzle-orm';
 import { sellerProspects, uploadLinks, uploadItems } from '@/db/schema';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
-import { redis, isRedisConfigured } from '@/lib/redis';
 import {
   RESUBMIT_WINDOW_MINUTES,
   parseSubmissionId,
@@ -25,7 +24,8 @@ import { stripHeifMetadata } from '@/lib/upload/strip-heic-location';
 import { formatCurrency } from '@/types';
 import { getMicrositeBySlug } from '@/lib/microsites/config';
 
-// Photo uploads plus a vision-model estimate can exceed the default timeout.
+// Legacy multipart uploads, plus the vision-model estimate that runs in
+// after() once the seller has their answer, can exceed the default timeout.
 export const maxDuration = 60;
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/heic', 'image/heif'];
@@ -52,27 +52,11 @@ const PHOTO_PATH_RE = /^submissions\/[a-z0-9.-]+$/i;
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
-/** The estimate as the form shows it. */
-interface PublicEstimate {
-  estimateLow: number;
-  estimateHigh: number;
-  confidence: InstantEstimate['confidence'];
-  summary: string;
-}
-
-function publicEstimate(estimate: InstantEstimate | null): PublicEstimate | null {
-  return estimate
-    ? {
-        estimateLow: estimate.estimateLow,
-        estimateHigh: estimate.estimateHigh,
-        confidence: estimate.confidence,
-        summary: estimate.summary,
-      }
-    : null;
-}
-
-function submitted(estimate: PublicEstimate | null) {
-  return NextResponse.json({ data: { message: 'Request submitted successfully', estimate } }, { status: 201 });
+// The seller hears only that the request arrived. The AI estimate is for the
+// specialist: shown to a seller, an unverified number from phone photos
+// anchors expectations before anyone has seen the piece.
+function submitted() {
+  return NextResponse.json({ data: { message: 'Request submitted successfully' } }, { status: 201 });
 }
 
 function publicUrl(path: string): string {
@@ -213,10 +197,7 @@ export async function POST(req: NextRequest) {
     if (typeof hp === 'string' && hp.trim().length > 0) {
       // Logged (no contact details) so a real visitor tripping it shows up.
       logger.warn('Appraisal honeypot filled; request dropped', { site, hpLength: hp.length, hasEmail: !!email });
-      return NextResponse.json(
-        { data: { message: 'Request submitted successfully', estimate: null } },
-        { status: 201 },
-      );
+      return submitted();
     }
 
     const parsed = appraisalSchema.safeParse({ name, phone, email, items, service, message, site });
@@ -233,58 +214,60 @@ export async function POST(req: NextRequest) {
     // A resend of a request already saved: the phone locked or lost signal
     // after we saved it, so the seller saw an error and tried again, with
     // the same form id and the same photos. It gets the first one's answer
-    // and adds nothing but what's new, checked before another AI estimate
-    // is paid for. A DB hiccup here just means it's treated as new.
+    // and adds nothing but what's new. A DB hiccup here just means it's
+    // treated as new.
     const resendKey = resubmissionKey(submissionId, photoUrls);
     if (resendKey) {
       try {
         const original = await db.transaction((tx) => mergeResubmission(tx, resendKey, submissionId, form, photoUrls));
-        if (original) return submitted(await rememberedEstimate(original));
+        if (original) return submitted();
       } catch (err) {
         logger.error('Appraisal resubmission check failed', err);
       }
     }
 
-    // Preliminary AI estimate for the prospect. Strictly best-effort: any
-    // failure (model down, unparseable photos) must not fail the request.
-    const estimate = aiImageUrls.length > 0
-      ? await instantEstimate({ imageUrls: aiImageUrls, itemsDescription: items })
-      : null;
-
     // Create a seller_prospects row so the lead lands in the admin Prospects
     // funnel (previously it only existed as an email + loose storage photos).
     // Under the same lock as the check above, and checking again, so a
-    // retry that raced this request (both past the check while the estimate
-    // ran) can't create a second prospect.
+    // retry that raced this request (both past the check) can't create a
+    // second prospect.
     // Best-effort: a DB hiccup must not fail the request — the admin
     // notification email below still carries the full lead.
+    let prospectId: string | null = null;
     try {
       const saved = await db.transaction(async (tx) => {
         if (resendKey) {
           const original = await mergeResubmission(tx, resendKey, submissionId, form, photoUrls);
           if (original) return { prospectId: original, created: false };
         }
-        return { prospectId: await createProspectFromSubmission(tx, form, photoUrls, estimate, submissionId), created: true };
+        return { prospectId: await createProspectFromSubmission(tx, form, photoUrls, submissionId), created: true };
       });
-      if (!saved.created) return submitted(publicEstimate(estimate));
-      if (estimate) after(() => rememberEstimate(saved.prospectId, estimate));
+      if (!saved.created) return submitted();
+      prospectId = saved.prospectId;
     } catch (err) {
       logger.error('Failed to create prospect from appraisal request', err);
     }
 
-    // after(): a promise left dangling past the response can be cut off
-    // when the function is frozen, and the admin never hears of the lead.
-    after(() =>
-      sendAppraisalRequestNotification(
+    // After the response, so the seller isn't kept waiting on the vision
+    // model: the internal AI estimate (best-effort — any failure just means
+    // none), noted on the prospect, then the admin email carrying it. In
+    // after() rather than left dangling, which the platform can cut off when
+    // the function is frozen, and the admin would never hear of the lead.
+    after(async () => {
+      const estimate = aiImageUrls.length > 0
+        ? await instantEstimate({ imageUrls: aiImageUrls, itemsDescription: items })
+        : null;
+      if (estimate && prospectId) await noteEstimate(prospectId, estimate);
+      await sendAppraisalRequestNotification(
         { name, phone, email, service, items, message, site: microsite ? { city: microsite.city, domain: microsite.domain } : undefined },
         photoUrls,
         estimate,
       ).catch((err) =>
         logger.error('Failed to send appraisal notification', err),
-      ),
-    );
+      );
+    });
 
-    return submitted(publicEstimate(estimate));
+    return submitted();
   } catch (error) {
     logger.error('Appraisal request error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -374,29 +357,6 @@ async function mergeResubmission(
   return original.id;
 }
 
-// The estimate the first send showed, kept for the window a resend can
-// arrive in, so the resend's answer shows it too. Redis, best-effort: without
-// it the resend still succeeds, just without the estimate.
-const estimateKey = (prospectId: string) => `appraisal:estimate:${prospectId}`;
-
-async function rememberEstimate(prospectId: string, estimate: InstantEstimate): Promise<void> {
-  if (!isRedisConfigured) return;
-  try {
-    await redis.set(estimateKey(prospectId), publicEstimate(estimate), { ex: RESUBMIT_WINDOW_MINUTES * 60 });
-  } catch (err) {
-    logger.warn('Could not keep the estimate for a resend', { prospectId, error: String(err) });
-  }
-}
-
-async function rememberedEstimate(prospectId: string): Promise<PublicEstimate | null> {
-  if (!isRedisConfigured) return null;
-  try {
-    return (await redis.get<PublicEstimate>(estimateKey(prospectId))) ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // ── New prospects ────────────────────────────────────────────────────────
 
 /**
@@ -422,7 +382,6 @@ async function createProspectFromSubmission(
     site?: string;
   },
   photoUrls: string[],
-  estimate: InstantEstimate | null,
   submissionId: string | null,
 ): Promise<string> {
   const origin = form.site
@@ -439,10 +398,6 @@ async function createProspectFromSubmission(
     .filter(Boolean)
     .join('\n');
 
-  const notes = estimate
-    ? `[${new Date().toISOString()}] AI instant estimate shown on site: ${formatCurrency(estimate.estimateLow)} – ${formatCurrency(estimate.estimateHigh)} (${estimate.confidence} confidence). ${estimate.summary}`
-    : null;
-
   const [prospect] = await tx
     .insert(sellerProspects)
     .values({
@@ -453,7 +408,6 @@ async function createProspectFromSubmission(
       sourceNotes,
       site: form.site ?? null,
       itemSummary: form.items || null,
-      notes,
       // attachSubmissionPhotos moves a prospect with photos on to the
       // needs-review state the admin list surfaces; without photos it
       // stays a fresh lead.
@@ -464,6 +418,28 @@ async function createProspectFromSubmission(
 
   if (photoUrls.length > 0) await attachSubmissionPhotos(tx, prospect.id, photoUrls, form.items || null);
   return prospect.id;
+}
+
+/**
+ * Record the internal AI estimate on the prospect's notes. Appended, since
+ * the estimate lands after the prospect is created.
+ */
+async function noteEstimate(prospectId: string, estimate: InstantEstimate): Promise<void> {
+  const note =
+    `[${new Date().toISOString()}] AI preliminary estimate (internal, not shown to the seller): ` +
+    `${formatCurrency(estimate.estimateLow)} – ${formatCurrency(estimate.estimateHigh)} ` +
+    `(${estimate.confidence} confidence; ${estimate.worthConsigning ? 'looks consignable' : 'possibly below threshold'}). ${estimate.summary}`;
+  try {
+    await db
+      .update(sellerProspects)
+      .set({
+        notes: sql`concat_ws(E'\n\n', ${sellerProspects.notes}, ${note}::text)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(sellerProspects.id, prospectId));
+  } catch (err) {
+    logger.error('Failed to note the AI estimate on the prospect', err, { prospectId });
+  }
 }
 
 /**

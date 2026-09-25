@@ -408,18 +408,18 @@ export default async function HomePage() {
               {[
                 {
                   step: '01',
-                  title: 'Free In-Person or Online Appraisal',
-                  desc: 'Send us photos or schedule a free house call. Our team in Palm Beach and New York can come to you for appraisals and pickup.',
+                  title: 'Free Appraisal',
+                  desc: 'Send us photos or call. A specialist talks you through what it could fetch and how best to sell it, with no obligation. For estates and larger collections, we can visit.',
                 },
                 {
                   step: '02',
-                  title: 'We Handle Everything',
-                  desc: 'From same-day estate cleanouts to professional photography and cataloging — we pick up your items and prepare them for sale.',
+                  title: 'Clear Terms, Nothing Upfront',
+                  desc: 'Estimate, commission and any reserve are set out in writing. Photography, cataloguing and marketing are covered by our commission, which comes out of the sale.',
                 },
                 {
                   step: '03',
-                  title: 'Live Online Auction',
-                  desc: 'Your items go up for bidding in our live-streamed and timed auctions, open to verified bidders worldwide. We manage the entire sale and send you payment.',
+                  title: 'Sold Online, Then Paid',
+                  desc: 'Your pieces are offered online to bidders worldwide. We manage the sale and pay you once the buyer has paid.',
                 },
               ].map((s) => (
                 <div key={s.step} className="flex items-start gap-5 sm:gap-6">

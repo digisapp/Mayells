@@ -46,7 +46,19 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
+      // Supabase's messages ("Invalid login credentials") read like a system
+      // log; the codes let the form say what to do next.
+      if (error.code === 'email_not_confirmed') {
+        return NextResponse.json(
+          { error: 'Please confirm your email address first, using the link we sent when you created your account.', code: 'email_not_confirmed' },
+          { status: 401 },
+        );
+      }
+      if (error.code === 'invalid_credentials') {
+        return NextResponse.json({ error: 'That email and password don’t match. Check them and try again.', code: 'invalid_credentials' }, { status: 401 });
+      }
+      logger.warn('Login failed', { code: error.code, status: error.status });
+      return NextResponse.json({ error: 'We couldn’t sign you in just now. Please try again.' }, { status: 401 });
     }
 
     // A password sign-in proves control of the account, so it's safe to

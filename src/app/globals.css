@@ -384,6 +384,13 @@ html[data-menu-open] [data-chat-launcher] {
   display: none;
 }
 
+/* A lead form on screen (useHideChatLauncher) would sit under the closed
+   bubble; the form carries its own chat link. Open, the bubble is the chat's
+   close button, so it stays. */
+html[data-chat-launcher-hidden] [data-chat-launcher][aria-expanded="false"] {
+  display: none;
+}
+
 /*
  * Landscape notch. viewportFit: 'cover' lets full-bleed sections paint under
  * the notch / Dynamic Island, but page containers pad only 16–24px from the

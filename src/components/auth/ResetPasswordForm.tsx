@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthError, AuthHeading, AUTH_INPUT } from './AuthShell';
 
 export function ResetPasswordForm() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export function ResetPasswordForm() {
     e.preventDefault();
     setError('');
     if (password !== confirm) {
-      setError('Passwords do not match.');
+      setError('The two passwords don’t match.');
       return;
     }
     setIsLoading(true);
@@ -40,46 +40,62 @@ export function ResetPasswordForm() {
       router.push(data.role === 'admin' ? '/admin' : '/');
       router.refresh();
     } catch {
-      setError('Something went wrong. Please try again.');
+      setError('Couldn’t connect. Check your connection and try again.');
     } finally {
       setIsLoading(false);
     }
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
-        <CardTitle className="font-display text-2xl">Choose a New Password</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-500/10 text-red-500 text-sm p-3 rounded-md">
-              {error}
-              {expired && (
-                <>
-                  {' '}
-                  <Link href="/forgot-password" className="underline">
-                    Request a new link
-                  </Link>
-                </>
-              )}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="new-password">New password</Label>
-            <PasswordInput id="new-password" autoComplete="new-password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} />
-            <p className="text-xs text-muted-foreground">At least 8 characters.</p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="confirm-password">Confirm new password</Label>
-            <PasswordInput id="confirm-password" autoComplete="new-password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-          </div>
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? 'Saving…' : 'Set New Password'}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+    <div>
+      <AuthHeading title="Choose a new password">Pick something you haven&rsquo;t used here before.</AuthHeading>
+
+      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+        {error && (
+          <AuthError>
+            {error}
+            {expired && (
+              <>
+                {' '}
+                <Link href="/forgot-password" className="font-medium underline underline-offset-2">
+                  Request a new link
+                </Link>
+              </>
+            )}
+          </AuthError>
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="new-password">New password</Label>
+          <PasswordInput
+            id="new-password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            aria-describedby="new-password-hint"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className={AUTH_INPUT}
+          />
+          <p id="new-password-hint" className="text-[13px] text-muted-foreground">
+            At least 8 characters.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="confirm-password">Confirm new password</Label>
+          <PasswordInput
+            id="confirm-password"
+            autoComplete="new-password"
+            required
+            minLength={8}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            className={AUTH_INPUT}
+          />
+        </div>
+        <Button type="submit" size="lg" className="w-full" disabled={isLoading}>
+          {isLoading ? 'Saving…' : 'Set new password'}
+        </Button>
+      </form>
+    </div>
   );
 }
