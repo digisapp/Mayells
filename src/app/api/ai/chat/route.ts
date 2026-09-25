@@ -9,6 +9,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { NextRequest, after } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import { getMicrositeBySlug, type Microsite } from '@/lib/microsites/config';
+import { recordSiteEvent } from '@/lib/analytics/record';
 import { recordConversationLead, emailUploadLink, attachChatPhotos } from '@/lib/prospects/intake';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
@@ -158,6 +159,11 @@ export async function POST(req: NextRequest) {
       status: 400,
       headers: { 'Content-Type': 'application/json' },
     });
+  }
+
+  // A conversation's first message: the admin Analytics page counts chats.
+  if (messages.filter((m) => (m as { role?: unknown }).role === 'user').length === 1) {
+    after(() => recordSiteEvent(req, { type: 'chat', path: null }).catch((err) => logger.error('Chat event insert failed', err)));
   }
 
   const result = streamText({

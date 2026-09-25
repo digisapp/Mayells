@@ -20,7 +20,7 @@ export function RangeSwitch({ current }: { current: AnalyticsRange }) {
       {RANGES.map((r) => (
         <Link
           key={r.value}
-          href={r.value === '30d' ? '/admin/analytics' : `/admin/analytics?range=${r.value}`}
+          href={r.value === '30d' ? '/admin/analytics?view=sales' : `/admin/analytics?view=sales&range=${r.value}`}
           aria-current={r.value === current ? 'page' : undefined}
           className={cn(
             'px-3 py-1 rounded text-xs font-medium transition-colors',

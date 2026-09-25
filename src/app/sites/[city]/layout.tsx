@@ -6,7 +6,6 @@ import { ArrowRight, Phone } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { getMicrositeBySlug, micrositePhone, MICROSITE_SLUGS } from '@/lib/microsites/config';
 import { CallLink } from '@/components/microsites/CallLink';
-import { MicrositeTracker } from '@/components/microsites/MicrositeTracker';
 import { ChatWidget } from '@/components/chat/ChatWidget';
 
 // Microsites open on the warm-white header (--background as rendered), not
@@ -51,7 +50,6 @@ export default async function MicrositeLayout({
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <MicrositeTracker site={site.slug} />
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/95 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:h-[72px]">
           <Link href="/" className="flex min-h-11 flex-col justify-center leading-none">

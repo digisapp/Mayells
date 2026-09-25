@@ -2,7 +2,6 @@
 
 import type { ReactNode } from 'react';
 import { track } from '@vercel/analytics';
-import { sendMicrositeEvent } from '@/lib/microsites/beacon';
 
 interface Props {
   href: string;
@@ -20,7 +19,9 @@ interface Props {
  *
  * Half of this audience will phone rather than type, so without this the
  * per-domain test only counts the form and undercounts every site by the
- * callers. The event is fire-and-forget: the dialer opens regardless.
+ * callers. SiteTracker records every tel: tap for the admin; this adds where
+ * on the page it was. The event is fire-and-forget: the dialer opens
+ * regardless.
  */
 export function CallLink({ href, site, placement, className, tabIndex, children }: Props) {
   return (
@@ -28,10 +29,8 @@ export function CallLink({ href, site, placement, className, tabIndex, children 
       href={href}
       className={className}
       tabIndex={tabIndex}
-      onClick={() => {
-        track('microsite_call', { site, placement });
-        sendMicrositeEvent(site, 'call', placement);
-      }}
+      data-call-placement={placement}
+      onClick={() => track('microsite_call', { site, placement })}
     >
       {children}
     </a>

@@ -1,28 +1,12 @@
+import { sendFormStart } from '@/lib/analytics/beacon';
+
 /**
- * Report a microsite event to /api/microsites/events for the admin's
- * Microsites page. Fire-and-forget: sendBeacon survives the page unloading
- * (a tap on a tel: link can background the tab immediately), and nothing
- * here may ever block or break the page.
+ * The city form's hook into the admin traffic log. Page views and call taps
+ * are recorded site-wide by SiteTracker, and the site comes from the domain,
+ * so all that is left for a microsite to report is where its form was
+ * started. Shares SiteTracker's once-per-page-view guard, so the two never
+ * count the same start twice.
  */
-export function sendMicrositeEvent(
-  site: string,
-  type: 'view' | 'call' | 'form_start',
-  placement?: string,
-): void {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const body = JSON.stringify({
-      site,
-      type,
-      placement,
-      referrer: document.referrer || undefined,
-      utmSource: params.get('utm_source') ?? undefined,
-      utmMedium: params.get('utm_medium') ?? undefined,
-      utmCampaign: params.get('utm_campaign') ?? undefined,
-    });
-    if (navigator.sendBeacon?.('/api/microsites/events', body)) return;
-    void fetch('/api/microsites/events', { method: 'POST', body, keepalive: true }).catch(() => {});
-  } catch {
-    // Analytics must never surface to the visitor.
-  }
+export function sendMicrositeEvent(_site: string, type: 'form_start', placement?: string): void {
+  if (type === 'form_start') sendFormStart('lead', placement);
 }
