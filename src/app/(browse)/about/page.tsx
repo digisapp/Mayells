@@ -13,7 +13,7 @@ export default function AboutPage() {
     <div>
       {/* Hero */}
       <section className="bg-charcoal text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 md:py-28">
           <div className="max-w-2xl">
             <span className="text-eyebrow text-champagne">
               About Us
@@ -22,7 +22,7 @@ export default function AboutPage() {
               About<br />
               <span className="text-champagne">Mayells</span>
             </h1>
-            <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
+            <p className="mt-5 sm:mt-6 text-[16px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
               A luxury auction house in Palm Beach, Florida and New York, specializing
               in consignment sales of fine art, antiques, jewelry, watches, fashion,
               design, and collectibles.
@@ -32,7 +32,7 @@ export default function AboutPage() {
       </section>
 
       {/* Who We Are */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 md:py-28">
         <div className="max-w-3xl mx-auto">
           <h2 className="font-display text-display-md mb-6">Who We Are</h2>
           <div className="space-y-5 text-[15px] text-muted-foreground leading-relaxed">
@@ -56,15 +56,15 @@ export default function AboutPage() {
       </section>
 
       {/* What We Handle */}
-      <section className="bg-secondary/40 py-20 md:py-28">
+      <section className="bg-secondary/40 py-14 sm:py-20 md:py-28">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <span className="text-eyebrow text-champagne">
+          <div className="text-center mb-8 sm:mb-12">
+            <span className="text-eyebrow text-champagne-deep">
               Categories
             </span>
             <h2 className="font-display text-display-md mt-2">What We Auction</h2>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 max-w-4xl mx-auto">
             {[
               { name: 'Fine Art', image: '/images/categories/fine-art.webp' },
               { name: 'Antiques', image: '/images/categories/antiques.webp' },
@@ -86,9 +86,9 @@ export default function AboutPage() {
                   sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-4">
-                  <p className="font-display text-white text-sm">{cat.name}</p>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-3.5 sm:p-4">
+                  <p className="font-display text-white text-[15px] sm:text-sm leading-snug">{cat.name}</p>
                 </div>
               </div>
             ))}
@@ -97,17 +97,17 @@ export default function AboutPage() {
       </section>
 
       {/* Contact + CTAs */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 md:py-28">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="font-display text-display-md mb-4">Get in Touch</h2>
           <p className="text-muted-foreground mb-8">
             Have questions about selling or buying? We&apos;re here to help.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-4 mb-8 sm:mb-10">
             <a
               href={BUSINESS.phoneHref}
-              className="inline-flex items-center gap-2 text-sm font-medium hover:text-champagne transition-colors"
+              className="inline-flex items-center gap-2 min-h-11 text-sm font-medium hover:text-champagne-deep transition-colors"
             >
               <Phone className="h-4 w-4" />
               {BUSINESS.phone}
@@ -115,7 +115,7 @@ export default function AboutPage() {
             <span className="hidden sm:inline text-border">|</span>
             <a
               href={`mailto:${BUSINESS.email}`}
-              className="inline-flex items-center gap-2 text-sm font-medium hover:text-champagne transition-colors"
+              className="inline-flex items-center gap-2 min-h-11 text-sm font-medium hover:text-champagne-deep transition-colors"
             >
               <Mail className="h-4 w-4" />
               {BUSINESS.email}

@@ -12,6 +12,8 @@ interface ShareButtonsProps {
 const emptySubscribe = () => () => {};
 const getCanNativeShare = () => typeof navigator !== 'undefined' && 'share' in navigator;
 const getServerCanNativeShare = () => false;
+// 44px touch targets on phones; the original 40px from desktop up.
+const SIZE = 'h-11 w-11 lg:h-10 lg:w-10';
 
 export function ShareButtons({ title, url }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
@@ -37,7 +39,7 @@ export function ShareButtons({ title, url }: ShareButtonsProps) {
 
   // On mobile with native share, show just the share sheet + copy link;
   // per-network buttons stay available from sm up.
-  const networkButtonClass = canNativeShare ? 'h-10 w-10 hidden sm:inline-flex' : 'h-10 w-10';
+  const networkButtonClass = canNativeShare ? `${SIZE} hidden sm:inline-flex` : SIZE;
 
   return (
     <div className="flex items-center gap-2">
@@ -46,7 +48,7 @@ export function ShareButtons({ title, url }: ShareButtonsProps) {
         <Button
           variant="outline"
           size="icon"
-          className="h-10 w-10"
+          className={SIZE}
           onClick={nativeShare}
           aria-label="Share"
         >
@@ -83,7 +85,7 @@ export function ShareButtons({ title, url }: ShareButtonsProps) {
       <Button
         variant="outline"
         size="icon"
-        className="h-10 w-10"
+        className={SIZE}
         onClick={copyLink}
         aria-label="Copy link"
       >

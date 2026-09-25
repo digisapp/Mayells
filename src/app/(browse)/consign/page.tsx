@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { track } from '@vercel/analytics';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,16 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
-import { compressImage, uploadPhotosDirect, MAX_PHOTOS, MAX_FILE_SIZE } from '@/lib/upload/direct-upload';
+import {
+  usePhotoAttachments,
+  withMissingPhotosNote,
+  missingPhotosHeadline,
+  PHOTOS_EMAIL,
+  PHOTOS_MAILTO,
+  type PhotoUploadResult,
+} from '@/lib/upload/use-photo-attachments';
+import { keepScreenAwake } from '@/lib/upload/wake-lock';
+import { revealIfHidden } from '@/lib/upload/reveal-if-hidden';
 
 
 const steps = [
@@ -42,20 +51,6 @@ const steps = [
 ];
 
 
-interface PhotoItem {
-  file: File;
-  preview: string;
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => resolve(ev.target?.result as string);
-    reader.onerror = () => resolve('');
-    reader.readAsDataURL(file);
-  });
-}
-
 interface ConsignEstimate {
   estimateLow: number;
   estimateHigh: number;
@@ -71,76 +66,51 @@ function formatUsd(cents: number): string {
   }).format(cents / 100);
 }
 
+const FIELD =
+  'w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors';
+
 export default function ConsignPage() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
-  const [photos, setPhotos] = useState<PhotoItem[]>([]);
-  const [processingPhotos, setProcessingPhotos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [estimate, setEstimate] = useState<ConsignEstimate | null>(null);
   const [stage, setStage] = useState<'uploading' | 'analyzing' | 'submitting' | null>(null);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
+  const [photoShortfall, setPhotoShortfall] = useState<PhotoUploadResult | null>(null);
+  const { photos, preparing, add, remove, clear, upload, submissionId } = usePhotoAttachments();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formSectionRef = useRef<HTMLElement>(null);
+
+  // The confirmation is shorter than the form, so on a phone it would land
+  // above the viewport and leave the seller looking at the footer.
+  useEffect(() => {
+    if (submitted) revealIfHidden(formSectionRef.current);
+  }, [submitted]);
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    const imageFiles = files.filter((f) => f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.heic'));
-    if (photos.length + imageFiles.length > MAX_PHOTOS) {
-      toast.error(`Maximum ${MAX_PHOTOS} photos allowed`);
-      return;
-    }
-    setProcessingPhotos(true);
-    try {
-      // Compress a few at a time — decoding 50 photos at once can exhaust
-      // memory on mobile Safari.
-      const compressed: File[] = [];
-      for (let i = 0; i < imageFiles.length; i += 4) {
-        const chunk = await Promise.all(imageFiles.slice(i, i + 4).map((f) => compressImage(f)));
-        compressed.push(...chunk);
-      }
-      const sized = compressed.filter((f) => f.size <= MAX_FILE_SIZE);
-      if (sized.length < compressed.length) {
-        toast.error('Some photos were over 15MB and were skipped.');
-      }
-      // Build each preview alongside its file so the two can never get out of order
-      const newPhotos = await Promise.all(
-        sized.map(async (file) => ({ file, preview: await readFileAsDataUrl(file) })),
-      );
-      setPhotos((prev) => [...prev, ...newPhotos]);
-    } finally {
-      setProcessingPhotos(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const removePhoto = (index: number) => {
-    setPhotos((prev) => prev.filter((_, i) => i !== index));
+    const input = e.currentTarget;
+    const files = Array.from(input.files ?? []);
+    input.value = '';
+    await add(files);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (preparing) return;
     setSubmitting(true);
+    const releaseScreen = keepScreenAwake();
     try {
       // Photos upload directly to storage — the API request body is
-      // size-capped by the platform, so only the paths go through it.
-      let photoPaths: string[] = [];
+      // size-capped by the platform, so only the paths go through it. The
+      // name and phone are the lead: a failed upload never stops them being
+      // sent, and the note tells the specialist to ask for the photos.
+      let photoResult: PhotoUploadResult = { paths: [], failed: 0, total: 0 };
       if (photos.length > 0) {
         setStage('uploading');
-        const { paths, failed } = await uploadPhotosDirect(
-          photos.map((p) => p.file),
-          (done, total) => setUploadProgress({ done, total }),
-        );
-        photoPaths = paths;
-        if (failed > 0 && paths.length === 0) {
-          toast.error('Photo upload failed. Please try again.');
-          return;
-        }
-        if (failed > 0) {
-          toast.error(`${failed} photo${failed !== 1 ? 's' : ''} failed to upload — continuing with the rest.`);
-        }
+        photoResult = await upload((done, total) => setUploadProgress({ done, total }));
       }
 
-      setStage(photoPaths.length > 0 ? 'analyzing' : 'submitting');
+      setStage(photoResult.paths.length > 0 ? 'analyzing' : 'submitting');
       const res = await fetch('/api/appraisal-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -148,22 +118,33 @@ export default function ConsignPage() {
           name: form.name,
           phone: form.phone,
           email: form.email,
-          items: form.items,
+          items: withMissingPhotosNote(form.items, photoResult),
           service: 'Consignment',
-          photoPaths,
+          photoPaths: photoResult.paths,
+          // Same id on a retry, so a send whose reply was lost isn't recorded twice.
+          submissionId,
         }),
       });
       if (res.ok) {
         const body = await res.json().catch(() => null);
         setEstimate(body?.data?.estimate ?? null);
+        setPhotoShortfall(photoResult.failed > 0 ? photoResult : null);
         setSubmitted(true);
-        track('consignment_started', { photoCount: photos.length });
+        track('consignment_started', { photoCount: photoResult.paths.length });
+      } else if (res.status === 429) {
+        toast.error(`Too many requests. Please call us at ${BUSINESS.phone}.`);
       } else {
-        toast.error('Failed to submit. Please try again.');
+        const body = await res.json().catch(() => null);
+        toast.error(
+          res.status === 400 && body?.error
+            ? body.error
+            : `Something went wrong. Please try again, or call us at ${BUSINESS.phone}.`,
+        );
       }
     } catch {
-      toast.error('Network error. Please try again.');
+      toast.error('Couldn’t connect. Check your signal and try again — nothing you entered was lost.');
     } finally {
+      releaseScreen();
       setSubmitting(false);
       setStage(null);
     }
@@ -181,12 +162,12 @@ export default function ConsignPage() {
             will come to you for free appraisals, item pickup, and same-day estate cleanouts.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a href="#submit-form">
-              <Button variant="champagne" size="lg">
+            <Button asChild variant="champagne" size="lg">
+              <a href="#submit-form">
                 Submit an Item
                 <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </a>
+              </a>
+            </Button>
           </div>
         </div>
       </section>
@@ -275,8 +256,10 @@ export default function ConsignPage() {
 
 
       {/* Submission Form */}
-      <section id="submit-form" className="bg-white">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      {/* scroll-mt: the hero's "Submit an Item" anchor lands with the heading
+          clear of the sticky header (h-16 / sm:h-[72px]). */}
+      <section ref={formSectionRef} id="submit-form" className="bg-white scroll-mt-16 sm:scroll-mt-[72px]">
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 pb-16 sm:py-16">
           {submitted ? (
             <div className="text-center py-8">
               <CheckCircle className="h-12 w-12 text-champagne mx-auto mb-4" />
@@ -284,6 +267,20 @@ export default function ConsignPage() {
               <p className="text-muted-foreground text-sm mb-8">
                 Thank you! We&apos;ll review your submission and call you within 24 hours.
               </p>
+
+              {photoShortfall && (
+                <div role="status" className="rounded-xl border border-champagne/40 bg-champagne/[0.08] px-5 py-4 mb-8 text-left">
+                  <p className="text-sm font-semibold text-charcoal">{missingPhotosHeadline(photoShortfall)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                    We have your details, and your specialist will ask for them when they call. To send them now,
+                    email{' '}
+                    <a href={PHOTOS_MAILTO} className="text-charcoal font-medium underline underline-offset-2">
+                      {PHOTOS_EMAIL}
+                    </a>
+                    .
+                  </p>
+                </div>
+              )}
 
               {estimate && (
                 <div className="bg-charcoal text-white rounded-xl p-6 mb-8 text-left">
@@ -323,18 +320,28 @@ export default function ConsignPage() {
 
               <p className="text-sm text-muted-foreground mb-6">
                 Want to talk sooner? Call us at{' '}
-                <a href={BUSINESS.phoneHref} className="text-champagne font-medium hover:underline">
+                <a href={BUSINESS.phoneHref} className="inline-flex min-h-11 items-center lg:min-h-0 text-champagne font-medium hover:underline">
                   {BUSINESS.phone}
                 </a>
               </p>
 
               <div className="flex gap-3 justify-center">
-                <Button variant="outline" className="border-gray-200 text-charcoal hover:bg-gray-50" onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', items: '' }); setPhotos([]); }}>
+                <Button
+                  variant="outline"
+                  className="h-11 lg:h-9 border-gray-200 text-charcoal hover:bg-gray-50"
+                  onClick={() => {
+                    setSubmitted(false);
+                    setEstimate(null);
+                    setPhotoShortfall(null);
+                    setForm({ name: '', email: '', phone: '', items: '' });
+                    clear();
+                  }}
+                >
                   Submit Another
                 </Button>
-                <Link href="/">
-                  <Button variant="champagne">Back to Home</Button>
-                </Link>
+                <Button asChild variant="champagne" className="h-11 lg:h-9">
+                  <Link href="/">Back to Home</Link>
+                </Button>
               </div>
             </div>
           ) : (
@@ -351,28 +358,37 @@ export default function ConsignPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <input
                     type="text"
+                    name="name"
                     placeholder="Your Name *"
+                    aria-label="Your name"
                     required
+                    maxLength={200}
                     autoComplete="name"
                     enterKeyHint="next"
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
+                    className={FIELD}
                   />
                   <input
                     type="tel"
+                    name="phone"
                     placeholder="Phone Number *"
+                    aria-label="Phone number"
                     required
+                    maxLength={50}
                     autoComplete="tel"
                     enterKeyHint="next"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
+                    className={FIELD}
                   />
                 </div>
                 <input
                   type="email"
+                  name="email"
                   placeholder="Email Address"
+                  aria-label="Email address (optional)"
+                  maxLength={320}
                   autoComplete="email"
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -380,18 +396,23 @@ export default function ConsignPage() {
                   enterKeyHint="next"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors"
+                  className={FIELD}
                 />
                 <textarea
+                  name="items"
                   placeholder="Describe your item(s): what it is, condition, provenance, dimensions, any known history..."
+                  aria-label="Describe your items"
                   rows={4}
+                  maxLength={5000}
                   value={form.items}
                   onChange={(e) => setForm({ ...form, items: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-base sm:text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:border-champagne/50 transition-colors resize-none"
+                  className={`${FIELD} resize-none`}
                 />
 
                 {/* Photo Upload */}
                 <div>
+                  {/* No `capture`: it forces the camera and hides the photo
+                      library. Plain image/* also lets iOS hand HEIC over as JPEG. */}
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -401,10 +422,10 @@ export default function ConsignPage() {
                     className="hidden"
                   />
                   {photos.length > 0 && (
-                    <div className="flex gap-2 mb-3 flex-wrap">
+                    <ul className="flex gap-2 pt-1 mb-3 flex-wrap" aria-label="Attached photos">
                       {photos.map((photo, i) => (
-                        <div key={i} className="relative group">
-                          {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
+                        <li key={photo.id} className="relative group">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- local file preview */}
                           <img
                             src={photo.preview}
                             alt={`Photo ${i + 1}`}
@@ -415,47 +436,64 @@ export default function ConsignPage() {
                                 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="%23ddd" rx="8"/></svg>';
                             }}
                           />
+                          {/* 44px hit area around a small visible dot */}
                           <button
                             type="button"
-                            onClick={() => removePhoto(i)}
-                            aria-label="Remove photo"
-                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
+                            onClick={() => remove(photo.id)}
+                            disabled={submitting}
+                            aria-label={`Remove photo ${i + 1}`}
+                            className="absolute -top-4 -right-4 grid h-11 w-11 place-items-center opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100 transition-opacity disabled:hidden"
                           >
-                            <X className="h-4 w-4" />
+                            <span className="grid h-6 w-6 place-items-center rounded-full bg-black/75 text-white ring-1 ring-white/40 shadow-sm">
+                              <X className="h-3.5 w-3.5" />
+                            </span>
                           </button>
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   )}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={processingPhotos}
-                    className="w-full flex items-center justify-center gap-2 bg-gray-50 border border-dashed border-gray-300 hover:border-champagne/60 rounded-lg px-4 py-3 text-sm text-gray-500 hover:text-charcoal transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!!preparing || submitting}
+                    className="w-full min-h-12 flex items-center justify-center gap-2 bg-gray-50 border border-dashed border-gray-300 hover:border-champagne/60 rounded-lg px-4 py-3 text-sm text-gray-500 hover:text-charcoal transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <Camera className="h-4 w-4" />
-                    {processingPhotos
-                      ? 'Processing photos…'
+                    {preparing
+                      ? `Preparing photos… ${preparing.done} of ${preparing.total}`
                       : photos.length > 0
                         ? `${photos.length} photo${photos.length !== 1 ? 's' : ''} — add more`
                         : 'Upload photos (recommended)'}
                   </button>
                 </div>
 
-                <Button type="submit" variant="champagne" size="lg" className="w-full" disabled={submitting}>
-                  {submitting
-                    ? stage === 'uploading'
-                      ? `Uploading photos… (${uploadProgress.done}/${uploadProgress.total})`
-                      : stage === 'analyzing'
-                        ? 'Analyzing your photos…'
-                        : 'Submitting...'
-                    : photos.length > 0
-                      ? 'Get Instant Estimate'
-                      : 'Get Your Free Appraisal'}
-                  {!submitting && <ArrowRight className="ml-2 h-4 w-4" />}
+                <Button
+                  type="submit"
+                  variant="champagne"
+                  size="lg"
+                  // Busy, the label carries progress: keep it legible.
+                  className="w-full disabled:opacity-85"
+                  disabled={submitting || !!preparing}
+                >
+                  {preparing
+                    ? 'Preparing photos…'
+                    : submitting
+                      ? stage === 'uploading'
+                        ? `Uploading photos… (${uploadProgress.done}/${uploadProgress.total})`
+                        : stage === 'analyzing'
+                          ? 'Analyzing your photos…'
+                          : 'Submitting…'
+                      : photos.length > 0
+                        ? 'Get Instant Estimate'
+                        : 'Get Your Free Appraisal'}
+                  {!submitting && !preparing && <ArrowRight className="ml-2 h-4 w-4" />}
                 </Button>
-                <p className="text-[11px] text-muted-foreground text-center">
-                  No obligation. Completely confidential.
+                <p aria-live="polite" className="text-[12px] text-muted-foreground text-center">
+                  {submitting && stage === 'uploading'
+                    ? 'Keep this page open while your photos upload.'
+                    : submitting && stage === 'analyzing'
+                      ? 'This can take up to a minute.'
+                      : 'No obligation. Completely confidential.'}
                 </p>
               </form>
 

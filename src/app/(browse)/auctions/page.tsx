@@ -41,13 +41,13 @@ export default async function AuctionsPage() {
   const firstSection = openAuctions.length > 0 ? openAuctions : upcomingAuctions.length > 0 ? upcomingAuctions : pastAuctions;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <h1 className="font-display text-display-lg mb-8">Auctions</h1>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
+      <h1 className="font-display text-display-lg mb-6 sm:mb-8">Auctions</h1>
 
       {openAuctions.length > 0 && (
-        <section className="mb-12">
-          <h2 className="font-display text-display-sm mb-6">Open for Bidding</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <section className="mb-10 sm:mb-12">
+          <h2 className="font-display text-display-sm mb-4 sm:mb-6">Open for Bidding</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {openAuctions.map((auction, index) => (
               <AuctionCard key={auction.id} auction={auction} eager={openAuctions === firstSection && index < 3} />
             ))}
@@ -56,9 +56,9 @@ export default async function AuctionsPage() {
       )}
 
       {upcomingAuctions.length > 0 && (
-        <section className="mb-12">
-          <h2 className="font-display text-display-sm mb-6">Upcoming</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <section className="mb-10 sm:mb-12">
+          <h2 className="font-display text-display-sm mb-4 sm:mb-6">Upcoming</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {upcomingAuctions.map((auction, index) => (
               <AuctionCard key={auction.id} auction={auction} eager={upcomingAuctions === firstSection && index < 3} />
             ))}
@@ -68,8 +68,8 @@ export default async function AuctionsPage() {
 
       {pastAuctions.length > 0 && (
         <section>
-          <h2 className="font-display text-display-sm mb-6">Past Auctions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <h2 className="font-display text-display-sm mb-4 sm:mb-6">Past Auctions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {pastAuctions.map((auction, index) => (
               <AuctionCard key={auction.id} auction={auction} eager={pastAuctions === firstSection && index < 3} />
             ))}

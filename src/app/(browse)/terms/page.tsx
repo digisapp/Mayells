@@ -1,41 +1,50 @@
+import { BUSINESS } from '@/lib/config';
+
 export const metadata = {
   title: 'Terms of Service',
   description: 'Terms of Service governing your use of the Mayells platform, including bidding, consignment, and purchasing conditions.',
 };
 
+// Styled directly (no typography plugin); matches the privacy policy.
 export default function TermsPage() {
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-      <h1 className="font-display text-display-lg mb-8">Terms of Service</h1>
-      <div className="prose prose-sm text-muted-foreground space-y-6">
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20">
+      <h1 className="font-display text-display-lg mb-6 sm:mb-8">Terms of Service</h1>
+      <div className="space-y-4 text-[15px] sm:text-base leading-relaxed text-muted-foreground break-words [&_h2]:pt-4 [&_h2]:font-display [&_h2]:text-xl [&_h2]:leading-snug [&_h2]:text-foreground [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
         <p>
           These Terms of Service govern your use of the Mayells platform. By accessing or using our services,
           you agree to be bound by these terms.
         </p>
-        <h2 className="font-display text-lg text-foreground">1. Use of Services</h2>
+        <h2>1. Use of Services</h2>
         <p>
           You must be at least 18 years old to use our platform. You are responsible for maintaining
           the security of your account credentials.
         </p>
-        <h2 className="font-display text-lg text-foreground">2. Bidding & Purchases</h2>
+        <h2>2. Bidding & Purchases</h2>
         <p>
           All bids are binding. By placing a bid, you agree to purchase the item at the bid amount
           if you are the winning bidder. Buyer&apos;s premiums may apply.
         </p>
-        <h2 className="font-display text-lg text-foreground">3. Consignment</h2>
+        <h2>3. Consignment</h2>
         <p>
           Consigned items are subject to review and approval. Commission rates are agreed upon
           prior to listing. Mayells reserves the right to decline any consignment.
         </p>
-        <h2 className="font-display text-lg text-foreground">4. Limitation of Liability</h2>
+        <h2>4. Limitation of Liability</h2>
         <p>
           Mayells provides descriptions and estimates in good faith but does not guarantee
           the accuracy of any lot description, authenticity attribution, or condition report.
         </p>
-        <h2 className="font-display text-lg text-foreground">5. Contact</h2>
+        <h2>5. Contact</h2>
         <p>
           For questions about these terms, contact us at{' '}
-          <a href="mailto:info@mayells.com" className="text-champagne hover:underline">info@mayells.com</a>.
+          <a
+            href={`mailto:${BUSINESS.email}`}
+            className="py-2 font-medium text-champagne-deep underline decoration-champagne/60 underline-offset-4 hover:decoration-champagne-deep"
+          >
+            {BUSINESS.email}
+          </a>
+          .
         </p>
       </div>
     </div>

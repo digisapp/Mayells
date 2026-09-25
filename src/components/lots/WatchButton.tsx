@@ -54,7 +54,7 @@ export function WatchButton({ lotId, initialWatching, loggedIn, lotRef, classNam
       disabled={busy}
       aria-pressed={watching}
       aria-label={watching ? 'Remove from watchlist' : 'Add to watchlist'}
-      className={`gap-2 ${className ?? ''}`}
+      className={`h-11 gap-2 px-4 lg:h-9 ${className ?? ''}`}
     >
       {busy ? (
         <Loader2 className="h-4 w-4 animate-spin" />

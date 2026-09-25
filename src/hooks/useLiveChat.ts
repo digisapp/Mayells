@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { createClient } from '@/lib/supabase/client';
+import { useRealtimeTopic } from './useRealtimeTopic';
 
 export interface ChatMessage {
   /** Stable client-side id assigned when the message is received (used as React key) */
@@ -11,44 +11,67 @@ export interface ChatMessage {
   displayName: string;
   role: string;
   message: string;
-  messageType: 'chat' | 'reaction' | 'bid_notification';
+  /**
+   * `system` is client-generated, never broadcast: a "Reconnected" marker
+   * placed where messages may be missing after the socket dropped.
+   */
+  messageType: 'chat' | 'reaction' | 'bid_notification' | 'system';
   timestamp: string;
+}
+
+// crypto.randomUUID only exists in secure contexts; ids are just React keys.
+function messageId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch {
+    // fall through
+  }
+  return `m-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 export function useLiveChat(auctionId: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [connected, setConnected] = useState(false);
   /** Why the last send was refused (rate limit, signed out, …); null once one succeeds. */
   const [sendError, setSendError] = useState<string | null>(null);
-  // Memoize supabase client to prevent useEffect re-running on every render
-  const supabase = useMemo(() => createClient(), []);
+  // Set when the page resumes; the next successful join drops a marker.
+  const resumedRef = useRef(false);
 
-  useEffect(() => {
-    // Private channel: the client must present its session JWT so Realtime
-    // can authorize it against the receive-only RLS policy. Regular users can
-    // receive but not send, so forged broadcasts are rejected server-side.
-    supabase.realtime.setAuth();
-    const channel = supabase.channel(`live:${auctionId}`, {
-      config: { private: true },
-    });
+  const onEvent = useCallback((event: string, payload: unknown) => {
+    // The viewer shares this channel and handles the lot events itself.
+    if (event !== 'chat') return;
+    // Assign the id outside the updater so it stays pure (StrictMode double-invokes it)
+    const message: ChatMessage = { ...(payload as Omit<ChatMessage, 'id'>), id: messageId() };
+    setMessages((prev) => [...prev.slice(-200), message]);
+  }, []);
 
-    channel
-      .on('broadcast', { event: 'chat' }, ({ payload }) => {
-        // Assign the id outside the updater so it stays pure (StrictMode double-invokes it)
-        const message: ChatMessage = {
-          ...(payload as Omit<ChatMessage, 'id'>),
-          id: crypto.randomUUID(),
-        };
-        setMessages((prev) => [...prev.slice(-200), message]);
-      })
-      .subscribe((status) => {
-        setConnected(status === 'SUBSCRIBED');
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
+  // Chat is broadcast-only (nothing is stored server-side), so messages sent
+  // while the socket was down can't be backfilled. Mark the gap instead —
+  // only when there is a conversation to interrupt, and never twice in a row.
+  const onConnectionChange = useCallback((connected: boolean) => {
+    if (!connected || !resumedRef.current) return;
+    resumedRef.current = false;
+    const marker: ChatMessage = {
+      id: messageId(),
+      userId: '',
+      displayName: '',
+      role: 'system',
+      message: 'Reconnected',
+      messageType: 'system',
+      timestamp: new Date().toISOString(),
     };
-  }, [auctionId, supabase]);
+    setMessages((prev) =>
+      prev.length === 0 || prev[prev.length - 1].messageType === 'system' ? prev : [...prev.slice(-200), marker],
+    );
+  }, []);
+
+  const onResume = useCallback(() => {
+    resumedRef.current = true;
+  }, []);
+
+  // Private channel: Realtime authorizes the session JWT against the
+  // receive-only RLS policy, so viewers can listen but never forge a
+  // broadcast. Shared with the live viewer's own subscription to this topic.
+  const { connected } = useRealtimeTopic(`live:${auctionId}`, onEvent, { onResume, onConnectionChange });
 
   /**
    * Post a message or reaction. Resolves true when the server accepted it.

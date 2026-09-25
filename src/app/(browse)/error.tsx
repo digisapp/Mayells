@@ -17,9 +17,9 @@ export default function BrowseError({
   }, [error]);
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center px-4">
+    <div className="min-h-[60svh] flex items-center justify-center px-4 py-12">
       <div className="text-center max-w-md">
-        <p className="text-sm uppercase tracking-widest text-champagne font-semibold mb-4">
+        <p className="text-sm uppercase tracking-widest text-champagne-deep font-semibold mb-4">
           Unexpected Error
         </p>
         <h1 className="font-display text-display-md text-charcoal mb-4">
@@ -33,14 +33,11 @@ export default function BrowseError({
             Error ID: {error.digest}
           </p>
         )}
-        <div className="flex gap-3 justify-center">
-          <Button
-            onClick={reset}
-            className="bg-champagne text-charcoal hover:bg-champagne/90"
-          >
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button onClick={reset} variant="champagne" size="lg">
             Try Again
           </Button>
-          <Button variant="outline" asChild>
+          <Button variant="outline" size="lg" asChild>
             <Link href="/">Go Home</Link>
           </Button>
         </div>

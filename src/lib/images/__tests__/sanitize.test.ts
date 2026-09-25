@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { stripImageMetadata, storagePathFromPublicUrl } from '../sanitize';
+import { stripImageMetadata, sanitizeImageForStorage, storagePathFromPublicUrl } from '../sanitize';
 
 async function jpegWithExif(): Promise<Buffer> {
   return sharp({
@@ -56,6 +56,29 @@ describe('stripImageMetadata', () => {
     expect(outMeta.width).toBe(1);
     expect(outMeta.height).toBe(2);
     expect(outMeta.orientation).toBeUndefined();
+  });
+});
+
+describe('sanitizeImageForStorage', () => {
+  it('strips metadata when present', async () => {
+    const result = await sanitizeImageForStorage(await jpegWithExif());
+    expect(result).not.toBeNull();
+    expect((await sharp(result!.buffer).metadata()).exif).toBeUndefined();
+  });
+
+  it('keeps a clean image as-is instead of dropping it', async () => {
+    // What a canvas-compressed phone photo looks like: a JPEG with no metadata.
+    const clean = await sharp({
+      create: { width: 8, height: 8, channels: 3, background: { r: 10, g: 20, b: 30 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const result = await sanitizeImageForStorage(clean);
+    expect(result).toEqual({ buffer: clean, contentType: 'image/jpeg' });
+  });
+
+  it('rejects bytes it cannot read', async () => {
+    expect(await sanitizeImageForStorage(Buffer.from('not an image'))).toBeNull();
   });
 });
 

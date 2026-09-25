@@ -4,6 +4,7 @@ export const revalidate = 60;
 import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { eq, desc, and, inArray } from 'drizzle-orm';
@@ -66,14 +67,31 @@ export default async function CategoryPage({
   const categoryLots = rows.map(({ lot, auctionSlug }) => ({ ...lot, auctionSlug }));
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="mb-10">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
+      <div className="mb-6 sm:mb-10">
         <h1 className="font-display text-display-lg">{category!.name}</h1>
         {category!.description && (
           <p className="text-muted-foreground mt-2">{category!.description}</p>
         )}
       </div>
-      <LotGrid lots={categoryLots} />
+      {categoryLots.length > 0 ? (
+        <LotGrid lots={categoryLots} />
+      ) : (
+        <div className="text-center py-16 sm:py-20 border border-border/60 rounded-2xl px-6">
+          <p className="font-display text-display-sm">Nothing in {category!.name} right now</p>
+          <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
+            New pieces are catalogued regularly. Browse our current sales or the gallery in the meantime.
+          </p>
+          <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+            <Link href="/auctions" className="inline-flex items-center justify-center h-11 px-6 rounded-lg bg-champagne text-charcoal text-sm font-semibold hover:bg-champagne/90 transition-colors">
+              View auctions
+            </Link>
+            <Link href="/gallery" className="inline-flex items-center justify-center h-11 px-6 rounded-lg border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">
+              Shop the gallery
+            </Link>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

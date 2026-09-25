@@ -6,7 +6,8 @@ import { isSentinelEmail } from '@/lib/sellers/sentinel';
 import { sendUploadLinkNotification } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { stripImageMetadata } from '@/lib/images/sanitize';
+import { sanitizeImageForStorage } from '@/lib/images/sanitize';
+import { chatPhotoPath, unattachedChatPhotos } from '@/lib/upload/resubmission';
 
 /** A repeat call or chat inside this window adds to the open prospect instead of starting another. */
 const DEDUPE_DAYS = 90;
@@ -203,6 +204,35 @@ const PHOTO_TYPES: Record<string, string> = {
 };
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
 
+/** New photos stored per requestAppraisal call. */
+const MAX_CHAT_PHOTOS_PER_CALL = 5;
+
+interface ChatPhoto {
+  /** sha256 of the bytes as sent, hex. */
+  hash: string;
+  ext: string;
+  bytes: Buffer;
+}
+
+function decodeChatPhoto(dataUrl: string): ChatPhoto | null {
+  const match = /^data:(image\/[a-z]+);base64,(.+)$/.exec(dataUrl);
+  const ext = match ? PHOTO_TYPES[match[1]] : undefined;
+  if (!match || !ext) return null;
+  const bytes = Buffer.from(match[2], 'base64');
+  if (bytes.length === 0 || bytes.length > MAX_PHOTO_BYTES) return null;
+  return { hash: crypto.createHash('sha256').update(bytes).digest('hex'), ext, bytes };
+}
+
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+async function prospectImageUrls(executor: Executor, prospectId: string): Promise<string[]> {
+  const rows = await executor
+    .select({ images: uploadItems.images })
+    .from(uploadItems)
+    .where(eq(uploadItems.prospectId, prospectId));
+  return rows.flatMap((row) => row.images ?? []);
+}
+
 /**
  * Attach photos a visitor already shared in the website chat to their
  * prospect, so they are not asked to upload the same pictures again.
@@ -210,22 +240,34 @@ const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
  * The photos arrive as data URLs inside the chat request. Each is re-encoded
  * (which drops EXIF, including GPS), stored where website submissions go, and
  * becomes one upload item under a synthetic, already-completed upload link —
- * the same shape the appraisal form produces. Returns how many were saved.
+ * the same shape the appraisal form produces.
+ *
+ * Every chat request carries the conversation's photos, and the model may
+ * call requestAppraisal more than once (a second piece, or repeating
+ * itself). Each photo's content hash is in its storage name, so one already
+ * on the prospect is skipped rather than stored again. Returns how many were
+ * newly attached and how many were already there.
  */
-export async function attachChatPhotos(prospectId: string, dataUrls: string[], note: string): Promise<number> {
+export async function attachChatPhotos(
+  prospectId: string,
+  dataUrls: string[],
+  note: string,
+): Promise<{ attached: number; alreadyAttached: number }> {
+  const photos = unattachedChatPhotos(
+    dataUrls.map(decodeChatPhoto).filter((p): p is ChatPhoto => p !== null),
+    [],
+  );
+  const pending = unattachedChatPhotos(photos, await prospectImageUrls(db, prospectId));
+  let alreadyAttached = photos.length - pending.length;
+
   const admin = createAdminClient();
-  const stored: string[] = [];
-
-  for (const dataUrl of dataUrls.slice(0, 5)) {
-    const match = /^data:(image\/[a-z]+);base64,(.+)$/.exec(dataUrl);
-    const ext = match ? PHOTO_TYPES[match[1]] : undefined;
-    if (!match || !ext) continue;
-    const bytes = Buffer.from(match[2], 'base64');
-    if (bytes.length === 0 || bytes.length > MAX_PHOTO_BYTES) continue;
-
-    const stripped = await stripImageMetadata(bytes);
+  const stored: { hash: string; path: string; url: string }[] = [];
+  for (const photo of pending.slice(0, MAX_CHAT_PHOTOS_PER_CALL)) {
+    // Canvas-compressed chat photos carry no metadata at all, so they are
+    // stored as-is rather than dropped; unreadable/HEIC bytes are skipped.
+    const stripped = await sanitizeImageForStorage(photo.bytes);
     if (!stripped) continue;
-    const path = `submissions/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+    const path = chatPhotoPath(photo.hash, crypto.randomUUID().slice(0, 8), photo.ext);
     const { data, error } = await admin.storage
       .from(PHOTO_BUCKET)
       .upload(path, stripped.buffer, { contentType: stripped.contentType, upsert: false });
@@ -233,42 +275,59 @@ export async function attachChatPhotos(prospectId: string, dataUrls: string[], n
       logger.error('Chat photo upload failed', error, { prospectId });
       continue;
     }
-    stored.push(admin.storage.from(PHOTO_BUCKET).getPublicUrl(data.path).data.publicUrl);
+    stored.push({ hash: photo.hash, path: data.path, url: admin.storage.from(PHOTO_BUCKET).getPublicUrl(data.path).data.publicUrl });
   }
 
-  if (stored.length === 0) return 0;
+  if (stored.length === 0) return { attached: 0, alreadyAttached };
 
-  const [link] = await db
-    .insert(uploadLinks)
-    .values({
-      prospectId,
-      token: crypto.randomUUID(),
-      // Never shared: exists only as the join the prospects funnel expects.
-      status: 'completed',
-      itemCount: stored.length,
-      lastUploadAt: new Date(),
-    })
-    .returning({ id: uploadLinks.id });
+  // Checked again under a per-prospect lock: the model can call the tool
+  // twice at once, and both calls would have found the photos missing.
+  const kept = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`chat-photos:${prospectId}`}::text))`);
+    const fresh = unattachedChatPhotos(stored, await prospectImageUrls(tx, prospectId));
+    if (fresh.length === 0) return fresh;
 
-  await db.insert(uploadItems).values(
-    stored.map((url, index) => ({
-      uploadLinkId: link.id,
-      prospectId,
-      images: [url],
-      sellerNotes: note,
-      sortOrder: index,
-      status: 'uploaded' as const,
-    })),
-  );
+    const [link] = await tx
+      .insert(uploadLinks)
+      .values({
+        prospectId,
+        token: crypto.randomUUID(),
+        // Never shared: exists only as the join the prospects funnel expects.
+        status: 'completed',
+        itemCount: fresh.length,
+        lastUploadAt: new Date(),
+      })
+      .returning({ id: uploadLinks.id });
 
-  await db
-    .update(sellerProspects)
-    .set({
-      totalItems: sql`${sellerProspects.totalItems} + ${stored.length}`,
-      status: sql`CASE WHEN ${sellerProspects.status} IN ('new', 'contacted', 'upload_sent') THEN 'items_received' ELSE ${sellerProspects.status} END`,
-      updatedAt: new Date(),
-    })
-    .where(eq(sellerProspects.id, prospectId));
+    await tx.insert(uploadItems).values(
+      fresh.map((photo, index) => ({
+        uploadLinkId: link.id,
+        prospectId,
+        images: [photo.url],
+        sellerNotes: note,
+        sortOrder: index,
+        status: 'uploaded' as const,
+      })),
+    );
 
-  return stored.length;
+    await tx
+      .update(sellerProspects)
+      .set({
+        totalItems: sql`${sellerProspects.totalItems} + ${fresh.length}`,
+        status: sql`CASE WHEN ${sellerProspects.status} IN ('new', 'contacted', 'upload_sent') THEN 'items_received' ELSE ${sellerProspects.status} END`,
+        updatedAt: new Date(),
+      })
+      .where(eq(sellerProspects.id, prospectId));
+    return fresh;
+  });
+
+  // Copies the other call got in first with: not referenced anywhere.
+  const redundant = stored.filter((photo) => !kept.includes(photo));
+  if (redundant.length > 0) {
+    alreadyAttached += redundant.length;
+    const { error } = await admin.storage.from(PHOTO_BUCKET).remove(redundant.map((photo) => photo.path));
+    if (error) logger.warn('Could not remove duplicate chat photos', { prospectId, error: error.message });
+  }
+
+  return { attached: kept.length, alreadyAttached };
 }

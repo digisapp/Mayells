@@ -8,6 +8,8 @@ interface AuctionCardProps {
   auction: Auction;
   /** Above the fold: load the cover straight away, since it is likely the LCP. */
   eager?: boolean;
+  /** Override when the card is not in the standard 1/2/3-up grid (e.g. a phone rail). */
+  sizes?: string;
 }
 
 function formatDate(date: Date | null) {
@@ -23,7 +25,7 @@ function formatDate(date: Date | null) {
 
 function getStatusLabel(status: string) {
   switch (status) {
-    case 'open': return { label: 'Bidding Open', variant: 'default' as const, className: 'bg-emerald-600 text-white border-0' };
+    case 'open': return { label: 'Bidding Open', variant: 'default' as const, className: 'bg-emerald-700 text-white border-0' }; // -700: white on -600 is under 4.5:1 at 11px
     // Badges sit on top of lot imagery — every variant needs a solid backdrop to stay legible.
     case 'preview': return { label: 'Preview', variant: 'secondary' as const, className: 'bg-black/60 text-white border-0 backdrop-blur-sm' };
     case 'scheduled': return { label: 'Upcoming', variant: 'outline' as const, className: 'bg-black/60 text-white border-white/25 backdrop-blur-sm' };
@@ -33,12 +35,19 @@ function getStatusLabel(status: string) {
   }
 }
 
-export function AuctionCard({ auction, eager }: AuctionCardProps) {
+export function AuctionCard({
+  auction,
+  eager,
+  sizes = '(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw',
+}: AuctionCardProps) {
   const status = getStatusLabel(auction.status);
 
   return (
-    <Link href={`/auctions/${auction.slug}`} className="group block">
-      <div className="rounded-xl overflow-hidden bg-card border border-border/70 transition-all duration-300 hover:border-champagne/40 hover:shadow-luxury">
+    <Link
+      href={`/auctions/${auction.slug}`}
+      className="group block h-full rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-champagne focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+    >
+      <div className="h-full rounded-xl overflow-hidden bg-card border border-border/70 transition-all duration-300 hover:border-champagne/40 hover:shadow-luxury">
         {/* Cover Image */}
         <div className="relative aspect-[16/9] bg-muted overflow-hidden">
           {auction.coverImageUrl ? (
@@ -47,7 +56,7 @@ export function AuctionCard({ auction, eager }: AuctionCardProps) {
               alt={auction.title}
               fill
               className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.03]"
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              sizes={sizes}
               loading={eager ? 'eager' : undefined}
               fetchPriority={eager ? 'high' : undefined}
             />
@@ -61,7 +70,7 @@ export function AuctionCard({ auction, eager }: AuctionCardProps) {
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
 
           <Badge
-            className={`absolute top-4 left-4 text-[10px] uppercase tracking-wider font-semibold shadow-sm ${status.className}`}
+            className={`absolute top-3 left-3 sm:top-4 sm:left-4 text-[11px] uppercase tracking-wider font-semibold shadow-sm ${status.className}`}
             variant={status.variant}
           >
             {status.label === 'LIVE' && (
@@ -71,7 +80,7 @@ export function AuctionCard({ auction, eager }: AuctionCardProps) {
           </Badge>
 
           {/* Lot count pill */}
-          <div className="absolute bottom-4 right-4 glass-dark rounded-full px-3 py-1 text-white text-xs font-medium">
+          <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 glass-dark rounded-full px-3 py-1 text-white text-xs font-medium">
             {auction.lotCount} lots
           </div>
         </div>

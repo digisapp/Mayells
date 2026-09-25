@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import { supabaseUrl } from './env';
 
 export function createAdminClient() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseUrl()!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: {

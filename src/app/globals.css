@@ -102,6 +102,24 @@
   --sidebar-accent-foreground: oklch(0.18 0.02 250);
   --sidebar-border: oklch(0.92 0.005 85);
   --sidebar-ring: oklch(0.82 0.06 80);
+
+  /* Height of any sticky bottom action bar visible on a phone. The bar sets
+     it inline on <html> while shown; floating UI (chat launcher, toasts,
+     footer padding) adds it to its bottom offset. */
+  --mobile-cta-bar: 0px;
+
+  /* Landscape notch / Dynamic Island insets, read through variables so the
+     gutter rules below have one source (and can be exercised in tests). */
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+/* The bars only report below 1024px; this beats a stale inline value left by
+   one that unmounted mid-resize, so nothing on desktop is lifted by it. */
+@media (min-width: 1024px) {
+  :root {
+    --mobile-cta-bar: 0px !important;
+  }
 }
 
 .dark {
@@ -358,6 +376,38 @@
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* The open mobile menu covers the page; the chat bubble would float over it. */
+html[data-menu-open] [data-chat-launcher] {
+  display: none;
+}
+
+/*
+ * Landscape notch. viewportFit: 'cover' lets full-bleed sections paint under
+ * the notch / Dynamic Island, but page containers pad only 16–24px from the
+ * edge, so in landscape their text sits under the cut-out. Padding <body>
+ * would leave warm-white strips beside the charcoal hero and footer; instead
+ * the page containers (mx-auto + px-*, the pattern every section uses) widen
+ * their gutters to at least the inset. Backgrounds stay full-bleed, content
+ * clears the notch. Unlayered so it outranks the utilities, and scoped to
+ * landscape below lg, where the insets exist and desktop can't be touched.
+ */
+@media (orientation: landscape) and (max-width: 1023.98px) {
+  .mx-auto.px-4 {
+    padding-left: max(1rem, var(--safe-left));
+    padding-right: max(1rem, var(--safe-right));
+  }
+  .mx-auto.px-5 {
+    padding-left: max(1.25rem, var(--safe-left));
+    padding-right: max(1.25rem, var(--safe-right));
+  }
+}
+@media (orientation: landscape) and (min-width: 640px) and (max-width: 1023.98px) {
+  .mx-auto.sm\:px-6 {
+    padding-left: max(1.5rem, var(--safe-left));
+    padding-right: max(1.5rem, var(--safe-right));
   }
 }
 

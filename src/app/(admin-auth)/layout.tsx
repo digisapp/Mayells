@@ -1,3 +1,10 @@
+import type { Viewport } from 'next';
+
+// The sign-in screens are zinc-950 edge to edge; tint Safari's toolbar to match.
+export const viewport: Viewport = {
+  themeColor: '#09090B',
+};
+
 export default function AdminAuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950 px-4">

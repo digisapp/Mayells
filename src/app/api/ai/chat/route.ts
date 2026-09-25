@@ -6,7 +6,7 @@ import { chatTools } from '@/lib/ai/chat-tools';
 import { db } from '@/db';
 import { aiChatSettings } from '@/db/schema';
 import { rateLimit } from '@/lib/rate-limit';
-import { NextRequest } from 'next/server';
+import { NextRequest, after } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import { getMicrositeBySlug, type Microsite } from '@/lib/microsites/config';
 import { recordConversationLead, emailUploadLink, attachChatPhotos } from '@/lib/prospects/intake';
@@ -17,6 +17,12 @@ import { logger } from '@/lib/logger';
 export const maxDuration = 60;
 
 const MAX_MESSAGE_CONTENT_LENGTH = 4000;
+// The chat client keeps only the newest photo in `messages` (so the model sees
+// one image per request) and sends earlier ones in `earlierPhotos`, used only
+// to attach them to an appraisal request. attachChatPhotos stores at most five
+// new ones per call.
+const MAX_EARLIER_PHOTOS = 4;
+const MAX_PHOTO_DATA_URL_LENGTH = 2_000_000;
 
 /**
  * Keep only user/assistant messages and truncate oversized text content so
@@ -145,6 +151,7 @@ export async function POST(req: NextRequest) {
     : [];
   // The chat on a city microsite sends its slug; anything else is mayells.com.
   const site = typeof body?.site === 'string' ? getMicrositeBySlug(body.site) : undefined;
+  const earlierPhotos = earlierPhotoDataUrls(body?.earlierPhotos);
 
   if (messages.length === 0) {
     return new Response(JSON.stringify({ error: 'Messages are required' }), {
@@ -161,7 +168,7 @@ export async function POST(req: NextRequest) {
       webSearch: webSearch(),
       xSearch: xSearch(),
       ...chatTools,
-      requestAppraisal: appraisalRequestTool({ ip, site, messages }),
+      requestAppraisal: appraisalRequestTool({ ip, site, messages, earlierPhotos }),
     },
     stopWhen: stepCountIs(3),
     maxOutputTokens: 600,
@@ -176,6 +183,19 @@ function siteContext(site: Microsite): string {
       ? `Mayells is local to ${site.region} and comes to the house for appraisals.`
       : `Mayells serves ${site.city} through scheduled visits from Palm Beach County; do not describe it as a local office.`
   } Answer with that town in mind.`;
+}
+
+/** Earlier chat photos sent alongside the messages; never shown to the model. */
+function earlierPhotoDataUrls(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (u): u is string =>
+        typeof u === 'string' &&
+        u.length <= MAX_PHOTO_DATA_URL_LENGTH &&
+        /^data:image\/(jpeg|png|webp);base64,/.test(u),
+    )
+    .slice(-MAX_EARLIER_PHOTOS);
 }
 
 /** Image data URLs the visitor attached anywhere in this conversation. */
@@ -198,7 +218,7 @@ function chatPhotoDataUrls(messages: unknown[]): string[] {
  * visitor: a chat is an unauthenticated form with a language model in front
  * of it, so it gets a tighter cap than the chat itself.
  */
-function appraisalRequestTool({ ip, site, messages }: { ip: string; site?: Microsite; messages: unknown[] }) {
+function appraisalRequestTool({ ip, site, messages, earlierPhotos }: { ip: string; site?: Microsite; messages: unknown[]; earlierPhotos: string[] }) {
   return tool({
     description:
       'Pass a visitor\'s appraisal or consignment request to a Mayells specialist. Call only after the visitor has confirmed the details you read back to them.',
@@ -232,13 +252,21 @@ function appraisalRequestTool({ ip, site, messages }: { ip: string; site?: Micro
           origin: `Taken by the website chat on ${where}`,
         });
 
-        const photos = chatPhotoDataUrls(messages);
-        const attached = photos.length > 0
+        // Every request carries the chat's photos; attachChatPhotos stores
+        // only those the prospect doesn't already have, so calling this
+        // again (a second piece, or the model repeating itself) can't
+        // attach the same photo twice.
+        const photos = [...earlierPhotos, ...chatPhotoDataUrls(messages)];
+        const { attached, alreadyAttached } = photos.length > 0
           ? await attachChatPhotos(prospectId, photos, input.items).catch((err) => {
               logger.error('Failed to attach chat photos', err, { prospectId });
-              return 0;
+              return { attached: 0, alreadyAttached: 0 };
             })
-          : 0;
+          : { attached: 0, alreadyAttached: 0 };
+        const photoNote = [
+          attached ? `${attached} photo${attached === 1 ? '' : 's'} from the chat attached.` : null,
+          alreadyAttached ? `${alreadyAttached} already on file.` : null,
+        ].filter(Boolean).join(' ');
 
         // Site-wide daily ceiling on top of the per-IP limit: the chat is
         // public, and each send is Mayells-branded mail to a typed address.
@@ -250,19 +278,22 @@ function appraisalRequestTool({ ip, site, messages }: { ip: string; site?: Micro
           : false;
 
         const adminUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com'}/admin/prospects/${prospectId}`;
-        sendAppraisalRequestNotification({
+        // after(): the admin email must survive the response finishing first.
+        after(() => sendAppraisalRequestNotification({
           name: input.name,
           phone: input.phone ?? 'not given',
           email: input.email,
           service: `Website chat (${created ? 'new lead' : 'repeat contact, added to existing prospect'})`,
           items: [input.items, input.town ? `Town: ${input.town}` : null].filter(Boolean).join('\n'),
-          message: `Taken by the website chat on ${where}.${attached ? ` ${attached} photo${attached === 1 ? '' : 's'} from the chat attached.` : ''}${uploadLinkEmailed ? ' Upload link emailed.' : ''} Prospect: ${adminUrl}`,
+          message: `Taken by the website chat on ${where}.${photoNote ? ` ${photoNote}` : ''}${uploadLinkEmailed ? ' Upload link emailed.' : ''} Prospect: ${adminUrl}`,
           site: site ? { city: site.city, domain: site.domain } : undefined,
-        }).catch((err) => logger.error('Failed to send chat lead notification', err, { prospectId }));
+        }).catch((err) => logger.error('Failed to send chat lead notification', err, { prospectId })));
 
         return {
           ok: true,
-          photosAttached: attached,
+          // This chat's photos now on file with the request (the chat client
+          // stops re-sending the ones shared before a result like this).
+          photosAttached: attached + alreadyAttached,
           uploadLinkEmailed,
           message: 'Request recorded. A specialist will be in touch.',
         };

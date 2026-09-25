@@ -14,7 +14,7 @@ export function UploadHeader({ children, left }: { children?: ReactNode; left?: 
         {children ?? (
           <a
             href={BUSINESS.phoneHref}
-            className="inline-flex h-10 items-center gap-2 rounded-lg px-2 text-sm font-medium text-charcoal/70 hover:text-charcoal"
+            className="-mr-2 inline-flex h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-charcoal/70 hover:text-charcoal"
           >
             <Phone className="h-4 w-4" />
             <span className="tabular-nums">{BUSINESS.phone}</span>

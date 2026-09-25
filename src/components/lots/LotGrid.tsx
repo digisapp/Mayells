@@ -1,8 +1,7 @@
-import { LotCard } from './LotCard';
-import type { Lot } from '@/db/schema/lots';
+import { LotCard, type LotCardLot } from './LotCard';
 
 interface LotGridProps {
-  lots: (Lot & { auctionSlug?: string | null })[];
+  lots: LotCardLot[];
   auctionSlug?: string;
   columns?: 2 | 3 | 4;
   isGallery?: boolean;

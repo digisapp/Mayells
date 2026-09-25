@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { Viewport } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowRight, Phone } from 'lucide-react';
@@ -7,6 +8,12 @@ import { getMicrositeBySlug, micrositePhone, MICROSITE_SLUGS } from '@/lib/micro
 import { CallLink } from '@/components/microsites/CallLink';
 import { MicrositeTracker } from '@/components/microsites/MicrositeTracker';
 import { ChatWidget } from '@/components/chat/ChatWidget';
+
+// Microsites open on the warm-white header (--background as rendered), not
+// the main site's champagne announcement bar.
+export const viewport: Viewport = {
+  themeColor: '#FCFBFA',
+};
 
 export function generateStaticParams() {
   return MICROSITE_SLUGS.map((city) => ({ city }));
@@ -49,7 +56,7 @@ export default async function MicrositeLayout({
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:h-[72px]">
           <Link href="/" className="flex min-h-11 flex-col justify-center leading-none">
             <span className="font-logo text-[19px] tracking-[0.15em] sm:text-[21px]">MAYELLS</span>
-            <span className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            <span className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {site.city}, {site.state}
             </span>
           </Link>

@@ -7,7 +7,8 @@ interface AuctionCountdownProps {
   endsAt: Date;
   onExpired?: () => void;
   className?: string;
-  variant?: 'inline' | 'card';
+  /** `compact` is the one-line form for tight spots (the phone bid bar): "2d 4h", "4h 12m", "12:05". */
+  variant?: 'inline' | 'card' | 'compact';
   /**
    * The server's clock (ms since epoch) captured when the page was rendered.
    * When provided, the countdown corrects for client clock skew so a device
@@ -15,6 +16,12 @@ interface AuctionCountdownProps {
    * anti-snipe in the final seconds. Without it, falls back to the local clock.
    */
   serverNow?: number;
+  /**
+   * A measured server-minus-device offset (ms), e.g. from a poll corrected by
+   * half its round trip. Takes precedence over `serverNow`, whose mount-time
+   * estimate over-reads by the network and hydration delay.
+   */
+  clockOffsetMs?: number | null;
 }
 
 function getTimeRemaining(endTime: Date, nowMs: number) {
@@ -30,7 +37,7 @@ function getTimeRemaining(endTime: Date, nowMs: number) {
   };
 }
 
-export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inline', serverNow }: AuctionCountdownProps) {
+export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inline', serverNow, clockOffsetMs }: AuctionCountdownProps) {
   // Initialized to null and computed after mount: calling Date.now() during
   // render would produce different output on server vs client (hydration mismatch).
   const [time, setTime] = useState<ReturnType<typeof getTimeRemaining> | null>(null);
@@ -58,13 +65,16 @@ export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inli
     if (skewRef.current === null) {
       skewRef.current = serverNow != null ? serverNow - Date.now() : 0;
     }
-    const skew = skewRef.current;
+    const skew = clockOffsetMs ?? skewRef.current;
+    let expired = false;
 
     const tick = () => {
+      if (expired) return;
       const correctedNow = Date.now() + skew;
       const remaining = getTimeRemaining(new Date(endsAtMs), correctedNow);
       setTime(remaining);
       if (remaining.total <= 0) {
+        expired = true;
         clearInterval(timer);
         onExpiredRef.current?.();
       }
@@ -74,12 +84,23 @@ export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inli
     // First update is deferred to the next frame so hydration completes
     // against the stable placeholder before any client-clock value renders.
     const raf = requestAnimationFrame(tick);
+    // Timers are frozen while a phone is locked; catch up the moment it wakes
+    // instead of showing the pre-lock time for up to a second.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       clearInterval(timer);
       cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [endsAtMs, serverNow]);
+  }, [endsAtMs, serverNow, clockOffsetMs]);
+
+  if (variant === 'compact') {
+    return <CompactCountdown time={time} className={className} />;
+  }
 
   if (!time) {
     return (
@@ -137,7 +158,33 @@ function TimeUnit({ value, label, urgencyColor }: { value: number; label: string
       <span className={`text-xl font-semibold tabular-nums tracking-tight ${urgencyColor}`}>
         {value.toString().padStart(2, '0')}
       </span>
-      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
     </div>
+  );
+}
+
+function CompactCountdown({ time, className }: { time: ReturnType<typeof getTimeRemaining> | null; className?: string }) {
+  if (time && time.total <= 0) {
+    return <span className={`text-muted-foreground ${className ?? ''}`}>Closing</span>;
+  }
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const isUrgent = !!time && time.total < 5 * 60 * 1000;
+  const isWarning = !!time && time.total < 30 * 60 * 1000;
+  const label = !time
+    ? '--:--'
+    : time.days > 0
+      ? `${time.days}d ${time.hours}h`
+      : time.hours > 0
+        ? `${time.hours}h ${pad(time.minutes)}m`
+        : `${pad(time.minutes)}:${pad(time.seconds)}`;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 tabular-nums font-medium ${
+        isUrgent ? 'text-red-500' : isWarning ? 'text-amber-600' : 'text-foreground'
+      } ${className ?? ''}`}
+    >
+      <Clock className="h-3 w-3 shrink-0" aria-hidden />
+      <span>{label}</span>
+    </span>
   );
 }

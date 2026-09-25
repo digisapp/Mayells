@@ -1,3 +1,4 @@
+import type { Viewport } from 'next';
 import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
 import { PublicNav } from '@/components/layout/PublicNav';
 import { PublicFooter } from '@/components/layout/PublicFooter';
@@ -5,6 +6,12 @@ import { ChatWidget } from '@/components/chat/ChatWidget';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
+// Every page here opens with the champagne announcement bar; Safari's bar
+// should continue it rather than sit charcoal above it.
+export const viewport: Viewport = {
+  themeColor: '#D9C099',
+};
 
 const websiteJsonLd = {
   '@context': 'https://schema.org',
@@ -59,7 +66,7 @@ const businessJsonLd = {
 
 export default function BrowseLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-svh flex flex-col">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:bg-champagne focus:text-charcoal focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-medium focus:shadow-lg"

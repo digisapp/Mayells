@@ -239,7 +239,7 @@ function BidRow({ r, children }: { r: Row; children: React.ReactNode }) {
         {r.primaryImageUrl ? (
           <Image src={r.primaryImageUrl} alt={r.title} fill className="object-cover" sizes="80px" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground">No image</div>
+          <div className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground">No image</div>
         )}
       </Link>
       <div className="flex-1 min-w-0">

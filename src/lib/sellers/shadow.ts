@@ -15,6 +15,7 @@ import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { db } from '@/db';
 import { users, lots, consignments, shipments, payouts, sellerProspects, type SellerProspect } from '@/db/schema';
 import { logger } from '@/lib/logger';
+import { supabaseUrl } from '@/lib/supabase/env';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export type DbOrTx = typeof db | Tx;
@@ -105,7 +106,7 @@ export async function claimShadowUserByEmail(params: {
   // account — never touch it. Fail closed on any lookup error.
   try {
     const adminClient = createAdminClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      supabaseUrl()!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
     );
     const { data: authUser, error } = await adminClient.auth.admin.getUserById(shadow.id);

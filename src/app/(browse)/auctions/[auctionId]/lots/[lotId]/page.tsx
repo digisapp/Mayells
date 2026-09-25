@@ -19,12 +19,12 @@ import { watchlist, users } from '@/db/schema';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
 import { isLotInPublicAuction } from '@/lib/lots/placement';
-import { Button } from '@/components/ui/button';
-import { ExternalLink, Phone, Mail } from 'lucide-react';
+import { Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
+import { formatCondition } from '@/components/lots/condition';
 import { generateLotJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 import { categories } from '@/db/schema';
 import { track } from '@vercel/analytics/server';
@@ -205,7 +205,7 @@ export default async function LotDetailPage({
                 <Badge variant="outline">Lot {lot.lotNumber}</Badge>
               )}
               {lot.condition && (
-                <Badge variant="secondary">{lot.condition.replace('_', ' ')}</Badge>
+                <Badge variant="secondary">{formatCondition(lot.condition)}</Badge>
               )}
             </div>
             <h1 className="font-display text-display-md mb-2">{lot.title}</h1>
@@ -245,46 +245,27 @@ export default async function LotDetailPage({
               serverNow={renderNow}
               initialIsBiddable={isBiddableOnSite}
               initialIsHighBidder={!!viewer && lot.currentBidderId === viewer.id}
+              viewerSignedIn={!!viewer}
+              lotTitle={lot.title}
+              buyerPremiumPercent={auction?.buyerPremiumPercent ?? null}
+              // The panel owns the call to action (on-site bid form, else
+              // LiveAuctioneers, else a note) so the phone bid bar can mirror it.
+              externalBidUrl={auction?.liveauctioneersUrl ?? null}
+              unavailableNote={
+                auction
+                  ? 'This lot is not open for bidding right now.'
+                  : 'This lot is not currently in an active auction.'
+              }
             />
 
-            {/* When the lot is biddable on-site, the bid form (inside LiveLotPanel
-                above) is the primary CTA. Otherwise fall back to LiveAuctioneers
-                or an informational message. */}
-            {!isBiddableOnSite && (
-              auction?.liveauctioneersUrl ? (
-                <a href={auction.liveauctioneersUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="champagne" size="xl" className="w-full gap-2">
-                    <ExternalLink className="h-5 w-5" />
-                    Bid on LiveAuctioneers
-                  </Button>
-                </a>
-              ) : auction ? (
-                <p className="text-sm text-muted-foreground">This lot is not open for bidding right now.</p>
-              ) : (
-                <p className="text-sm text-muted-foreground">This lot is not currently in an active auction.</p>
-              )
-            )}
-            {/* Secondary link to LiveAuctioneers even while biddable on-site */}
-            {isBiddableOnSite && auction?.liveauctioneersUrl && (
-              <a
-                href={auction.liveauctioneersUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                Also available on LiveAuctioneers
-              </a>
-            )}
-
             {/* Alternative bidding */}
-            <div className="border-t border-border/30 pt-4 space-y-3">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Or bid by phone / absentee</p>
-              <a href={BUSINESS.phoneHref} className="flex items-center gap-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <div className="border-t border-border/30 pt-4">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Or bid by phone / absentee</p>
+              <a href={BUSINESS.phoneHref} className="flex min-h-11 items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <Phone className="h-4 w-4" />
                 {BUSINESS.phone}
               </a>
-              <a href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(`Bid Inquiry: ${lot.title}`)}`} className="flex items-center gap-2 py-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <a href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(`Bid Inquiry: ${lot.title}`)}`} className="flex min-h-11 items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <Mail className="h-4 w-4" />
                 {BUSINESS.email}
               </a>
@@ -318,7 +299,7 @@ export default async function LotDetailPage({
           {/* Description */}
           <div>
             <h2 className="font-display text-xl mb-3">Description</h2>
-            <div className="prose prose-sm max-w-none text-muted-foreground whitespace-pre-wrap">
+            <div className="text-muted-foreground whitespace-pre-wrap">
               {lot.description}
             </div>
           </div>

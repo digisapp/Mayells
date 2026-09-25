@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -121,16 +121,45 @@ function SearchContent() {
     }
   }, [query, categoryFilter, saleType, priceRange, sort, useAI]);
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Starts the pending debounced search immediately (Return / the keyboard's
+  // Search key). A no-op once that search has already started, so submitting
+  // never issues a duplicate (AI) request.
+  const flushSearchRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => doSearch(controller.signal), 400);
+    let started = false;
+    const run = () => {
+      if (started) return;
+      started = true;
+      void doSearch(controller.signal);
+    };
+    const timeout = setTimeout(run, 400);
+    flushSearchRef.current = run;
     return () => {
       clearTimeout(timeout);
       controller.abort();
+      flushSearchRef.current = null;
     };
   }, [doSearch]);
 
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    flushSearchRef.current?.();
+    // Dismiss the iPhone keyboard so the results are visible.
+    inputRef.current?.blur();
+    // Mirror the query in the URL so the results can be shared or revisited.
+    const params = new URLSearchParams(window.location.search);
+    const q = query.trim();
+    if (q) params.set('q', q);
+    else params.delete('q');
+    const qs = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+  }
+
   const hasActiveFilters = (categoryFilter && categoryFilter !== 'all') || (saleType && saleType !== 'all') || priceRange > 0;
+  const activeFilterCount = [categoryFilter && categoryFilter !== 'all', saleType && saleType !== 'all', priceRange > 0].filter(Boolean).length;
 
   function clearFilters() {
     setCategoryFilter('');
@@ -141,46 +170,61 @@ function SearchContent() {
 
   return (
     <>
-      {/* Search bar */}
-      <div className="relative max-w-xl mx-auto mb-4">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+      {/* Search bar: a real search form, so the iPhone keyboard shows a
+          Search key and Return submits (and dismisses it) in either mode. */}
+      <form role="search" action="/search" onSubmit={handleSubmit} className="relative max-w-xl mx-auto mb-4">
+        <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
         <Input
+          ref={inputRef}
+          type="search"
+          name="q"
+          enterKeyHint="search"
+          inputMode="search"
+          autoComplete="off"
+          aria-label="Search the catalogue"
           placeholder={useAI ? 'Try: "art deco jewelry under $5000"' : 'Search lots, artists, makers...'}
-          className="pl-12 h-12 text-lg"
+          className="pl-12 h-12 text-base sm:text-lg md:text-lg"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-      </div>
+        <button type="submit" className="sr-only">Search</button>
+      </form>
 
       {/* Toggle row */}
       <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
         <Button
           variant={useAI ? 'default' : 'outline'}
           size="sm"
+          aria-pressed={useAI}
           onClick={() => setUseAI(true)}
-          className={useAI ? 'bg-champagne text-charcoal hover:bg-champagne/90 gap-1' : 'gap-1'}
+          className={`h-10 sm:h-8 gap-1 ${useAI ? 'bg-champagne text-charcoal hover:bg-champagne/90' : ''}`}
         >
           <Sparkles className="h-3 w-3" /> Smart Search
         </Button>
         <Button
           variant={!useAI ? 'default' : 'outline'}
           size="sm"
+          aria-pressed={!useAI}
           onClick={() => setUseAI(false)}
+          className="h-10 sm:h-8"
         >
           Basic Search
         </Button>
-        <div className="w-px h-5 bg-border mx-1" />
+        <div aria-hidden className="w-px h-5 bg-border mx-1" />
         <Button
           variant={showFilters ? 'default' : 'outline'}
           size="sm"
+          aria-expanded={showFilters}
+          aria-controls="search-filters"
           onClick={() => setShowFilters(!showFilters)}
-          className="gap-1"
+          className="h-10 sm:h-8 gap-1"
         >
           <SlidersHorizontal className="h-3 w-3" />
           Filters
           {hasActiveFilters && (
-            <span className="ml-1 bg-champagne text-charcoal text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
-              {[categoryFilter && categoryFilter !== 'all', saleType && saleType !== 'all', priceRange > 0].filter(Boolean).length}
+            <span className="ml-1 bg-champagne text-charcoal text-[11px] rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center font-bold">
+              {activeFilterCount}
+              <span className="sr-only"> active</span>
             </span>
           )}
         </Button>
@@ -188,12 +232,12 @@ function SearchContent() {
 
       {/* Filter panel */}
       {showFilters && (
-        <div className="bg-muted/50 border rounded-lg p-4 mb-6 max-w-3xl mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div id="search-filters" className="bg-muted/50 border rounded-lg p-4 mb-6 max-w-3xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Department</label>
+              <label htmlFor="filter-department" className="text-xs font-medium text-muted-foreground mb-1.5 block">Department</label>
               <Select value={categoryFilter || 'all'} onValueChange={(v) => setCategoryFilter(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-9 w-full">
+                <SelectTrigger id="filter-department" className="w-full data-[size=default]:h-11 sm:data-[size=default]:h-9 text-[15px] sm:text-sm">
                   <SelectValue placeholder="All Departments" />
                 </SelectTrigger>
                 <SelectContent>
@@ -206,9 +250,9 @@ function SearchContent() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Sale Type</label>
+              <label htmlFor="filter-sale-type" className="text-xs font-medium text-muted-foreground mb-1.5 block">Sale Type</label>
               <Select value={saleType || 'all'} onValueChange={(v) => setSaleType(v === 'all' ? '' : v)}>
-                <SelectTrigger className="h-9 w-full">
+                <SelectTrigger id="filter-sale-type" className="w-full data-[size=default]:h-11 sm:data-[size=default]:h-9 text-[15px] sm:text-sm">
                   <SelectValue placeholder="All Types" />
                 </SelectTrigger>
                 <SelectContent>
@@ -221,9 +265,9 @@ function SearchContent() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Price Range</label>
+              <label htmlFor="filter-price" className="text-xs font-medium text-muted-foreground mb-1.5 block">Price Range</label>
               <Select value={String(priceRange)} onValueChange={(v) => setPriceRange(parseInt(v))}>
-                <SelectTrigger className="h-9 w-full">
+                <SelectTrigger id="filter-price" className="w-full data-[size=default]:h-11 sm:data-[size=default]:h-9 text-[15px] sm:text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -235,9 +279,9 @@ function SearchContent() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Sort By</label>
+              <label htmlFor="filter-sort" className="text-xs font-medium text-muted-foreground mb-1.5 block">Sort By</label>
               <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="h-9 w-full">
+                <SelectTrigger id="filter-sort" className="w-full data-[size=default]:h-11 sm:data-[size=default]:h-9 text-[15px] sm:text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -252,31 +296,23 @@ function SearchContent() {
           {hasActiveFilters && (
             <div className="mt-3 flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground">Active:</span>
+              {/* Each chip removes its filter: the whole chip is the target. */}
               {categoryFilter && categoryFilter !== 'all' && (
-                <Badge variant="secondary" className="text-xs gap-1">
+                <ActiveFilterChip onRemove={() => setCategoryFilter('')}>
                   {categories.find((c) => c.id === categoryFilter)?.name || 'Department'}
-                  <button type="button" aria-label="Remove filter" className="-m-1 p-2 inline-flex items-center justify-center cursor-pointer" onClick={() => setCategoryFilter('')}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
+                </ActiveFilterChip>
               )}
               {saleType && saleType !== 'all' && (
-                <Badge variant="secondary" className="text-xs gap-1 capitalize">
-                  {saleType}
-                  <button type="button" aria-label="Remove filter" className="-m-1 p-2 inline-flex items-center justify-center cursor-pointer" onClick={() => setSaleType('')}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
+                <ActiveFilterChip onRemove={() => setSaleType('')}>
+                  <span className="capitalize">{saleType}</span>
+                </ActiveFilterChip>
               )}
               {priceRange > 0 && (
-                <Badge variant="secondary" className="text-xs gap-1">
+                <ActiveFilterChip onRemove={() => setPriceRange(0)}>
                   {PRICE_RANGES[priceRange].label}
-                  <button type="button" aria-label="Remove filter" className="-m-1 p-2 inline-flex items-center justify-center cursor-pointer" onClick={() => setPriceRange(0)}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
+                </ActiveFilterChip>
               )}
-              <Button variant="ghost" size="sm" className="text-xs h-9 px-3" onClick={clearFilters}>
+              <Button variant="ghost" size="sm" className="text-[13px] h-10 sm:h-9 px-3" onClick={clearFilters}>
                 Clear all
               </Button>
             </div>
@@ -305,8 +341,8 @@ function SearchContent() {
         </div>
       ) : query.trim() || hasActiveFilters ? (
         <>
-          <div className="flex items-center justify-between gap-4 mb-6">
-            <p className="text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-6">
+            <p aria-live="polite" className="text-sm text-muted-foreground min-w-0 break-words">
               {total} result{total !== 1 ? 's' : ''}
               {query.trim() ? <> for &ldquo;{query}&rdquo;</> : ''}
             </p>
@@ -316,8 +352,9 @@ function SearchContent() {
               categoryId={categoryFilter && categoryFilter !== 'all' ? categoryFilter : undefined}
             />
           </div>
-          <LotGrid lots={results} />
-          {results.length === 0 && (
+          {results.length > 0 ? (
+            <LotGrid lots={results} />
+          ) : (
             <div className="text-center py-12">
               <p className="text-muted-foreground">No results found. Try adjusting your search or filters.</p>
             </div>
@@ -329,7 +366,7 @@ function SearchContent() {
           <p className="text-muted-foreground">Search with natural language or use filters</p>
           <div className="flex flex-wrap gap-2 justify-center mt-4">
             {['Art Deco jewelry under $5000', 'Picasso prints', 'Mid-century furniture', 'Vintage Rolex'].map((example) => (
-              <Button key={example} variant="outline" size="sm" onClick={() => setQuery(example)}>
+              <Button key={example} variant="outline" size="sm" className="h-10 sm:h-8 text-[13px]" onClick={() => setQuery(example)}>
                 {example}
               </Button>
             ))}
@@ -340,10 +377,24 @@ function SearchContent() {
   );
 }
 
+function ActiveFilterChip({ children, onRemove }: { children: React.ReactNode; onRemove: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onRemove}
+      className="inline-flex items-center gap-1.5 h-10 sm:h-8 pl-3 pr-2.5 rounded-full bg-secondary text-secondary-foreground text-[13px] sm:text-xs font-medium hover:bg-secondary/80 transition-colors"
+    >
+      {children}
+      <X aria-hidden className="h-3.5 w-3.5 opacity-70" />
+      <span className="sr-only">(remove filter)</span>
+    </button>
+  );
+}
+
 export default function SearchPage() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <h1 className="font-display text-display-lg text-center mb-8">Search</h1>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
+      <h1 className="font-display text-display-lg text-center mb-6 sm:mb-8">Search</h1>
       <Suspense>
         <SearchContent />
       </Suspense>

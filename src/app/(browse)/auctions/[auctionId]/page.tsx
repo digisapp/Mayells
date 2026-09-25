@@ -20,6 +20,17 @@ const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Reader-facing names for the sale status (the raw enum read "scheduled").
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: 'Upcoming',
+  preview: 'Preview',
+  open: 'Bidding Open',
+  live: 'Live Now',
+  closing: 'Closing',
+  closed: 'Closed',
+  completed: 'Closed',
+};
+
 // cache(): generateMetadata and the page body share one lookup per request.
 // Single query instead of a slug-then-id serial fallback (the id comparison is
 // only attempted for UUID-shaped params — a non-UUID string would make the
@@ -125,12 +136,12 @@ export default async function AuctionDetailPage({
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
       {/* Header */}
-      <div className="mb-10">
+      <div className="mb-8 sm:mb-10">
         <div className="flex items-center gap-3 mb-4">
-          <Badge variant={auction.status === 'open' ? 'default' : 'secondary'}>
-            {auction.status === 'open' ? 'Bidding Open' : auction.status}
+          <Badge variant={auction.status === 'open' || auction.status === 'live' ? 'default' : 'secondary'}>
+            {STATUS_LABELS[auction.status] ?? auction.status}
           </Badge>
           {auction.saleNumber && (
             <span className="text-sm text-muted-foreground">Sale {auction.saleNumber}</span>
@@ -138,13 +149,13 @@ export default async function AuctionDetailPage({
         </div>
         <h1 className="font-display text-display-lg">{auction.title}</h1>
         {auction.subtitle && (
-          <p className="text-xl text-muted-foreground mt-2">{auction.subtitle}</p>
+          <p className="text-lg sm:text-xl text-muted-foreground mt-2">{auction.subtitle}</p>
         )}
         {auction.description && (
           <p className="text-muted-foreground mt-4 max-w-2xl">{auction.description}</p>
         )}
 
-        <div className="flex flex-wrap items-center gap-6 mt-6 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-6 text-sm text-muted-foreground">
           {auction.biddingStartsAt && (
             <span className="flex items-center gap-1.5">
               <Calendar className="h-4 w-4" />
@@ -185,7 +196,16 @@ export default async function AuctionDetailPage({
       </div>
 
       {/* Lots grid */}
-      <LotGrid lots={lotsData} auctionSlug={auction.slug} />
+      {lotsData.length > 0 ? (
+        <LotGrid lots={lotsData} auctionSlug={auction.slug} />
+      ) : (
+        <div className="text-center py-16 border border-border/60 rounded-2xl px-6">
+          <p className="font-display text-display-sm">The catalogue is being prepared</p>
+          <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
+            Lots will appear here as soon as they are published.
+          </p>
+        </div>
+      )}
     </div>
     </>
   );

@@ -13,6 +13,7 @@ import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
+import { formatCondition } from '@/components/lots/condition';
 import { generateLotJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 import { track } from '@vercel/analytics/server';
 
@@ -130,11 +131,11 @@ export default async function GalleryDetailPage({
           {/* Lot info */}
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <Badge className="bg-champagne text-charcoal border-0 text-[10px] uppercase tracking-wider font-semibold">
+              <Badge className="bg-champagne text-charcoal border-0 text-[11px] uppercase tracking-wider font-semibold">
                 Gallery
               </Badge>
               {lot.condition && (
-                <Badge variant="secondary">{lot.condition.replace('_', ' ')}</Badge>
+                <Badge variant="secondary">{formatCondition(lot.condition)}</Badge>
               )}
             </div>
             <h1 className="font-display text-display-md mb-2">{lot.title}</h1>
@@ -194,7 +195,7 @@ export default async function GalleryDetailPage({
           {/* Description */}
           <div>
             <h2 className="font-display text-xl mb-3">Description</h2>
-            <div className="prose prose-sm max-w-none text-muted-foreground whitespace-pre-wrap">
+            <div className="text-muted-foreground whitespace-pre-wrap">
               {lot.description}
             </div>
           </div>

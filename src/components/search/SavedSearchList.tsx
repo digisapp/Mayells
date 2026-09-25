@@ -50,7 +50,7 @@ export function SavedSearchList() {
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Follow a search from the{' '}
-          <Link href="/search" className="text-champagne hover:underline">
+          <Link href="/search" className="text-champagne-deep underline-offset-4 hover:underline">
             search page
           </Link>{' '}
           and we&apos;ll email you when matching items are consigned.
@@ -65,9 +65,9 @@ export function SavedSearchList() {
             return (
               <span
                 key={row.id}
-                className="inline-flex items-center gap-1.5 border border-border rounded-full pl-4 pr-2 py-1.5 text-sm bg-secondary/40"
+                className="inline-flex items-center gap-0.5 min-h-10 border border-border rounded-full pl-4 pr-1 text-sm bg-secondary/40"
               >
-                <Link href={href} className="hover:text-champagne transition-colors">
+                <Link href={href} className="py-2.5 hover:text-champagne-deep transition-colors">
                   {label}
                 </Link>
                 <button
@@ -75,7 +75,7 @@ export function SavedSearchList() {
                   aria-label={`Stop following "${label}"`}
                   onClick={() => remove(row.id)}
                   disabled={removing === row.id}
-                  className="rounded-full p-1 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                 >
                   {removing === row.id ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />

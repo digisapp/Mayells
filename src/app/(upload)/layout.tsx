@@ -1,4 +1,11 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+
+// Safari tints its toolbar with this. The site default is charcoal; this
+// flow has an ivory header, so match it (merged over the root viewport,
+// which keeps viewportFit: 'cover').
+export const viewport: Viewport = {
+  themeColor: '#f8f5ee',
+};
 
 export const metadata: Metadata = {
   title: 'Upload your items | Mayells',

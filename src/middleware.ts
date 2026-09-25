@@ -6,6 +6,7 @@ import { redis, isRedisConfigured } from '@/lib/redis';
 import { hasVerifiedTotpFactor, needsMfaChallenge, isMfaExemptPath, MFA_CHALLENGE_PATH } from '@/lib/auth/mfa';
 import { profileCacheKey, PROFILE_CACHE_SECONDS } from '@/lib/auth/profile-cache';
 import { getMicrositeByHost } from '@/lib/microsites/config';
+import { supabaseAnonKey, supabaseUrl } from '@/lib/supabase/env';
 
 const adminAuthRoutes = ['/admin/login'];
 
@@ -30,7 +31,7 @@ async function getUserProfile(userId: string): Promise<CachedProfile | null> {
   }
 
   const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseUrl()!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
   const [{ data: row }, factorsResult] = await Promise.all([
@@ -142,8 +143,8 @@ export async function middleware(request: NextRequest) {
   }
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl()!,
+    supabaseAnonKey()!,
     {
       cookies: {
         getAll() {

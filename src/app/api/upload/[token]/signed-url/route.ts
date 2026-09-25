@@ -8,31 +8,18 @@ import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-ip';
 import { z } from 'zod';
+import {
+  UPLOAD_ALLOWED_TYPES,
+  UNSUPPORTED_TYPE_MESSAGE,
+  isVideoType,
+  maxBytesFor,
+  tooLargeMessage,
+} from '@/lib/upload/limits';
 
 const BUCKET = 'lot-images';
 
-const IMAGE_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/avif',
-  'image/heic',
-  'image/heif',
-];
-
-const VIDEO_TYPES = [
-  'video/mp4',
-  'video/quicktime',
-  'video/webm',
-];
-
-const ALLOWED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES];
-const MAX_IMAGE_SIZE = 15 * 1024 * 1024; // 15MB
-// Matches the `lot-images` bucket's own 25MB limit. Promising more here
-// just moved the failure to the storage PUT, where the consignor saw a
-// bare rejection after waiting through the whole upload.
-const MAX_VIDEO_SIZE = 25 * 1024 * 1024; // 25MB
-
+// Types and size caps live in one place so the upload page can check a file
+// (and explain the problem) before it spends the seller's data on it.
 const signedUrlSchema = z.object({
   filename: z.string().min(1).max(512),
   contentType: z.string().min(1).max(100),
@@ -84,19 +71,15 @@ export async function POST(
     }
     const { filename, contentType, fileSize } = parsed.data;
 
-    if (!ALLOWED_TYPES.includes(contentType)) {
-      return NextResponse.json(
-        { error: 'Invalid file type. Accepted: JPEG, PNG, WebP, AVIF, HEIC, MP4, MOV, WebM.' },
-        { status: 400 }
-      );
+    if (!UPLOAD_ALLOWED_TYPES.includes(contentType)) {
+      return NextResponse.json({ error: UNSUPPORTED_TYPE_MESSAGE }, { status: 400 });
     }
 
-    const isVideo = VIDEO_TYPES.includes(contentType);
-    const maxSize = isVideo ? MAX_VIDEO_SIZE : MAX_IMAGE_SIZE;
+    const isVideo = isVideoType(contentType);
 
-    if (fileSize > maxSize) {
+    if (fileSize > maxBytesFor(contentType)) {
       return NextResponse.json(
-        { error: `File too large. Max ${isVideo ? '25MB' : '15MB'}.` },
+        { error: tooLargeMessage({ bytes: fileSize, isVideo }) },
         { status: 400 }
       );
     }

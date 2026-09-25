@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
+import { stripHeifMetadata } from '@/lib/upload/strip-heic-location';
 
 const BUCKET = 'lot-images';
 
@@ -61,13 +62,39 @@ export async function stripImageMetadata(
 }
 
 /**
+ * Bytes that are safe to store publicly: the stripped image when it carried
+ * metadata, the original when it is a readable JPEG/PNG/WebP with none (e.g.
+ * a canvas-compressed phone photo), or null when it can't be read or is a
+ * format we can't sanitize (HEIC, videos) — callers must drop those.
+ */
+export async function sanitizeImageForStorage(
+  input: Buffer,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const stripped = await stripImageMetadata(input);
+  if (stripped) return stripped;
+  try {
+    const meta = await sharp(input, { failOn: 'none' }).metadata();
+    const mime = meta.format ? FORMAT_MIME[meta.format] : undefined;
+    if (!mime || meta.exif || meta.xmp || meta.iptc) return null;
+    return { buffer: input, contentType: mime };
+  } catch {
+    return null;
+  }
+}
+
+const VIDEO_EXT_RE = /\.(mp4|mov|webm|m4v)$/i;
+
+/**
  * Strip metadata from images already sitting in storage (the direct-to-storage
  * signed-URL flows, where our servers never see the bytes at upload time).
  * Re-uploads to the same path so every stored URL keeps working. Best-effort
  * per file: a failure leaves that image as uploaded, never throws.
+ *
+ * JPEG, PNG, WebP and AVIF are re-encoded by sharp. HEIC/HEIF, which the
+ * bundled libvips can't decode, have their Exif and XMP items blanked in
+ * place instead. Which path a file takes is decided by its bytes, not its
+ * name or stored type, so a HEIC under a .jpg name is still caught.
  */
-const VIDEO_EXT_RE = /\.(mp4|mov|webm|m4v)$/i;
-
 export async function sanitizeStoredImages(paths: string[]): Promise<void> {
   const admin = createAdminClient();
   for (const path of paths) {
@@ -75,7 +102,9 @@ export async function sanitizeStoredImages(paths: string[]): Promise<void> {
     try {
       const { data, error } = await admin.storage.from(BUCKET).download(path);
       if (error || !data) continue;
-      const stripped = await stripImageMetadata(await data.arrayBuffer());
+      const bytes = Buffer.from(await data.arrayBuffer());
+      // sharp says null for a HEIC (it can't decode HEVC), so it falls through.
+      const stripped = (await stripImageMetadata(bytes)) ?? stripHeifForStorage(bytes, path, data.type);
       if (!stripped) continue;
       const { error: upErr } = await admin.storage
         .from(BUCKET)
@@ -85,6 +114,33 @@ export async function sanitizeStoredImages(paths: string[]): Promise<void> {
       logger.warn('EXIF sanitize failed', { path, error: err instanceof Error ? err.message : String(err) });
     }
   }
+}
+
+/**
+ * A stored HEIC/HEIF with its metadata items blanked, keeping the object's
+ * content type. Null when the bytes aren't HEIF, carry no metadata, or can't
+ * be patched safely (logged: that photo keeps its location). Patches `bytes`
+ * in place.
+ */
+function stripHeifForStorage(
+  bytes: Buffer,
+  path: string,
+  storedType: string,
+): { buffer: Buffer; contentType: string } | null {
+  const result = stripHeifMetadata(bytes);
+  if (!result.ok) {
+    if (result.reason === 'unsupported') {
+      logger.warn('HEIF location could not be removed', { path, detail: result.detail });
+    }
+    return null;
+  }
+  if (result.stripped === 0) return null;
+  const contentType = storedType.startsWith('image/')
+    ? storedType
+    : /\.(heif|hif)$/i.test(path)
+      ? 'image/heif'
+      : 'image/heic';
+  return { buffer: bytes, contentType };
 }
 
 /** Extract the storage path from a lot-images public URL (null if not one). */

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { LotLightbox } from './LotLightbox';
 
 interface GalleryImage {
   url: string;
@@ -15,18 +16,23 @@ interface LotImageGalleryProps {
   heroClassName?: string;
 }
 
+// Marks the history entry pushed when the viewer opens, so Back (or an iOS
+// edge swipe) closes the viewer instead of leaving the lot.
+const HISTORY_KEY = 'lotLightbox';
+
 /**
  * Touch-first lot image gallery: the hero is a native snap-scroll carousel
  * (swipe on phones, chevrons on desktop), thumbnails jump to a slide, and
- * tapping the hero opens a full-screen lightbox with double-tap zoom.
+ * tapping the hero opens a full-screen viewer with pinch / double-tap zoom.
  */
 export function LotImageGallery({ images, heroClassName = 'rounded-lg' }: LotImageGalleryProps) {
   const [index, setIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [zoomed, setZoomed] = useState(false);
   const trackRef = useRef<HTMLDivElement>(null);
-  const lightboxTrackRef = useRef<HTMLDivElement>(null);
-  const lastTapRef = useRef(0);
+  // Set by the first close request until its popstate lands: history.back()
+  // is asynchronous, and a second one (double tap on ✕, a repeated Escape,
+  // a swipe-down then a tap) would leave the lot page.
+  const closingRef = useRef(false);
 
   const count = images.length;
 
@@ -39,45 +45,43 @@ export function LotImageGallery({ images, heroClassName = 'rounded-lg' }: LotIma
     setIndex(i);
   }, []);
 
-  // Position the lightbox track on the active slide when it opens.
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    const el = lightboxTrackRef.current;
-    if (el) el.scrollTo({ left: index * el.clientWidth });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lightboxOpen]);
+  const openLightbox = () => {
+    closingRef.current = false;
+    // Pushed from the tap itself (not an effect) so StrictMode can't double it.
+    // Next's patched pushState keeps its router state on the new entry.
+    window.history.pushState({ [HISTORY_KEY]: true }, '');
+    setLightboxOpen(true);
+  };
 
-  // Body scroll lock + Escape while the lightbox is open.
+  // Back / edge-swipe pops our entry: close. The hero follows the viewer.
   useEffect(() => {
     if (!lightboxOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLightboxOpen(false);
+    const onPop = () => {
+      closingRef.current = false;
+      setLightboxOpen(false);
     };
-    window.addEventListener('keydown', onKey);
+    window.addEventListener('popstate', onPop);
     return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('popstate', onPop);
+      closingRef.current = false;
     };
   }, [lightboxOpen]);
 
-  // Double-tap (or double-click) toggles zoom inside the lightbox. iOS Safari's
-  // dblclick is unreliable inside scroll containers, so detect it manually.
-  const handleLightboxTap = () => {
-    const now = performance.now();
-    if (now - lastTapRef.current < 300) {
-      setZoomed((z) => !z);
-      lastTapRef.current = 0;
+  // ✕ / Escape / swipe-down: unwind our history entry (its popstate closes
+  // the viewer); close directly if the entry is somehow no longer ours. Only
+  // the first request goes Back; the rest wait for its popstate.
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    if (window.history.state?.[HISTORY_KEY]) {
+      closingRef.current = true;
+      window.history.back();
     } else {
-      lastTapRef.current = now;
+      setLightboxOpen(false);
     }
-  };
+  }, []);
 
-  const closeLightbox = () => {
-    setLightboxOpen(false);
-    setZoomed(false);
-  };
+  // Land the hero on whichever image the viewer ended on.
+  const onLightboxIndex = useCallback((i: number) => goTo(i, 'instant'), [goTo]);
 
   if (count === 0) return null;
 
@@ -94,7 +98,7 @@ export function LotImageGallery({ images, heroClassName = 'rounded-lg' }: LotIma
             <button
               key={img.url + i}
               type="button"
-              onClick={() => setLightboxOpen(true)}
+              onClick={openLightbox}
               aria-label={`View image ${i + 1} of ${count} full screen`}
               className="relative h-full w-full shrink-0 snap-center cursor-zoom-in"
             >
@@ -158,48 +162,8 @@ export function LotImageGallery({ images, heroClassName = 'rounded-lg' }: LotIma
         </div>
       )}
 
-      {/* Lightbox */}
       {lightboxOpen && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-black/95" role="dialog" aria-modal="true" aria-label="Image viewer">
-          <div className="flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <span className="text-sm text-white/80 tabular-nums">
-              {index + 1} / {count}
-            </span>
-            <button
-              type="button"
-              onClick={closeLightbox}
-              aria-label="Close image viewer"
-              className="flex h-11 w-11 items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors"
-            >
-              <X className="h-6 w-6" />
-            </button>
-          </div>
-
-          {zoomed ? (
-            <div className="flex-1 overflow-auto overscroll-contain" onClick={handleLightboxTap}>
-              <div className="relative h-[200%] w-[200%]">
-                <Image src={images[index].url} alt={images[index].alt} fill className="object-contain" sizes="200vw" />
-              </div>
-            </div>
-          ) : (
-            <div
-              ref={lightboxTrackRef}
-              onScroll={(e) => setIndex(indexFromScroll(e.currentTarget))}
-              onClick={handleLightboxTap}
-              className="flex-1 flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden scrollbar-hide"
-            >
-              {images.map((img, i) => (
-                <div key={img.url + i} className="relative h-full w-full shrink-0 snap-center">
-                  <Image src={img.url} alt={img.alt} fill className="object-contain" sizes="100vw" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          <p className="pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 text-center text-xs text-white/50">
-            {zoomed ? 'Drag to pan — double-tap to zoom out' : 'Double-tap to zoom'}
-          </p>
-        </div>
+        <LotLightbox images={images} index={index} onIndexChange={onLightboxIndex} onRequestClose={requestClose} />
       )}
     </div>
   );

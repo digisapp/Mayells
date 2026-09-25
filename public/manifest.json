@@ -1,23 +1,25 @@
 {
+  "id": "/",
   "name": "Mayells Auctions — Fine Art, Antiques, Jewelry, Collectibles",
   "short_name": "Mayells",
   "description": "Luxury auctions and private sales for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#FAFAF8",
-  "theme_color": "#272D35",
-  "orientation": "portrait",
+  "background_color": "#FCFBFA",
+  "theme_color": "#D9C099",
   "icons": [
     {
       "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-512.png",

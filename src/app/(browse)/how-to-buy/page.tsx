@@ -50,7 +50,7 @@ export default async function HowToBuyPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqJsonLd) }} />
       {/* Hero */}
       <section className="bg-charcoal text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 md:py-28">
           <div className="max-w-2xl">
             <span className="text-eyebrow text-champagne">
               Buyers
@@ -59,7 +59,7 @@ export default async function HowToBuyPage() {
               How to Buy<br />
               <span className="text-champagne">at Mayells</span>
             </h1>
-            <p className="mt-6 text-[17px] text-white/60 max-w-lg leading-relaxed">
+            <p className="mt-5 sm:mt-6 text-[16px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
               Bidding is easy. Our auctions are hosted on LiveAuctioneers, giving you
               access to a trusted global platform with secure payments and buyer protection.
             </p>
@@ -81,18 +81,18 @@ export default async function HowToBuyPage() {
       </section>
 
       {/* 3 Ways to Bid */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
-        <div className="text-center mb-16">
-          <span className="text-eyebrow text-champagne">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 md:py-28">
+        <div className="text-center mb-8 sm:mb-16">
+          <span className="text-eyebrow text-champagne-deep">
             Three Ways to Bid
           </span>
           <h2 className="font-display text-display-md mt-2">Choose How You Participate</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-8">
           {/* Online */}
-          <div className="border border-border/60 rounded-2xl p-8 hover:border-champagne/40 transition-colors">
-            <div className="w-14 h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-6">
+          <div className="border border-border/60 rounded-2xl p-6 sm:p-8 hover:border-champagne/40 transition-colors">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-5 sm:mb-6">
               <Monitor className="h-7 w-7 text-champagne" />
             </div>
             <h3 className="font-display text-xl mb-3">Bid Online</h3>
@@ -102,23 +102,23 @@ export default async function HowToBuyPage() {
             </p>
             <ol className="space-y-2.5 text-sm text-muted-foreground">
               <li className="flex items-start gap-2.5">
-                <span className="text-champagne font-display">1</span>
+                <span className="text-champagne-deep font-display">1</span>
                 Create a free LiveAuctioneers account
               </li>
               <li className="flex items-start gap-2.5">
-                <span className="text-champagne font-display">2</span>
+                <span className="text-champagne-deep font-display">2</span>
                 Browse our upcoming auctions
               </li>
               <li className="flex items-start gap-2.5">
-                <span className="text-champagne font-display">3</span>
+                <span className="text-champagne-deep font-display">3</span>
                 Place your bid — live or in advance
               </li>
             </ol>
           </div>
 
           {/* Phone */}
-          <div className="border border-border/60 rounded-2xl p-8 hover:border-champagne/40 transition-colors">
-            <div className="w-14 h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-6">
+          <div className="border border-border/60 rounded-2xl p-6 sm:p-8 hover:border-champagne/40 transition-colors">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-5 sm:mb-6">
               <Phone className="h-7 w-7 text-champagne" />
             </div>
             <h3 className="font-display text-xl mb-3">Bid by Phone</h3>
@@ -132,7 +132,7 @@ export default async function HowToBuyPage() {
               </p>
               <a
                 href={BUSINESS.phoneHref}
-                className="inline-flex items-center gap-2 text-champagne hover:underline font-medium"
+                className="inline-flex items-center gap-2 min-h-11 text-champagne-deep underline-offset-4 hover:underline font-medium break-all"
               >
                 <Phone className="h-4 w-4" />
                 {BUSINESS.phone}
@@ -141,8 +141,8 @@ export default async function HowToBuyPage() {
           </div>
 
           {/* Absentee */}
-          <div className="border border-border/60 rounded-2xl p-8 hover:border-champagne/40 transition-colors">
-            <div className="w-14 h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-6">
+          <div className="border border-border/60 rounded-2xl p-6 sm:p-8 hover:border-champagne/40 transition-colors">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-5 sm:mb-6">
               <FileText className="h-7 w-7 text-champagne" />
             </div>
             <h3 className="font-display text-xl mb-3">Leave an Absentee Bid</h3>
@@ -156,7 +156,7 @@ export default async function HowToBuyPage() {
               </p>
               <a
                 href={`mailto:${BUSINESS.email}?subject=Absentee Bid Request`}
-                className="inline-flex items-center gap-2 text-champagne hover:underline font-medium"
+                className="inline-flex items-center gap-2 min-h-11 text-champagne-deep underline-offset-4 hover:underline font-medium break-all"
               >
                 {BUSINESS.email}
               </a>
@@ -166,14 +166,14 @@ export default async function HowToBuyPage() {
       </section>
 
       {/* FAQ */}
-      <section className="bg-secondary/40 py-20 md:py-28">
+      <section className="bg-secondary/40 py-14 sm:py-20 md:py-28">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
+          <div className="text-center mb-8 sm:mb-12">
             <h2 className="font-display text-display-md">Common Questions</h2>
           </div>
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {faqData.map((faq) => (
-              <div key={faq.q} className="border border-border/60 rounded-xl p-6">
+              <div key={faq.q} className="border border-border/60 rounded-xl p-5 sm:p-6">
                 <h3 className="font-display text-base mb-2">{faq.q}</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed">{faq.a}</p>
               </div>
@@ -183,7 +183,7 @@ export default async function HowToBuyPage() {
       </section>
 
       {/* CTA */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 sm:py-20 text-center">
         <h2 className="font-display text-display-md mb-4">Ready to Start Bidding?</h2>
         <p className="text-muted-foreground mb-8 max-w-md mx-auto">
           Browse our upcoming auctions and find something extraordinary.

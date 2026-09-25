@@ -26,7 +26,7 @@ export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {
         <div className="flex items-end justify-between mb-6 sm:mb-8">
           <div className="flex items-center gap-3">
             <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+              <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400" />
             </span>
             <h2 className="font-sans text-xl sm:text-2xl font-semibold tracking-tight">
@@ -35,18 +35,20 @@ export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {
           </div>
           <Link
             href="/auctions"
-            className="text-[13px] text-white/50 hover:text-white transition-colors"
+            className="inline-flex items-center min-h-11 -my-2 -mr-2 px-2 text-[13px] text-white/70 hover:text-white transition-colors"
           >
             All auctions
           </Link>
         </div>
 
-        <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible snap-x snap-mandatory">
+        {/* Phones: a snap rail with a peek of the next card. The vertical padding
+            keeps the cards' focus rings from being clipped by the scroller. */}
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide overscroll-x-contain py-1.5 -my-1.5 -mx-4 px-4 scroll-px-4 sm:mx-0 sm:px-0 sm:my-0 sm:py-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible snap-x snap-mandatory">
           {items.map(({ lot, auctionSlug, closingAt }) => (
             <Link
               key={lot.id}
               href={`/auctions/${auctionSlug}/lots/${lot.slug || lot.id}`}
-              className="group flex-shrink-0 w-[240px] sm:w-auto snap-start"
+              className="group flex-shrink-0 w-[240px] sm:w-auto snap-start rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-champagne focus-visible:ring-offset-2 focus-visible:ring-offset-charcoal"
             >
               <div className="rounded-xl overflow-hidden bg-white/[0.04] border border-white/10 hover:border-champagne/40 transition-all duration-300 hover:-translate-y-0.5">
                 <div className="relative aspect-square bg-white/[0.03] overflow-hidden">
@@ -81,7 +83,7 @@ export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {
                         <span className="text-[15px] font-semibold tracking-tight tabular-nums">
                           {formatCurrency(lot.currentBidAmount)}
                         </span>
-                        <span className="text-[11px] text-white/40">
+                        <span className="text-[12px] text-white/60">
                           {lot.bidCount} bid{lot.bidCount !== 1 ? 's' : ''}
                         </span>
                       </>
@@ -90,7 +92,7 @@ export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {
                         <span className="text-[15px] font-semibold tracking-tight tabular-nums">
                           {formatCurrency(lot.startingBid ?? 0)}
                         </span>
-                        <span className="text-[11px] text-champagne/80 uppercase tracking-wider">
+                        <span className="text-[11px] text-champagne uppercase tracking-wider">
                           Opening bid
                         </span>
                       </>

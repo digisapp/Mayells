@@ -1,76 +1,79 @@
-const CACHE_NAME = 'mayells-upload-v2';
-const PRECACHE_URLS = [
-  '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-];
+// Service worker for the seller upload flow only (registered by
+// /upload/[token] with scope '/upload/').
+//
+// It does one thing: keeps a copy of the upload page so a seller who
+// reloads it with no signal still gets the page rather than Safari's error.
+// Everything else (API calls, the direct-to-storage uploads, scripts,
+// images, other pages) goes straight to the network untouched.
+//
+// Earlier versions were registered for the whole site ('/') and proxied
+// every request on mayells.com. The browser re-fetches this same file to
+// update those old registrations, so when it finds itself running with the
+// site-root scope it steps aside: it intercepts nothing and unregisters.
 
-// Install: pre-cache app shell
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
-  );
+const CACHE_NAME = 'mayells-upload-v3';
+const SCOPE_PATH = new URL(self.registration.scope).pathname;
+const IS_LEGACY_ROOT = SCOPE_PATH === '/';
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
-// Activate: clean old caches + enable navigation preload so intercepted
-// page navigations start their network request in parallel with SW boot
-// (this SW is registered from /upload/[token] but scoped to '/', so every
-// later page view on the site passes through it).
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    Promise.all([
-      caches.keys().then((keys) =>
-        Promise.all(
-          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-        )
-      ),
-      self.registration.navigationPreload
-        ? self.registration.navigationPreload.enable()
-        : Promise.resolve(),
-    ])
+    (async () => {
+      // Caches are shared across the origin, so only older versions of ours go.
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((key) => key.startsWith('mayells-upload-') && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      );
+      if (IS_LEGACY_ROOT) {
+        if (self.registration.navigationPreload) {
+          await self.registration.navigationPreload.disable().catch(() => {});
+        }
+        await self.registration.unregister();
+        return;
+      }
+      if (self.registration.navigationPreload) {
+        await self.registration.navigationPreload.enable().catch(() => {});
+      }
+      await self.clients.claim();
+    })()
   );
-  self.clients.claim();
 });
 
-// Fetch: cache-first for static assets, network-first for everything else
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const request = event.request;
+  const url = new URL(request.url);
 
-  // Cache-first for static assets
+  // Not ours: let the browser handle it exactly as if there were no worker.
   if (
-    url.pathname.startsWith('/icons/') ||
-    url.pathname.startsWith('/_next/static/') ||
-    url.pathname === '/manifest.json'
+    IS_LEGACY_ROOT ||
+    request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
+    !url.pathname.startsWith('/upload/') ||
+    request.mode !== 'navigate'
   ) {
-    event.respondWith(
-      caches.match(event.request).then((cached) =>
-        cached || fetch(event.request).then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-      )
-    );
     return;
   }
 
-  // Network-first for API calls and pages. For navigations, use the
-  // preloaded response when available instead of starting a second fetch.
+  // Upload page navigations: network first (using the preloaded response
+  // when there is one), keeping the latest copy for offline reloads.
   event.respondWith(
     (async () => {
       try {
-        if (event.preloadResponse) {
-          const preloaded = await event.preloadResponse;
-          if (preloaded) return preloaded;
+        const response = (await event.preloadResponse) || (await fetch(request));
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
         }
-        return await fetch(event.request);
-      } catch {
-        const cached = await caches.match(event.request);
+        return response;
+      } catch (err) {
+        const cached = await caches.match(request);
         if (cached) return cached;
-        throw new Error('offline');
+        throw err;
       }
     })()
   );

@@ -195,7 +195,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
 
         {/* Attribution stays visible at every size: the Delray photograph is
             CC BY, and a credit that only desktop sees is not a credit. */}
-        <p className="absolute bottom-1.5 right-4 max-w-[80vw] truncate text-[10px] text-white/45 sm:text-[11px]">
+        <p className="absolute bottom-1.5 right-4 max-w-[80vw] truncate text-[11px] text-white/60">
           {hero.credit}
         </p>
       </section>

@@ -20,13 +20,15 @@ const playfair = Playfair_Display({
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
 // viewportFit: 'cover' makes env(safe-area-inset-*) resolve on notched iPhones
-// (the upload capture bar and chat FAB depend on it); themeColor tints Safari's
-// chrome to match the charcoal brand.
+// (the upload capture bar and chat FAB depend on it). themeColor tints Safari's
+// bar (iOS 15–18) and should match whatever sits at the top of the page: here
+// the champagne announcement bar (--champagne as rendered). Layouts with
+// different chrome override it.
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#272D35',
+  themeColor: '#D9C099',
 };
 
 export const metadata: Metadata = {

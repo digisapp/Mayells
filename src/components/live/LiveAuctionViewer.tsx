@@ -1,165 +1,77 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { LiveVideoPlayer } from './LiveVideoPlayer';
-import { LiveChat } from './LiveChat';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/types';
+import { LiveViewerLayout } from './LiveViewerLayout';
+import { liveSignInHref, pickCurrentLot, type LiveLot, type LiveViewer } from './live-lots';
 import { useRealtimeTopic } from '@/hooks/useRealtimeTopic';
-
-interface AuctionLot {
-  lotNumber: number;
-  lot: {
-    id: string;
-    title: string;
-    primaryImageUrl: string | null;
-    currentBidAmount: number;
-    bidCount: number;
-    estimateLow: number | null;
-    estimateHigh: number | null;
-  };
-}
+import { useLiveChat } from '@/hooks/useLiveChat';
 
 interface LiveAuctionViewerProps {
-  auction: { id: string; title: string; slug: string };
-  lots: AuctionLot[];
+  auction: { id: string; title: string; slug: string; buyerPremiumPercent: number | null };
+  lots: LiveLot[];
+  viewer: LiveViewer;
 }
 
-export function LiveAuctionViewer({ auction, lots }: LiveAuctionViewerProps) {
-  const [activeLotIndex, setActiveLotIndex] = useState(0);
-  const activeLot = lots[activeLotIndex];
+export function LiveAuctionViewer({ auction, lots, viewer }: LiveAuctionViewerProps) {
   const router = useRouter();
+  const chat = useLiveChat(auction.id);
+  const signInHref = liveSignInHref(auction.id);
 
   // Push: the bids route / settlement cron broadcast lot_bid / lot_closed on
-  // the auction's private channel. Coalesce bursts into one soft refresh.
+  // the auction's private channel. Chat shares that channel, so only lot
+  // events refresh, and bursts coalesce into one soft refresh.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onLiveEvent = useCallback(() => {
+  const scheduleRefresh = useCallback(() => {
     if (refreshTimer.current) return;
     refreshTimer.current = setTimeout(() => {
       refreshTimer.current = null;
       router.refresh();
     }, 250);
   }, [router]);
-  const { connected } = useRealtimeTopic(`live:${auction.id}`, onLiveEvent);
+  const onLiveEvent = useCallback(
+    (event: string) => {
+      if (event.startsWith('lot_')) scheduleRefresh();
+    },
+    [scheduleRefresh],
+  );
+  // onResume is the single "came back" path (tab shown again, bfcache
+  // restore, network back): events may have been missed, so refetch.
+  const { connected } = useRealtimeTopic(`live:${auction.id}`, onLiveEvent, { onResume: scheduleRefresh });
 
-  // The lot bid amounts / counts are server-rendered props that would
-  // otherwise freeze at page-load. Poll a soft refresh so live bidders always
-  // see current prices. router.refresh() re-runs the server component while
-  // preserving client state (the selected lot), and pauses while the tab is
-  // hidden to avoid needless load. While the realtime channel is connected
-  // the poll is only a reconciliation fallback.
+  // Lot bid amounts / counts are server-rendered props. While the channel is
+  // up every bid arrives as a push, so the poll is only a slow
+  // reconciliation; while it's down, polling carries the sale. Hidden tabs
+  // skip the tick (onResume catches up when they return).
   useEffect(() => {
-    const REFRESH_MS = connected ? 20000 : 5000;
-    let timer: ReturnType<typeof setInterval> | undefined;
-
-    const start = () => {
-      if (timer) return;
-      timer = setInterval(() => router.refresh(), REFRESH_MS);
-    };
-    const stop = () => {
-      if (timer) clearInterval(timer);
-      timer = undefined;
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        router.refresh();
-        start();
-      } else {
-        stop();
-      }
-    };
-
-    if (document.visibilityState === 'visible') start();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') router.refresh();
+    }, connected ? 30000 : 5000);
+    return () => clearInterval(timer);
   }, [router, connected]);
 
+  // A lot's close time passing changes what's biddable and which lot is on
+  // the block; refresh right then rather than waiting for the next tick.
+  const current = pickCurrentLot(lots);
+  const nextCloseAt = current?.phase === 'open' ? current.closingAt : null;
+  useEffect(() => {
+    if (!nextCloseAt) return;
+    const delay = Date.parse(nextCloseAt) - Date.now() + 1500;
+    if (!(delay > 0 && delay < 2 ** 31 - 1)) return;
+    const timer = setTimeout(scheduleRefresh, delay);
+    return () => clearTimeout(timer);
+  }, [nextCloseAt, scheduleRefresh]);
+
   return (
-    <div className="h-dvh dark bg-background text-foreground flex flex-col">
-      {/* Top bar */}
-      <div className="border-b border-white/10 px-4 py-3 flex items-center justify-between gap-3 flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <span className="font-logo text-lg text-champagne flex-shrink-0">MAYELLS</span>
-          <Badge className="bg-red-600 text-white flex-shrink-0">LIVE</Badge>
-          <span className="text-white/60 text-sm min-w-0 truncate">{auction.title}</span>
-        </div>
-        <span className="text-white/40 text-sm flex-shrink-0">{lots.length} lots</span>
-      </div>
-
-      {/* Main layout */}
-      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
-        {/* Video + Current Lot */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          <LiveVideoPlayer auctionId={auction.id} className="flex-shrink-0" />
-
-          {/* Current lot info */}
-          {activeLot && (
-            <div className="p-4 border-t border-white/10 flex-shrink-0">
-              <div className="flex items-start gap-4">
-                {activeLot.lot.primaryImageUrl && (
-                  <div className="relative w-20 h-20 rounded overflow-hidden flex-shrink-0">
-                    <Image src={activeLot.lot.primaryImageUrl} alt={activeLot.lot.title} fill sizes="80px" className="object-cover" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-white/50 text-xs">Lot {activeLot.lotNumber}</p>
-                  <p className="font-medium text-white truncate">{activeLot.lot.title}</p>
-                  {activeLot.lot.estimateLow && (
-                    <p className="text-white/40 text-xs mt-1">
-                      Est. {formatCurrency(activeLot.lot.estimateLow)} – {formatCurrency(activeLot.lot.estimateHigh ?? activeLot.lot.estimateLow)}
-                    </p>
-                  )}
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-white/50 text-xs">Current Bid</p>
-                  <p className="font-display text-2xl text-champagne">
-                    {activeLot.lot.currentBidAmount > 0 ? formatCurrency(activeLot.lot.currentBidAmount) : '—'}
-                  </p>
-                  <p className="text-white/40 text-xs">{activeLot.lot.bidCount} bids</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Lot navigator */}
-          <div className="flex-1 overflow-y-auto p-4 border-t border-white/10">
-            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
-              {lots.map((aLot, i) => (
-                <button
-                  key={aLot.lot.id}
-                  onClick={() => setActiveLotIndex(i)}
-                  className={cn(
-                    'relative aspect-square rounded overflow-hidden border-2 transition-colors',
-                    i === activeLotIndex ? 'border-champagne' : 'border-transparent hover:border-white/20',
-                  )}
-                >
-                  {aLot.lot.primaryImageUrl ? (
-                    <Image src={aLot.lot.primaryImageUrl} alt={aLot.lot.title} fill sizes="(min-width: 768px) 12vw, (min-width: 640px) 16vw, 25vw" className="object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-white/5 flex items-center justify-center text-white/30 text-xs">
-                      {aLot.lotNumber}
-                    </div>
-                  )}
-                  <div className="absolute bottom-0 inset-x-0 bg-black/60 text-center">
-                    <span className="text-[10px] text-white/80">Lot {aLot.lotNumber}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Chat sidebar */}
-        <div className="w-full lg:w-80 xl:w-96 h-[40dvh] lg:h-auto border-t lg:border-t-0 lg:border-l border-white/10 flex-shrink-0">
-          <LiveChat auctionId={auction.id} className="h-full rounded-none border-0" />
-        </div>
-      </div>
-    </div>
+    <LiveViewerLayout
+      auction={auction}
+      lots={lots}
+      viewer={viewer}
+      chat={chat}
+      signInHref={signInHref}
+      onBidPlaced={() => router.refresh()}
+      video={<LiveVideoPlayer auctionId={auction.id} signedIn={viewer.signedIn} signInHref={signInHref} />}
+    />
   );
 }

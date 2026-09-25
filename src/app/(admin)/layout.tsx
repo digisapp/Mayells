@@ -1,9 +1,15 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { AdminSidebar } from '@/components/layout/AdminSidebar';
 import { DashboardTopbar } from '@/components/layout/DashboardTopbar';
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
+};
+
+// Match Safari's toolbar tint to the admin top bar rather than the public
+// site's champagne announcement bar.
+export const viewport: Viewport = {
+  themeColor: '#FCFBFA',
 };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
