@@ -1,26 +1,26 @@
-// Marketing/FAQ content with one trivial query — cache for an hour.
+// Marketing/FAQ content — cache for an hour.
 export const revalidate = 3600;
 
 import Link from 'next/link';
-import { Monitor, Phone, FileText, ArrowRight, ExternalLink } from 'lucide-react';
+import { Monitor, Phone, FileText, ArrowRight } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { Button } from '@/components/ui/button';
-import { db } from '@/db';
-import { auctions } from '@/db/schema';
-import { and, isNotNull, inArray } from 'drizzle-orm';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
 
 export const metadata = {
   title: 'How to Buy',
-  description: 'Three ways to bid at Mayells auctions: online through LiveAuctioneers, by phone, or via absentee bid. Free to register, 25% buyer premium.',
+  description: 'Three ways to bid at Mayells auctions: online on mayells.com or LiveAuctioneers (each sale says which), by phone, or with an absentee bid. Free to register.',
 };
 
+// Each sale is bid in one place (lib/bidding/venue.ts); the copy here and the
+// conditions of sale on /terms describe that same rule.
 const faqData = [
-  { q: 'Is there a buyer\'s premium?', a: 'Yes, a 25% buyer\'s premium is added to the hammer price. This is standard practice in the auction industry.' },
-  { q: 'Can I preview items in person?', a: 'Yes — preview dates are listed on each auction page. Contact us to schedule a private viewing at our Palm Beach gallery.' },
+  { q: 'Where do I bid?', a: 'Each sale is bid in one place: here on mayells.com, or on LiveAuctioneers. The sale page says which, and links you straight there. The same lot is never open for bidding in both places at once.' },
+  { q: 'Is there a buyer\'s premium?', a: 'Yes. A buyer\'s premium is added to the hammer price: 25% unless the sale page states a different rate. Sales bid on LiveAuctioneers may also carry LiveAuctioneers\' own fees, shown on its site.' },
+  { q: 'Can I preview items in person?', a: 'Preview dates, when a sale has them, are listed on its auction page. Contact us to arrange a private viewing.' },
   { q: 'Do you ship internationally?', a: 'We ship worldwide through trusted fine art and antique shipping partners. Shipping costs are calculated after the sale. Local pickup is also available by appointment.' },
   { q: 'Can I request a condition report?', a: 'Absolutely. Contact us for detailed condition reports and additional photographs on any lot. We\'re happy to provide as much information as you need.' },
-  { q: 'What if I can\'t bid live?', a: 'You can leave an absentee bid on LiveAuctioneers, or contact us directly to arrange phone bidding or submit an absentee bid form.' },
+  { q: 'What if I can\'t bid live?', a: 'Leave a maximum bid in advance wherever the sale is bid (mayells.com or LiveAuctioneers) and it will bid for you only as high as needed. You can also call or email us to arrange phone bidding or an absentee bid.' },
 ];
 
 const faqJsonLd = {
@@ -33,19 +33,7 @@ const faqJsonLd = {
   })),
 };
 
-export default async function HowToBuyPage() {
-  // Find an active auction with a LiveAuctioneers link
-  const [liveAuction] = await db
-    .select({ liveauctioneersUrl: auctions.liveauctioneersUrl, title: auctions.title })
-    .from(auctions)
-    .where(
-      and(
-        isNotNull(auctions.liveauctioneersUrl),
-        inArray(auctions.status, ['scheduled', 'preview', 'open', 'live'])
-      )
-    )
-    .limit(1);
-
+export default function HowToBuyPage() {
   return (
     <div>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqJsonLd) }} />
@@ -61,19 +49,17 @@ export default async function HowToBuyPage() {
               <span className="text-champagne">at Mayells</span>
             </h1>
             <p className="mt-5 sm:mt-6 text-[16px] sm:text-[17px] text-white/60 max-w-lg leading-relaxed">
-              Bidding is easy. Our auctions are hosted on LiveAuctioneers, giving you
-              access to a trusted global platform with secure payments and buyer protection.
+              Every Mayells sale is bid online in one place: here on mayells.com, or on
+              LiveAuctioneers. Each sale page tells you which, and takes you straight there.
             </p>
-            {liveAuction && (
-              <div className="mt-8">
-                <Button asChild variant="champagne" size="lg">
-                  <a href={liveAuction.liveauctioneersUrl!} target="_blank" rel="noopener noreferrer">
-                    Bid Now on LiveAuctioneers
-                    <ExternalLink className="h-4 w-4" />
-                  </a>
-                </Button>
-              </div>
-            )}
+            <div className="mt-8">
+              <Button asChild variant="champagne" size="lg">
+                <Link href="/auctions">
+                  View Auctions
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
       </section>
@@ -95,21 +81,21 @@ export default async function HowToBuyPage() {
             </div>
             <h3 className="font-display text-xl mb-3">Bid Online</h3>
             <p className="text-[15px] text-muted-foreground leading-relaxed mb-5">
-              Bid live or in advance through LiveAuctioneers. Create a free account,
-              browse our catalog, and place bids from anywhere in the world.
+              Bid from anywhere in the world, live or in advance. Each sale is bid either
+              here on mayells.com or on LiveAuctioneers; the sale page says which.
             </p>
             <ol className="space-y-2.5 text-sm text-muted-foreground">
               <li className="flex items-start gap-2.5">
                 <span className="text-champagne-deep font-display">1</span>
-                Create a free LiveAuctioneers account
+                Open the sale and check where it&rsquo;s bid
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="text-champagne-deep font-display">2</span>
-                Browse our upcoming auctions
+                Create a free account there (Mayells or LiveAuctioneers)
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="text-champagne-deep font-display">3</span>
-                Place your bid — live or in advance
+                Bid live, or leave a maximum bid in advance
               </li>
             </ol>
           </div>
@@ -150,7 +136,7 @@ export default async function HowToBuyPage() {
             </p>
             <div className="space-y-3 text-sm text-muted-foreground">
               <p>
-                Submit absentee bids through LiveAuctioneers, by phone, or via our chat.
+                Leave a maximum bid wherever the sale is bid, or send it to us by email or phone.
               </p>
               <a
                 href={`mailto:${BUSINESS.email}?subject=Absentee Bid Request`}

@@ -19,6 +19,7 @@ import { watchlist, users } from '@/db/schema';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { isPubliclyVisibleLot, PUBLIC_CATALOGUE_LOT_STATUSES } from '@/lib/lots/visibility';
 import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
+import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
 import { isLotInPublicAuction } from '@/lib/lots/placement';
 import { Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
@@ -218,6 +219,7 @@ export default async function LotDetailPage({
   // on-site bid form vs. the external/absentee fallbacks).
   const lotCloseAt = auctionLot.closingAt ?? auction.biddingEndsAt ?? null;
   const isBiddableOnSite =
+    isOnSiteBiddingSale(auction) &&
     lot.status === 'in_auction' &&
     ['open', 'live', 'closed'].includes(auction.status) &&
     !!lotCloseAt &&

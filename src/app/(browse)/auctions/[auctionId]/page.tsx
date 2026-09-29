@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button';
 import { BackLink } from '@/components/lots/Breadcrumbs';
 import { formatLongDate, formatSaleMoment } from '@/lib/format/dates';
 import { generateAuctionJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
+import Link from 'next/link';
+import { biddingVenue } from '@/lib/bidding/venue';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -146,6 +148,7 @@ export default async function AuctionDetailPage({
 
   const notYetOpen = NOT_YET_OPEN.includes(auction.status);
   const finished = FINISHED.includes(auction.status);
+  const venue = biddingVenue(auction);
   const endedAt = auction.actualEndedAt ?? auction.biddingEndsAt;
 
   const breadcrumbJsonLd = generateBreadcrumbJsonLd([
@@ -237,8 +240,23 @@ export default async function AuctionDetailPage({
           )}
         </dl>
 
+        {/* Where this sale is bid, and on what terms — each sale takes bids in
+            one place only (lib/bidding/venue.ts); the conditions of sale on
+            /terms refer bidders here for the venue and premium. */}
+        {!finished && (
+          <p className="mt-4 text-sm text-muted-foreground">
+            {venue === 'liveauctioneers'
+              ? 'Bidding for this sale takes place on LiveAuctioneers.'
+              : 'Bidding for this sale takes place here on mayells.com.'}{' '}
+            Buyer&rsquo;s premium {auction.buyerPremiumPercent}% of the hammer price.{' '}
+            <Link href="/terms#conditions-of-sale" className="underline underline-offset-4 hover:text-foreground">
+              Conditions of sale
+            </Link>
+          </p>
+        )}
+
         {/* Bid CTA */}
-        {auction.liveauctioneersUrl && (
+        {venue === 'liveauctioneers' && auction.liveauctioneersUrl && !finished && (
           <div className="mt-6">
             <Button asChild variant="champagne" size="lg">
               <a href={auction.liveauctioneersUrl} target="_blank" rel="noopener noreferrer">

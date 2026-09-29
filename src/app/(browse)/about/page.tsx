@@ -38,9 +38,9 @@ export default function AboutPage() {
           <h2 className="font-display text-display-md mb-6">Who We Are</h2>
           <div className="space-y-5 text-[15px] text-muted-foreground leading-relaxed">
             <p>
-              Mayells is a full-service auction house that connects sellers with buyers
-              worldwide through the LiveAuctioneers platform. We handle every step of the
-              process — from appraisal and cataloging to marketing, auctioning, and payment.
+              Mayells is a full-service online auction house that connects sellers with
+              buyers worldwide. We handle every step of the process — from appraisal and
+              cataloguing to marketing, auctioning, and payment.
             </p>
             <p>
               Whether you&apos;re downsizing an estate, liquidating a collection, or selling
@@ -48,9 +48,9 @@ export default function AboutPage() {
               service to maximize the value of your consignment.
             </p>
             <p>
-              Our auctions are hosted on LiveAuctioneers, one of the world&apos;s most
-              trusted online auction platforms, giving your items exposure to millions of
-              registered bidders across the globe.
+              Each sale is bid online in one place: here on mayells.com, or on
+              LiveAuctioneers, one of the largest online auction marketplaces, when a sale
+              calls for its international bidder audience. The sale page always says which.
             </p>
           </div>
         </div>

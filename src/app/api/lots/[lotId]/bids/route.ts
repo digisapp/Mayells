@@ -10,6 +10,7 @@ import { broadcastLotEvent, broadcastLiveAuctionEvent } from '@/lib/realtime/bro
 import { notifyOutbid, computeOutbidRecipients } from '@/lib/bidding/notify-outbid';
 import { getBidderVerification, checkBidAllowed } from '@/lib/bidding/verification';
 import { UUID_RE, biddableAuctionOrder } from '@/lib/bidding/lot-resolution';
+import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-ip';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
@@ -88,6 +89,14 @@ export async function POST(
     const biddableAuctionStatuses = ['open', 'live', 'closed'];
     if (!biddableAuctionStatuses.includes(auction.status)) {
       return NextResponse.json({ error: 'This auction is not open for bidding' }, { status: 409 });
+    }
+    // One venue per sale: a sale run on LiveAuctioneers takes no bids here,
+    // or the two unsynced ladders could each show a different leader.
+    if (!isOnSiteBiddingSale(auction)) {
+      return NextResponse.json(
+        { error: 'This sale is bid on LiveAuctioneers.', code: 'EXTERNAL_VENUE' },
+        { status: 409 },
+      );
     }
 
     const now = new Date();

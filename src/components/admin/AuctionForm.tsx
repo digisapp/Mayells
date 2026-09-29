@@ -135,7 +135,9 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
         saleNumber: form.saleNumber || undefined,
         description: form.description,
         slug,
-        liveauctioneersUrl: form.liveauctioneersUrl || undefined,
+        // Always sent: an emptied field must clear the link (and so move the
+        // sale's bidding back to mayells.com), not be skipped as "unchanged".
+        liveauctioneersUrl: form.liveauctioneersUrl.trim(),
         type: form.type,
         previewStartsAt: toIsoOrUndefined(form.previewStartsAt),
         biddingStartsAt: toIsoOrUndefined(form.biddingStartsAt),
@@ -217,7 +219,11 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
             </div>
             <div className="space-y-2">
               <Label htmlFor="auction-la-url">LiveAuctioneers catalog URL</Label>
-              <Input id="auction-la-url" value={form.liveauctioneersUrl} onChange={(e) => update('liveauctioneersUrl', e.target.value)} placeholder="https://www.liveauctioneers.com/catalog/..." />
+              <Input id="auction-la-url" aria-describedby="auction-la-url-help" value={form.liveauctioneersUrl} onChange={(e) => update('liveauctioneersUrl', e.target.value)} placeholder="https://www.liveauctioneers.com/catalog/..." />
+              <p id="auction-la-url-help" className="text-xs text-muted-foreground">
+                Decides where this sale is bid. With a link, bidding happens on LiveAuctioneers and is
+                off on mayells.com; leave it empty to take bids here. Don&rsquo;t change it once bids exist.
+              </p>
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">

@@ -5,6 +5,7 @@ import { eq, desc } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { getMinNextBid } from '@/lib/bidding/bid-increments';
 import { UUID_RE, biddableAuctionOrder } from '@/lib/bidding/lot-resolution';
+import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
 import { logger } from '@/lib/logger';
 
 /**
@@ -32,6 +33,7 @@ export async function GET(
         closingAt: auctionLots.closingAt,
         auctionStatus: auctions.status,
         biddingEndsAt: auctions.biddingEndsAt,
+        liveauctioneersUrl: auctions.liveauctioneersUrl,
       })
       .from(lots)
       .innerJoin(auctionLots, eq(auctionLots.lotId, lots.id))
@@ -48,6 +50,7 @@ export async function GET(
 
     const closingAt = row.closingAt ?? row.biddingEndsAt;
     const isBiddable =
+      isOnSiteBiddingSale(row) &&
       row.lotStatus === 'in_auction' &&
       ['open', 'live', 'closed'].includes(row.auctionStatus) &&
       !!closingAt &&

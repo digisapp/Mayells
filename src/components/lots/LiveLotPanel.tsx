@@ -28,7 +28,7 @@ interface LiveLotPanelProps {
   /** Whether the server saw a session at render; refined once the bid form checks. */
   viewerSignedIn: boolean;
   buyerPremiumPercent?: number | null;
-  /** The sale's LiveAuctioneers page: the CTA when on-site bidding is closed, a secondary link otherwise. */
+  /** The sale's LiveAuctioneers page. When set, the sale is bid there and never on-site (lib/bidding/venue.ts). */
   externalBidUrl?: string | null;
   /** Shown when the lot can't be bid on anywhere. */
   unavailableNote?: string | null;
@@ -356,9 +356,10 @@ export function LiveLotPanel({
         </div>
       )}
 
-      {/* When the lot is biddable on-site, the bid form above is the primary
-          CTA. Otherwise fall back to LiveAuctioneers or an informational note;
-          once bidding is over the price block says so and nothing is offered. */}
+      {/* Each sale is bid in one place (lib/bidding/venue.ts). A sale on
+          mayells.com shows the bid form above; a sale with a LiveAuctioneers
+          link sends bidders there. Otherwise an informational note; once
+          bidding is over the price block says so and nothing is offered. */}
       {!isBiddable && !ended && (
         externalBidUrl ? (
           <div ref={setCtaEl} className="mt-5">
@@ -368,6 +369,9 @@ export function LiveLotPanel({
                 Bid on LiveAuctioneers
               </a>
             </Button>
+            <p className="mt-3 text-center text-xs leading-relaxed text-muted-foreground">
+              This sale is bid on LiveAuctioneers. Register there free to bid live or leave an absentee bid.
+            </p>
           </div>
         ) : upcoming ? (
           // The watchlist email goes out as a lot nears its close (see
@@ -378,18 +382,6 @@ export function LiveLotPanel({
         ) : unavailableNote ? (
           <p className="mt-5 text-sm text-muted-foreground">{unavailableNote}</p>
         ) : null
-      )}
-      {/* Secondary link to LiveAuctioneers even while biddable on-site */}
-      {isBiddable && externalBidUrl && (
-        <a
-          href={externalBidUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 flex min-h-11 items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          Also available on LiveAuctioneers
-        </a>
       )}
 
       <MobileActionBar target={ctaEl} enabled={barAction !== null} label="Bid on this lot">

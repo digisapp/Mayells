@@ -13,6 +13,7 @@ import {
 } from '@/lib/bidding/lifecycle';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { biddingVenue } from '@/lib/bidding/venue';
 import { isPubliclyVisibleAuction, toPublicAuction } from '@/lib/auctions/visibility';
 import { logger } from '@/lib/logger';
 
@@ -118,6 +119,27 @@ export async function PATCH(
     const [existing] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
     if (!existing) {
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
+
+    // The LiveAuctioneers link decides where the sale is bid (lib/bidding/
+    // venue.ts). Once bids exist on mayells.com, moving the sale elsewhere
+    // would strand them, so the venue is fixed from the first bid on.
+    if (parsed.data.liveauctioneersUrl !== undefined) {
+      const nextVenue = biddingVenue({ liveauctioneersUrl: parsed.data.liveauctioneersUrl });
+      if (nextVenue !== biddingVenue(existing)) {
+        const [{ n }] = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(bids)
+          .where(eq(bids.auctionId, auctionId));
+        if (n > 0) {
+          return NextResponse.json(
+            { error: 'This sale already has bids on mayells.com, so where it is bid can no longer change.' },
+            { status: 409 },
+          );
+        }
+      }
+      // Store "no link" as null rather than an empty string.
+      if (!parsed.data.liveauctioneersUrl.trim()) updateData.liveauctioneersUrl = null;
     }
 
     // Status is a state machine shared with the lifecycle cron and the live

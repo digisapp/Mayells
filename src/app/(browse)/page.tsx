@@ -219,12 +219,12 @@ export default async function HomePage() {
               {/* Phones skip the long pitch so the artwork, headline and both
                   CTAs share the first screen; the h1 and tagline carry it. */}
               <p className={`${heroLot ? 'hidden sm:block ' : ''}mt-6 sm:mt-8 text-[15px] sm:text-[17px] text-white/70 max-w-md leading-relaxed`}>
-                Discover exceptional fine art, jewelry, watches, and design from estates and private collections through expertly curated live and timed auctions with real-time bidding worldwide.
+                Exceptional fine art, jewelry, watches and design from estates and private collections, offered in curated online auctions. Bid from anywhere, on mayells.com or LiveAuctioneers.
               </p>
               <div className="mt-7 sm:mt-12 grid grid-cols-2 gap-3 sm:flex sm:flex-row sm:gap-4">
                 <Button asChild variant="champagne" size="xl" className="shadow-gold px-4 has-[>svg]:px-4 sm:px-10 sm:has-[>svg]:px-6">
                   <Link href="/auctions">
-                    Bid Now
+                    View Auctions
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                 </Button>
@@ -307,19 +307,18 @@ export default async function HomePage() {
           the better reference here. */}
       <ClosingSoonRail items={closingSoon} />
 
-      {/* Trust Strip — first-party platform proof */}
+      {/* Trust strip — only claims that hold today (each sale is bid on
+          mayells.com or LiveAuctioneers; see lib/bidding/venue.ts). */}
       <section className="border-b border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           <div className="flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-10 gap-y-1 sm:gap-y-3 text-[12px] sm:text-[13px] uppercase tracking-[0.15em] text-muted-foreground">
-            <span>Real-Time Bidding</span>
+            <span>Online Auctions</span>
             <span className="hidden sm:inline text-border">|</span>
-            <span>Verified Bidders</span>
-            <span className="hidden sm:inline text-border">|</span>
-            <span>Secure Payments</span>
+            <span>Bid Here or on LiveAuctioneers</span>
             <span className="hidden sm:inline text-border">|</span>
             <span>Free Appraisals</span>
             <span className="hidden sm:inline text-border">|</span>
-            <span>White Glove Delivery</span>
+            <span>Worldwide Shipping</span>
           </div>
         </div>
       </section>
