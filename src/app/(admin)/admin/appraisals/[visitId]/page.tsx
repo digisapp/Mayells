@@ -32,6 +32,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/types';
+import { visitStatus as visitStatusMeta } from '@/lib/admin/status/sales';
+import { formatDayOnly, formatShortDate } from '@/lib/format/dates';
+import { formatEstimate } from '@/lib/format/estimate';
+import AppraisalDetailLoading from './loading';
 import { ItemEditSheet } from '@/components/admin/ItemEditSheet';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { BUSINESS } from '@/lib/config';
@@ -89,15 +93,6 @@ interface PendingConfirm {
   onConfirm: () => Promise<void>;
 }
 
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  uploading: 'bg-blue-100 text-blue-700',
-  processing: 'bg-yellow-100 text-yellow-700',
-  review: 'bg-orange-100 text-orange-700',
-  sent: 'bg-green-100 text-green-700',
-  archived: 'bg-gray-100 text-gray-500',
-};
-
 const itemStatusIcons: Record<string, React.ReactNode> = {
   pending: <Clock className="h-4 w-4 text-gray-400" />,
   processing: <Loader2 className="h-4 w-4 animate-spin text-yellow-500" />,
@@ -105,10 +100,10 @@ const itemStatusIcons: Record<string, React.ReactNode> = {
   error: <AlertCircle className="h-4 w-4 text-red-500" />,
 };
 
-// visit_date is a date-only value; format in UTC so it never renders a day
-// early for viewers west of Greenwich.
+// visit_date is a date-only value (UTC midnight); take its UTC calendar day so
+// it never renders a day early in the house timezone.
 function formatVisitDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { timeZone: 'UTC' });
+  return formatDayOnly(iso);
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -226,7 +221,7 @@ export default function AppraisalDetailPage() {
       description: (
         <>
           This emails the appraisal report link to <strong>{visit.clientName}</strong> at {visit.clientEmail}.
-          {resend && visit.sentAt && <> They already received it on {new Date(visit.sentAt).toLocaleDateString()}.</>}
+          {resend && visit.sentAt && <> They already received it on {formatShortDate(visit.sentAt)}.</>}
         </>
       ),
       confirmLabel: resend ? 'Resend' : 'Send',
@@ -286,6 +281,8 @@ export default function AppraisalDetailPage() {
       fetchData();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete item');
+      // Runs from ItemEditSheet's confirm dialog: rethrow so it stays open.
+      throw err;
     }
   };
 
@@ -304,6 +301,8 @@ export default function AppraisalDetailPage() {
       runBatches();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to reprocess');
+      // Runs from ItemEditSheet's confirm dialog: rethrow so it stays open.
+      throw err;
     }
   };
 
@@ -348,13 +347,7 @@ export default function AppraisalDetailPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-champagne" />
-      </div>
-    );
-  }
+  if (loading) return <AppraisalDetailLoading />;
 
   if (!visit) {
     return (
@@ -381,8 +374,8 @@ export default function AppraisalDetailPage() {
         title={visit.clientName}
         badges={
           <>
-            <Badge variant="outline" className={statusColors[visit.status] || ''}>
-              {visit.status}
+            <Badge variant="outline" className={visitStatusMeta(visit.status).className}>
+              {visitStatusMeta(visit.status).label}
             </Badge>
             <Button
               variant="ghost"
@@ -494,7 +487,7 @@ export default function AppraisalDetailPage() {
             <CheckCircle className="h-5 w-5 text-green-600 shrink-0" />
             <span className="text-sm text-green-800">
               Report sent to {visit.clientEmail} on{' '}
-              {new Date(visit.sentAt).toLocaleDateString()}
+              {formatShortDate(visit.sentAt)}
             </span>
             <a
               href={`${BUSINESS.url}/appraisal-report/${visit.reportToken}`}
@@ -526,7 +519,7 @@ export default function AppraisalDetailPage() {
           <CardContent className="py-4 text-center">
             <p className="text-lg font-display">
               {visit.totalEstimateHigh > 0
-                ? `${formatCurrency(visit.totalEstimateLow)} – ${formatCurrency(visit.totalEstimateHigh)}`
+                ? formatEstimate(visit.totalEstimateLow, visit.totalEstimateHigh)
                 : '—'}
             </p>
             <p className="text-xs text-muted-foreground">Total estimate</p>
@@ -609,7 +602,7 @@ export default function AppraisalDetailPage() {
                     )}
                     {item.estimateLow != null && item.estimateHigh != null ? (
                       <p className="text-xs font-medium text-champagne mt-1">
-                        {formatCurrency(item.estimateLow)} – {formatCurrency(item.estimateHigh)}
+                        {formatCurrency(item.estimateLow)}–{formatCurrency(item.estimateHigh)}
                       </p>
                     ) : item.status === 'error' ? (
                       <p className="text-xs text-red-500 mt-1 flex items-center gap-1">

@@ -16,13 +16,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { PageHeader } from '@/components/admin/PageHeader';
+import { PageHeader, filterChipCountClass } from '@/components/admin/PageHeader';
 import {
-  Copy, Loader2, ChevronLeft, ChevronRight, MoreHorizontal, Search, Download,
+  Copy, Loader2, MoreHorizontal, Search, Download,
   ArrowUpDown, Mail, CheckCircle, XCircle, RotateCcw, CalendarPlus, Link2,
 } from 'lucide-react';
 import { formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
+import { addDaysToDay, formatDayOnly, formatShortDate, formatShortDateTime, todayInHouseTz } from '@/lib/format/dates';
+import { INVOICE_STATUS, statusBadge } from '@/lib/admin/status/money';
+import { FilterChip } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 
 interface InvoiceRow {
   id: string;
@@ -104,14 +108,6 @@ const EMPTY_STATS: InvoiceStats = {
 
 const STATUS_CHIPS = ['all', 'pending', 'overdue', 'paid', 'refunded', 'cancelled'] as const;
 
-const statusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  paid: 'bg-green-100 text-green-800',
-  overdue: 'bg-red-100 text-red-800',
-  cancelled: 'bg-gray-100 text-gray-600',
-  refunded: 'bg-blue-100 text-blue-800',
-};
-
 const METHODS = [
   { value: 'wire', label: 'Wire transfer' },
   { value: 'check', label: 'Check' },
@@ -136,11 +132,7 @@ function errorMessage(res: Response, body: Record<string, unknown> | null, fallb
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString();
-}
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return formatShortDate(d);
 }
 
 function buyerLabel(inv: InvoiceRow): string {
@@ -161,13 +153,13 @@ export default function AdminInvoicesPage() {
   // Filters can arrive in the URL (the inbox, users, webhooks, shipments,
   // payouts and settlement pages link here with ?q= / ?status=). Read them
   // once on mount, then fetch — avoids a hydration mismatch and a wasted
-  // unfiltered request.
+  // unfiltered request. After that the URL follows the filters.
   const [ready, setReady] = useState(false);
 
   // Action form state (shared across the dialogs; reset when one opens)
   const [method, setMethod] = useState<(typeof METHODS)[number]['value']>('wire');
   const [reference, setReference] = useState('');
-  const [paidAt, setPaidAt] = useState(todayIso());
+  const [paidAt, setPaidAt] = useState(() => todayInHouseTz());
   const [dueDate, setDueDate] = useState('');
   const [reason, setReason] = useState('');
 
@@ -221,6 +213,19 @@ export default function AdminInvoicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, pagination.page, filters]);
 
+  // Mirror the filters into the URL so a reload, a shared link or the back
+  // button returns to the same view (page stays in state).
+  useEffect(() => {
+    if (!ready) return;
+    const params = buildParams(1, filters);
+    params.delete('page');
+    const qs = params.toString();
+    if (qs === window.location.search.replace(/^\?/, '')) return;
+    // replaceState, not router.replace: the page reads the URL only on mount,
+    // so a server round trip per chip click or keystroke would be wasted.
+    window.history.replaceState(null, '', `/admin/invoices${qs ? `?${qs}` : ''}`);
+  }, [ready, filters, buildParams]);
+
   // Debounced search box → filters.search
   useEffect(() => {
     if (!ready) return;
@@ -239,11 +244,9 @@ export default function AdminInvoicesPage() {
   function openAction(action: NonNullable<PendingAction>) {
     setMethod('wire');
     setReference('');
-    setPaidAt(todayIso());
+    setPaidAt(todayInHouseTz());
     setReason('');
-    const nextWeek = new Date();
-    nextWeek.setDate(nextWeek.getDate() + 7);
-    setDueDate(nextWeek.toISOString().slice(0, 10));
+    setDueDate(addDaysToDay(todayInHouseTz(), 7));
     setPending(action);
   }
 
@@ -327,21 +330,12 @@ export default function AdminInvoicesPage() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {STATUS_CHIPS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => updateFilters({ status: s })}
-            className={`text-xs px-3 py-1.5 rounded-md border transition-colors capitalize ${
-              filters.status === s
-                ? 'bg-foreground text-background border-foreground'
-                : 'border-border/50 hover:bg-accent/10'
-            }`}
-          >
+          <FilterChip key={s} active={filters.status === s} onClick={() => updateFilters({ status: s })} className="capitalize">
             {s}
             {s === 'overdue' && stats.overdueCount > 0 && (
-              <span className="ml-1 text-[10px] opacity-70">({stats.overdueCount})</span>
+              <span className={filterChipCountClass}>{stats.overdueCount}</span>
             )}
-          </button>
+          </FilterChip>
         ))}
         <div className="relative min-w-[220px] flex-1 sm:flex-none">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -349,6 +343,7 @@ export default function AdminInvoicesPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Invoice #, buyer email, lot title"
+            aria-label="Search invoices"
             className="h-8 pl-8 text-xs"
           />
         </div>
@@ -422,6 +417,7 @@ export default function AdminInvoicesPage() {
                       <button
                         type="button"
                         title="Copy invoice number"
+                        aria-label={`Copy invoice number ${invoice.invoiceNumber}`}
                         onClick={() => copyText(invoice.invoiceNumber, 'Invoice number')}
                         className="text-muted-foreground hover:text-foreground"
                       >
@@ -459,11 +455,13 @@ export default function AdminInvoicesPage() {
                   <TableCell className="text-right tabular-nums font-medium">{formatCurrencyWithCents(invoice.totalAmount)}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1">
-                      <Badge className={statusColors[invoice.status] || ''}>{invoice.status}</Badge>
+                      <Badge className={statusBadge(INVOICE_STATUS, invoice.status).className}>
+                        {statusBadge(INVOICE_STATUS, invoice.status).label}
+                      </Badge>
                       {invoice.disputedAt && (
                         <Badge
                           className="bg-red-100 text-red-800"
-                          title={`Chargeback opened ${new Date(invoice.disputedAt).toLocaleDateString()} — hold shipment, see notes`}
+                          title={`Chargeback opened ${formatShortDate(invoice.disputedAt)} — hold shipment, see notes`}
                         >
                           Disputed
                         </Badge>
@@ -489,7 +487,7 @@ export default function AdminInvoicesPage() {
                   <TableCell className="text-muted-foreground">{fmtDate(invoice.paidAt)}</TableCell>
                   <TableCell>
                     {invoice.emailSentAt ? (
-                      <span className="inline-flex items-center gap-1 text-xs text-green-700" title={`Sent ${new Date(invoice.emailSentAt).toLocaleString()}`}>
+                      <span className="inline-flex items-center gap-1 text-xs text-green-700" title={`Sent ${formatShortDateTime(invoice.emailSentAt)}`}>
                         <CheckCircle className="h-3.5 w-3.5" /> Sent
                       </span>
                     ) : isPayable(invoice.status) ? (
@@ -559,23 +557,11 @@ export default function AdminInvoicesPage() {
           </Table>
         </div>
 
-        {pagination.totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4 text-sm">
-            <p className="text-muted-foreground">
-              Page {pagination.page} of {pagination.totalPages}
-            </p>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" disabled={pagination.page <= 1}
-                onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))} className="gap-1">
-                <ChevronLeft className="h-3.5 w-3.5" /> Prev
-              </Button>
-              <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages}
-                onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))} className="gap-1">
-                Next <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        )}
+        <Pager
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+        />
         </>
       )}
 
@@ -587,7 +573,7 @@ export default function AdminInvoicesPage() {
         confirmLabel="Mark paid"
         onConfirm={async () => {
           if (!pending) return;
-          await patchInvoice(pending.invoice.id, { status: 'paid', method, reference: reference || undefined, paidAt: paidAt || undefined });
+          await patchInvoice(pending.invoice.id, { status: 'paid', method, reference: reference || undefined, paidAt: paidAt ? new Date(`${paidAt}T12:00:00`).toISOString() : undefined });
           toast.success(`${pending.invoice.invoiceNumber} marked paid`);
         }}
         description={pending && (
@@ -599,9 +585,9 @@ export default function AdminInvoicesPage() {
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Method</Label>
+                <Label htmlFor="invoiceMethod">Method</Label>
                 <Select value={method} onValueChange={(v) => setMethod(v as typeof method)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="invoiceMethod"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
                   </SelectContent>
@@ -609,7 +595,7 @@ export default function AdminInvoicesPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="paidAt">Received on</Label>
-                <Input id="paidAt" type="date" value={paidAt} max={todayIso()} onChange={(e) => setPaidAt(e.target.value)} />
+                <Input id="paidAt" type="date" value={paidAt} max={todayInHouseTz()} onChange={(e) => setPaidAt(e.target.value)} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -632,7 +618,7 @@ export default function AdminInvoicesPage() {
             ? { status: 'pending', dueDate: new Date(`${dueDate}T23:59:59`).toISOString() }
             : { dueDate: new Date(`${dueDate}T23:59:59`).toISOString() };
           await patchInvoice(pending.invoice.id, payload);
-          toast.success(`${pending.invoice.invoiceNumber} now due ${new Date(dueDate).toLocaleDateString()}`);
+          toast.success(`${pending.invoice.invoiceNumber} now due ${formatDayOnly(dueDate)}`);
         }}
         description={pending && (
           <div className="space-y-3 text-sm">
@@ -643,7 +629,7 @@ export default function AdminInvoicesPage() {
             </p>
             <div className="space-y-1.5">
               <Label htmlFor="dueDate">New due date</Label>
-              <Input id="dueDate" type="date" value={dueDate} min={todayIso()} onChange={(e) => setDueDate(e.target.value)} />
+              <Input id="dueDate" type="date" value={dueDate} min={todayInHouseTz()} onChange={(e) => setDueDate(e.target.value)} />
             </div>
           </div>
         )}

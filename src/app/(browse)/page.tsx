@@ -37,6 +37,7 @@ import { db } from '@/db';
 import { auctions, auctionLots, lots } from '@/db/schema';
 import { inArray, desc, eq, and, sql, asc } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
+import { auctionWithVisibleLotCount } from '@/components/auctions/visible-lot-count';
 import { LotCard } from '@/components/lots/LotCard';
 import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
 import { HeroAppraisalForm } from '@/components/home/HeroAppraisalForm';
@@ -65,10 +66,11 @@ async function getHomeData() {
     const [upcomingAuctions, featuredLots, galleryLots, liveAuctions, closingSoonRows, openLotCountRows] =
       await Promise.all([
         db
-          .select()
+          .select(auctionWithVisibleLotCount)
           .from(auctions)
           .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
-          .orderBy(desc(auctions.createdAt))
+          // Calendar order: sales already bidding, then the next to open.
+          .orderBy(sql`${auctions.biddingStartsAt} asc nulls last`, desc(auctions.createdAt))
           .limit(6),
         db
           .select({ lot: lots, auctionSlug: bestAuctionSlugSql })
@@ -77,7 +79,8 @@ async function getHomeData() {
           // withdrawn lot would render on the homepage and link to a 404.
           .where(and(eq(lots.isFeatured, true), inArray(lots.status, ['for_sale', 'in_auction', 'sold'])))
           .orderBy(desc(lots.createdAt))
-          .limit(8),
+          // One more than the grid shows: the hero takes one and is left out below.
+          .limit(9),
         db
           .select()
           .from(lots)
@@ -155,6 +158,8 @@ export default async function HomePage() {
   // in the hero as before.
   const heroLot = featuredLots.find((lot) => lot.primaryImageUrl) ?? null;
   const heroLotHref = heroLot ? publicLotPath(heroLot) : null;
+  // The hero lot isn't repeated in the Featured grid.
+  const featuredGrid = featuredLots.filter((lot) => lot.id !== heroLot?.id).slice(0, 8);
 
   return (
     <div>
@@ -370,9 +375,10 @@ export default async function HomePage() {
             {[
               { name: 'Fine Art', href: '/categories/art', image: '/images/categories/fine-art.webp' },
               { name: 'Antiques', href: '/categories/antiques', image: '/images/categories/antiques.webp' },
-              { name: 'Jewelry & Watches', href: '/categories/jewelry', image: '/images/categories/jewelry.webp' },
+              { name: 'Jewelry', href: '/categories/jewelry', image: '/images/categories/jewelry.webp' },
               { name: 'Fashion & Accessories', href: '/categories/fashion', image: '/images/categories/fashion.webp' },
-              { name: 'Collectibles', href: '/categories/luxury', image: '/images/categories/collectibles.webp' },
+              // The "luxury" category is watches, cars and rare collectibles.
+              { name: 'Watches & Luxury', href: '/categories/luxury', image: '/images/lots/patek-nautilus.webp' },
               { name: 'Design & Furniture', href: '/categories/design', image: '/images/categories/design.webp' },
             ].map((cat) => (
               <Link key={cat.name} href={cat.href} className="group relative aspect-[4/3] rounded-xl overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-champagne focus-visible:ring-offset-2 focus-visible:ring-offset-charcoal">
@@ -383,7 +389,7 @@ export default async function HomePage() {
                   sizes="(max-width: 768px) 50vw, 33vw"
                   className="object-cover transition-transform duration-700 group-hover:scale-105"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent transition-opacity duration-500 group-hover:from-black/80" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent transition-opacity duration-500 group-hover:from-black/85" />
                 <div className="absolute bottom-0 left-0 right-0 p-3.5 sm:p-6">
                   <h3 className="font-display text-white text-[15px] leading-snug sm:text-lg">{cat.name}</h3>
                   <p className="text-[12px] sm:text-[13px] text-white/80 mt-0.5 sm:mt-1 opacity-100 translate-y-0 lg:opacity-0 lg:translate-y-2 lg:group-hover:opacity-100 lg:group-hover:translate-y-0 transition-all duration-300">
@@ -458,7 +464,7 @@ export default async function HomePage() {
       </section>
 
       {/* Featured Lots */}
-      {featuredLots.length > 0 && (
+      {featuredGrid.length > 0 && (
         <section className="relative bg-secondary/40 py-12 sm:py-20 md:py-28">
           <div className="absolute top-0 left-0 right-0 gradient-line" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -473,10 +479,11 @@ export default async function HomePage() {
               </Link>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
-              {featuredLots.map((lot, index) => (
+              {featuredGrid.map((lot, index) => (
                 // Two rows (four lots) on phones; the button below leads on.
+                // Lots from different sales: no lot numbers.
                 <div key={lot.id} className={index >= 4 ? 'hidden sm:block' : undefined}>
-                  <LotCard lot={lot} />
+                  <LotCard lot={lot} showLotNumber={false} />
                 </div>
               ))}
             </div>
@@ -490,7 +497,7 @@ export default async function HomePage() {
         <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20 md:py-28">
           <div className="flex items-end justify-between mb-7 sm:mb-14">
             <div>
-              <span className="text-eyebrow text-champagne-deep">Buy Now</span>
+              <span className="text-eyebrow text-champagne-deep">Fixed Price</span>
               <h2 className="font-display text-display-md sm:text-display-lg mt-2">Shop the Gallery</h2>
             </div>
             <Link href="/gallery" className="text-[13px] text-muted-foreground hover:text-foreground transition-colors hidden sm:flex items-center gap-1.5 group">
@@ -500,7 +507,7 @@ export default async function HomePage() {
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
             {galleryLots.map((lot) => (
-              <LotCard key={lot.id} lot={lot} isGallery />
+              <LotCard key={lot.id} lot={lot} isGallery showLotNumber={false} />
             ))}
           </div>
           <MobileViewAll href="/gallery">View all gallery items</MobileViewAll>

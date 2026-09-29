@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '@/db';
+import { PROSPECT_AWAITING_STATUSES } from '@/lib/admin/status/sales';
 
 export interface AdminBadges {
   inbox: { unread: number; autoReplied: number };
@@ -21,6 +22,10 @@ export interface AdminBadges {
  * operator works through it.
  */
 export async function getAdminBadges(): Promise<AdminBadges> {
+  // Same list the prospects page uses for its "awaiting" view, bound as
+  // parameters so the badge and the page can't drift apart.
+  const awaitingStatuses = sql.join(PROSPECT_AWAITING_STATUSES.map((s) => sql`${s}`), sql`, `);
+
   const { rows } = await db.execute(sql`
     select
       (select count(*) from emails
@@ -34,7 +39,7 @@ export async function getAdminBadges(): Promise<AdminBadges> {
         where status in ('approved', 'for_sale', 'in_auction', 'sold') and seller_id is null)::int
                                                                                 as lots_missing_seller,
       (select count(*) from seller_prospects
-        where status in ('new', 'items_received', 'under_review'))::int         as prospects_awaiting,
+        where status in (${awaitingStatuses}))::int                             as prospects_awaiting,
       (select count(*) from seller_prospects
         where status = 'agreement_signed')::int                                 as prospects_signed,
       (select count(*) from estate_visits where status = 'review')::int         as appraisals_review,

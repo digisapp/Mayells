@@ -12,6 +12,9 @@ import { formatCurrency } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
+import { AccountShell } from '@/components/account/AccountShell';
+import { invoiceStatusBadge } from '@/components/account/invoice-status';
+import { publicLotPath } from '@/lib/lots/urls';
 import { Gavel, CheckCircle2, XCircle, Trophy } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -23,13 +26,15 @@ interface Row {
   lotId: string;
   title: string;
   slug: string | null;
+  saleType: string;
   primaryImageUrl: string | null;
   currentBidAmount: number;
   currentBidderId: string | null;
   status: string;
   winnerId: string | null;
   hammerPrice: number | null;
-  closingAt: Date | null;
+  /** Raw-SQL timestamps come back from the driver as strings. */
+  closingAt: string | null;
   yourTopBid: number;
 }
 
@@ -45,6 +50,7 @@ export default async function MyBidsPage() {
       lotId: lots.id,
       title: lots.title,
       slug: lots.slug,
+      saleType: lots.saleType,
       primaryImageUrl: lots.primaryImageUrl,
       currentBidAmount: lots.currentBidAmount,
       currentBidderId: lots.currentBidderId,
@@ -52,11 +58,13 @@ export default async function MyBidsPage() {
       winnerId: lots.winnerId,
       hammerPrice: lots.hammerPrice,
       yourTopBid: sql<number>`max(${bids.amount})`,
-      closingAt: sql<Date | null>`(
+      // closing_at is a UTC timestamp without zone: return it as ISO with "Z"
+      // so new Date() reads it as UTC whatever the runtime's timezone.
+      closingAt: sql<string | null>`to_char((
         SELECT closing_at FROM ${auctionLots}
         WHERE ${auctionLots.lotId} = ${lots.id}
         ORDER BY closing_at DESC NULLS LAST LIMIT 1
-      )`,
+      ), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
     })
     .from(bids)
     .innerJoin(lots, eq(lots.id, bids.lotId))
@@ -102,16 +110,13 @@ export default async function MyBidsPage() {
   const empty = rows.length === 0;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="flex items-center gap-3 mb-8">
-        <Gavel className="h-6 w-6 text-champagne" />
-        <h1 className="font-display text-display-lg">My Bids</h1>
-      </div>
-
+    <AccountShell active="my-bids" title="My Bids" icon={<Gavel className="h-6 w-6 text-champagne" />}>
       {empty ? (
         <div className="text-center py-20">
-          <p className="text-muted-foreground mb-4">You haven&apos;t placed any bids yet.</p>
-          <Link href="/auctions" className="text-champagne hover:underline">Browse auctions →</Link>
+          <p className="text-muted-foreground mb-5">You haven&apos;t placed any bids yet.</p>
+          <Button asChild size="lg" variant="champagne">
+            <Link href="/auctions">Browse auctions</Link>
+          </Button>
         </div>
       ) : (
         <div className="space-y-12">
@@ -123,6 +128,11 @@ export default async function MyBidsPage() {
                 {active.map((r) => {
                   const winning = r.currentBidderId === user.id;
                   const max = maxByLot.get(r.lotId);
+                  // The status flips to sold/passed only when the lot is
+                  // settled, which can trail its close; no close time (a live
+                  // sale) means bidding is still open.
+                  const closesAt = r.closingAt ? new Date(r.closingAt) : null;
+                  const stillOpen = !closesAt || closesAt.getTime() > now;
                   return (
                     <BidRow key={r.lotId} r={r}>
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
@@ -138,16 +148,21 @@ export default async function MyBidsPage() {
                           <div className="text-muted-foreground">Max {formatCurrency(max.maxAmount)}</div>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 mt-2">
+                      <div className="flex flex-wrap items-center gap-3 mt-2">
                         {winning ? (
                           <Badge className="bg-green-600 text-white gap-1"><CheckCircle2 className="h-3 w-3" /> Winning</Badge>
                         ) : (
                           <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Outbid</Badge>
                         )}
-                        {r.closingAt && r.closingAt.getTime() > now && (
-                          <AuctionCountdown endsAt={r.closingAt} serverNow={now} variant="inline" className="text-sm" />
+                        {closesAt && stillOpen && (
+                          <AuctionCountdown endsAt={closesAt} serverNow={now} variant="inline" className="text-sm" />
                         )}
                       </div>
+                      {!winning && stillOpen && (
+                        <Button asChild size="lg" variant="champagne" className="mt-3">
+                          <Link href={publicLotPath({ id: r.lotId, slug: r.slug, saleType: r.saleType })}>Bid again</Link>
+                        </Button>
+                      )}
                     </BidRow>
                   );
                 })}
@@ -182,12 +197,12 @@ export default async function MyBidsPage() {
                       <div className="flex items-center gap-3 mt-2">
                         {invoice ? (
                           unpaid ? (
-                            <Link href={`/invoices/${invoice.accessToken}`}>
-                              <Button variant="champagne" size="sm">Pay invoice</Button>
-                            </Link>
+                            <Button asChild size="lg" variant="champagne">
+                              <Link href={`/invoices/${invoice.accessToken}`}>Pay invoice</Link>
+                            </Button>
                           ) : (
-                            <Badge className="bg-green-600 text-white">
-                              {invoice.status === 'paid' ? 'Paid' : invoice.status === 'refunded' ? 'Refunded' : invoice.status}
+                            <Badge className={invoiceStatusBadge(invoice.status).className}>
+                              {invoiceStatusBadge(invoice.status).label}
                             </Badge>
                           )
                         ) : (
@@ -227,19 +242,19 @@ export default async function MyBidsPage() {
           )}
         </div>
       )}
-    </div>
+    </AccountShell>
   );
 }
 
 function BidRow({ r, children }: { r: Row; children: React.ReactNode }) {
-  const href = `/lots/${r.slug || r.lotId}`;
+  const href = publicLotPath({ id: r.lotId, slug: r.slug, saleType: r.saleType });
   return (
     <div className="flex gap-4 border border-border/50 rounded-xl p-4">
       <Link href={href} className="relative w-20 h-20 rounded-lg overflow-hidden bg-muted shrink-0">
         {r.primaryImageUrl ? (
           <Image src={r.primaryImageUrl} alt={r.title} fill className="object-cover" sizes="80px" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[11px] text-muted-foreground">No image</div>
+          <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">No image</div>
         )}
       </Link>
       <div className="flex-1 min-w-0">

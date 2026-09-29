@@ -4,6 +4,7 @@ import { lots } from '@/db/schema';
 import { eq, or } from 'drizzle-orm';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { loadOgImage } from '@/lib/seo/og-image';
+import { formatEstimate } from '@/lib/format/estimate';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
@@ -30,9 +31,9 @@ export default async function OGImage({ params }: { params: Promise<{ lotId: str
   const lot = await getLot(lotId);
   const cover = await loadOgImage(lot?.primaryImageUrl);
 
-  const estimateText = lot?.estimateLow && lot?.estimateHigh
-    ? `Est. $${(lot.estimateLow / 100).toLocaleString('en-US')} – $${(lot.estimateHigh / 100).toLocaleString('en-US')}`
-    : null;
+  // The site-wide estimate format, low- or high-only included.
+  const estimate = formatEstimate(lot?.estimateLow, lot?.estimateHigh);
+  const estimateText = estimate ? `Est. ${estimate.replace(/^Up to/, 'up to')}` : null;
 
   return new ImageResponse(
     (

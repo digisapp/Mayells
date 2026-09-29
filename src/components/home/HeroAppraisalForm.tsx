@@ -123,7 +123,7 @@ export function HeroAppraisalForm() {
       {submitted ? (
         <div className="text-center py-6">
           <CheckCircle className="h-10 w-10 text-champagne mx-auto mb-3" />
-          <h3 className="font-display text-lg mb-1">Request Received</h3>
+          <h2 className="font-display text-lg mb-1">Request Received</h2>
           <p className="text-white/60 text-sm">
             A specialist will call you within one business day.
           </p>
@@ -131,7 +131,7 @@ export function HeroAppraisalForm() {
         </div>
       ) : (
         <>
-          <h3 className="font-display text-lg mb-1">Request a Free Appraisal</h3>
+          <h2 className="font-display text-lg mb-1">Request a Free Appraisal</h2>
           <p className="text-[13px] text-white/55 mb-5">
             Free and confidential, with no obligation. Photos help us answer faster.
           </p>

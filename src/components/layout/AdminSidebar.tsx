@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -106,6 +106,9 @@ function SidebarContent({ pathname, onNavigate }: { pathname: string; onNavigate
 export function AdminSidebar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const openButtonRef = useRef<HTMLButtonElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   // Close mobile menu on route change (adjust-state-during-render pattern)
   const [prevPathname, setPrevPathname] = useState(pathname);
@@ -114,12 +117,57 @@ export function AdminSidebar() {
     setMobileOpen(false);
   }
 
+  /**
+   * Close via X, backdrop or Esc. The drawer goes `inert` once closed, which
+   * would drop focus to <body>, so hand it back to the hamburger. Nav-link
+   * clicks close without this: the navigation itself moves focus.
+   */
+  function close() {
+    setMobileOpen(false);
+    openButtonRef.current?.focus();
+  }
+
+  // Open drawer: focus moves into it, Tab/Shift+Tab cycle inside it (the page
+  // behind the overlay is unreachable), and Esc closes it. Closed, it is
+  // `inert` so its links drop out of the tab order.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    closeButtonRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileOpen(false);
+        openButtonRef.current?.focus();
+        return;
+      }
+      if (e.key !== 'Tab' || !drawerRef.current) return;
+      const focusable = Array.from(
+        drawerRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      const inside = active instanceof Node && drawerRef.current.contains(active);
+      if (e.shiftKey && (active === first || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (active === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
+
   return (
     <>
       {/* Mobile hamburger button */}
       <button
+        ref={openButtonRef}
         type="button"
         onClick={() => setMobileOpen(true)}
+        aria-expanded={mobileOpen}
         className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-md bg-background border border-border/50 shadow-sm"
         aria-label="Open navigation"
       >
@@ -130,7 +178,7 @@ export function AdminSidebar() {
       {mobileOpen && (
         <div
           className="lg:hidden fixed inset-0 bg-black/50 z-50"
-          onClick={() => setMobileOpen(false)}
+          onClick={close}
         />
       )}
 
@@ -142,11 +190,15 @@ export function AdminSidebar() {
           'lg:hidden fixed inset-y-0 left-0 z-50 w-64 border-r border-border/50 bg-background p-4 transition-transform duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
+        ref={drawerRef}
+        aria-label="Admin navigation"
         aria-hidden={!mobileOpen}
+        inert={!mobileOpen}
       >
         <button
+          ref={closeButtonRef}
           type="button"
-          onClick={() => setMobileOpen(false)}
+          onClick={close}
           className="absolute top-4 right-4 p-1 rounded-md text-muted-foreground hover:text-foreground"
           aria-label="Close navigation"
         >

@@ -8,7 +8,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Upload your items | Mayells',
+  title: 'Upload your items',
   // Private, tokenized pages: never in search results.
   robots: { index: false, follow: false },
 };

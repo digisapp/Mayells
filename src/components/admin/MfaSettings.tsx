@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
+import { formatShortDate, todayInHouseTz } from '@/lib/format/dates';
 import { ShieldCheck, ShieldOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,6 +38,7 @@ export function MfaSettings() {
   const [pending, setPending] = useState<PendingEnrollment | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmDisable, setConfirmDisable] = useState<string | null>(null);
 
   const refreshCache = useCallback(async () => {
     await fetch('/api/auth/mfa/refresh', { method: 'POST' }).catch(() => undefined);
@@ -68,7 +71,7 @@ export function MfaSettings() {
     try {
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
-        friendlyName: `Mayells Admin ${new Date().toISOString().slice(0, 10)}`,
+        friendlyName: `Mayells Admin ${todayInHouseTz()}`,
       });
       if (error || !data) {
         toast.error(error?.message ?? 'Could not start enrollment');
@@ -117,18 +120,26 @@ export function MfaSettings() {
     }
   }
 
+  /** Runs from the confirm dialog; throws on failure so the dialog stays open. */
   async function disable(factorId: string) {
-    if (!confirm('Turn off two-factor authentication for this account?')) return;
     setBusy(true);
     try {
-      const { error } = await supabase.auth.mfa.unenroll({ factorId });
+      let result: Awaited<ReturnType<typeof supabase.auth.mfa.unenroll>>;
+      try {
+        result = await supabase.auth.mfa.unenroll({ factorId });
+      } catch (err) {
+        // A network rejection: ConfirmDialog stays open but shows nothing,
+        // so say why here.
+        toast.error('Network error — two-factor authentication is still on');
+        throw err;
+      }
+      const { error } = result;
       if (error) {
-        toast.error(
-          /aal2|assurance/i.test(error.message)
-            ? 'Sign out and back in (entering your code) before turning this off.'
-            : error.message,
-        );
-        return;
+        const message = /aal2|assurance/i.test(error.message)
+          ? 'Sign out and back in (entering your code) before turning this off.'
+          : error.message;
+        toast.error(message);
+        throw new Error(message);
       }
       await refreshCache();
       toast.success('Two-factor authentication turned off');
@@ -170,10 +181,10 @@ export function MfaSettings() {
               <div>
                 <p className="font-medium">{f.friendly_name || 'Authenticator app'}</p>
                 {f.created_at && (
-                  <p className="text-xs text-muted-foreground">Added {new Date(f.created_at).toLocaleDateString()}</p>
+                  <p className="text-xs text-muted-foreground">Added {formatShortDate(f.created_at)}</p>
                 )}
               </div>
-              <Button variant="outline" size="sm" onClick={() => disable(f.id)} disabled={busy}>
+              <Button variant="outline" size="sm" onClick={() => setConfirmDisable(f.id)} disabled={busy}>
                 Turn off
               </Button>
             </div>
@@ -224,6 +235,16 @@ export function MfaSettings() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmDisable !== null}
+        onOpenChange={(open) => { if (!open) setConfirmDisable(null); }}
+        title="Turn off two-factor authentication?"
+        description="This account will be protected by its password alone until you set up an authenticator app again."
+        confirmLabel="Turn off"
+        variant="destructive"
+        onConfirm={async () => { if (confirmDisable) await disable(confirmDisable); }}
+      />
 
       <p className="text-xs text-muted-foreground">
         Lost your device? An operator can remove the factor with{' '}

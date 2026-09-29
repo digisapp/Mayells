@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { and, eq, gte, lte, ilike, or, inArray, desc } from 'drizzle-orm';
 import { PUBLIC_LOT_STATUSES, publicLotColumns } from '@/lib/lots/visibility';
+import { logger } from '@/lib/logger';
 
 const searchIntentSchema = z.object({
   keywords: z.array(z.string()).describe('Search keywords extracted from query'),
@@ -17,7 +18,26 @@ const searchIntentSchema = z.object({
   sortBy: z.enum(['relevance', 'price_low', 'price_high', 'newest', 'ending_soon']).default('relevance'),
 });
 
-export type SearchIntent = z.infer<typeof searchIntentSchema>;
+export type SearchIntent = z.infer<typeof searchIntentSchema> & {
+  /** Set when the AI parser was unavailable and the query was matched word by word. */
+  fallback?: boolean;
+};
+
+const STOPWORDS = new Set(['a', 'an', 'and', 'the', 'of', 'for', 'with', 'in', 'on', 'by', 'to', 'or', 'from', 'at']);
+
+/**
+ * Plain keyword intent used when the AI parser fails (provider outage, spent
+ * credits, timeout). Search must keep working without the model.
+ */
+export function keywordIntent(query: string): SearchIntent {
+  const keywords = query
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}'-]+/u)
+    .map((w) => w.replace(/^['-]+|['-]+$/g, ''))
+    .filter((w) => w.length >= 2 && !STOPWORDS.has(w))
+    .slice(0, 8);
+  return { keywords, sortBy: 'relevance', fallback: true };
+}
 
 /**
  * Parse a natural language search query into structured search parameters.
@@ -26,6 +46,10 @@ export async function parseSearchQuery(query: string): Promise<SearchIntent> {
   const { object } = await generateObject({
     model: getModel('fast'),
     schema: searchIntentSchema,
+    // A visitor is waiting: one retry at most (the SDK default is two with
+    // backoff), then the keyword fallback answers.
+    maxRetries: 1,
+    abortSignal: AbortSignal.timeout(8000),
     prompt: `Parse this auction search query into structured filters. Convert any mentioned dollar amounts to cents (multiply by 100).
 
 Query: "${query}"
@@ -54,7 +78,20 @@ export interface AiSearchOptions {
  * Execute an AI-powered search against the lots database.
  */
 export async function aiSearch(query: string, limit = 24, opts: AiSearchOptions = {}) {
-  const intent = await parseSearchQuery(query);
+  let intent: SearchIntent;
+  try {
+    intent = await parseSearchQuery(query);
+  } catch (error) {
+    logger.warn('AI search parser unavailable, using keyword search', { error: String(error) });
+    intent = keywordIntent(query);
+  }
+
+  // The word-by-word fallback found nothing to match on (only stopwords, like
+  // "the"): with no conditions it would return every public lot, which reads
+  // as a result set. Nothing matched, so say so.
+  if (intent.fallback && intent.keywords.length === 0) {
+    return { results: [], intent };
+  }
 
   const conditions = [];
 
@@ -109,7 +146,9 @@ export async function aiSearch(query: string, limit = 24, opts: AiSearchOptions 
         ilike(lots.medium, `%${kw}%`),
       ),
     );
-    conditions.push(or(...keywordConditions)!);
+    // The AI splits a query into alternative terms (any may match); the
+    // fallback keeps every word the visitor typed, so all must match.
+    conditions.push((intent.fallback ? and(...keywordConditions) : or(...keywordConditions))!);
   }
 
   // Sort

@@ -1,79 +1,58 @@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
-export default function AnalyticsLoading() {
+/** Mirrors the Microsites page: header + range switch, 4 tiles, by-city table, two side cards. */
+export default function MicrositesLoading() {
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
-        <div>
-          <Skeleton className="h-8 w-40 mb-2" />
-          <Skeleton className="h-4 w-64" />
+    <div className="space-y-8">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <Skeleton className="h-8 w-40 mb-2" />
+            <Skeleton className="h-4 w-96 max-w-full" />
+          </div>
+          <Skeleton className="h-8 w-64 rounded-md" />
         </div>
-        <Skeleton className="h-8 w-72 rounded-md" />
+
+        {/* Visitors · Call taps · Form leads · Contact rate */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="py-4">
+                <Skeleton className="h-3 w-20 mb-2" />
+                <Skeleton className="h-7 w-16 mb-1" />
+                <Skeleton className="h-3 w-28" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
-      {/* Key metrics — 6 tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-8">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i}>
-            <CardContent className="pt-5 pb-4">
-              <Skeleton className="h-8 w-24 mb-2" />
-              <Skeleton className="h-3 w-20 mb-1" />
-              <Skeleton className="h-3 w-16" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Sales report */}
-      <Card className="mb-8">
+      {/* By city */}
+      <Card>
         <CardHeader>
-          <Skeleton className="h-5 w-32 mb-1" />
-          <Skeleton className="h-3 w-80" />
+          <Skeleton className="h-5 w-24" />
         </CardHeader>
         <CardContent className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-9 w-full" />
+          <Skeleton className="h-6 w-full" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-11 w-full" />
           ))}
         </CardContent>
       </Card>
 
-      {/* Breakdown cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i}>
-            <CardHeader>
-              <Skeleton className="h-5 w-32" />
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-3">
-                {Array.from({ length: 6 }).map((_, j) => (
-                  <div key={j}>
-                    <Skeleton className="h-6 w-16 mb-1" />
-                    <Skeleton className="h-3 w-20" />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Bottom row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Sources · Latest leads */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {Array.from({ length: 2 }).map((_, i) => (
           <Card key={i}>
             <CardHeader>
-              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-5 w-48" />
             </CardHeader>
             <CardContent className="space-y-3">
-              {Array.from({ length: 6 }).map((_, j) => (
+              {Array.from({ length: 5 }).map((_, j) => (
                 <div key={j} className="flex items-center justify-between gap-3">
-                  <div className="flex-1">
-                    <Skeleton className="h-4 w-3/4 mb-1" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
-                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-12" />
                 </div>
               ))}
             </CardContent>

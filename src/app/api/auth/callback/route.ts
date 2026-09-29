@@ -2,21 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { ensureUserProfile, roleFromMetadata } from '@/lib/auth/profile';
 import { logger } from '@/lib/logger';
-
-// Only allow redirects to internal paths (prevent open redirect). Reject
-// protocol-relative forms `//host` and `/\host` (some browsers normalize the
-// latter to protocol-relative and navigate off-site).
-function getSafeRedirect(next: string): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) {
-    return '/';
-  }
-  return next;
-}
+import { safeNext } from '@/lib/auth/safe-next';
 
 export async function GET(req: NextRequest) {
   const { searchParams, origin } = new URL(req.url);
   const code = searchParams.get('code');
-  const next = getSafeRedirect(searchParams.get('next') ?? '/');
+  // Internal paths only (prevents an open redirect).
+  const next = safeNext(searchParams.get('next') ?? undefined);
 
   if (code) {
     const supabase = await createClient();
@@ -43,5 +35,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // A password-reset link that is used or expired: the reset page, finding
+  // no session, explains and offers a new link.
+  if (new URL(next, origin).pathname === '/reset-password') {
+    return NextResponse.redirect(`${origin}/reset-password`);
+  }
   return NextResponse.redirect(`${origin}/login?error=auth_callback_error`);
 }

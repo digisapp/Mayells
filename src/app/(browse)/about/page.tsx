@@ -2,6 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowRight, Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
+import { Button } from '@/components/ui/button';
 
 export const metadata = {
   title: 'About',
@@ -65,19 +66,23 @@ export default function AboutPage() {
             <h2 className="font-display text-display-md mt-2">What We Auction</h2>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 max-w-4xl mx-auto">
+            {/* The home page's six department tiles, same labels, plus two
+                entry points: decorative arts (catalogued under Antiques) and
+                estates (consignment). */}
             {[
-              { name: 'Fine Art', image: '/images/categories/fine-art.webp' },
-              { name: 'Antiques', image: '/images/categories/antiques.webp' },
-              { name: 'Jewelry & Watches', image: '/images/categories/jewelry.webp' },
-              { name: 'Fashion', image: '/images/categories/fashion.webp' },
-              { name: 'Collectibles', image: '/images/categories/collectibles.webp' },
-              { name: 'Design & Furniture', image: '/images/categories/design.webp' },
-              { name: 'Decorative Arts', image: 'https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?w=400&h=300&fit=crop' },
-              { name: 'Estates', image: 'https://images.unsplash.com/photo-1558171813-4c088753af8f?w=400&h=300&fit=crop' },
+              { name: 'Fine Art', href: '/categories/art', image: '/images/categories/fine-art.webp' },
+              { name: 'Antiques', href: '/categories/antiques', image: '/images/categories/antiques.webp' },
+              { name: 'Jewelry', href: '/categories/jewelry', image: '/images/categories/jewelry.webp' },
+              { name: 'Fashion & Accessories', href: '/categories/fashion', image: '/images/categories/fashion.webp' },
+              { name: 'Watches & Luxury', href: '/categories/luxury', image: '/images/lots/patek-nautilus.webp' },
+              { name: 'Design & Furniture', href: '/categories/design', image: '/images/categories/design.webp' },
+              { name: 'Decorative Arts', href: '/categories/antiques', image: '/images/lots/meissen-tureen.webp' },
+              { name: 'Estates', href: '/consign', image: '/images/lots/library-set.webp' },
             ].map((cat) => (
-              <div
+              <Link
                 key={cat.name}
-                className="relative aspect-[4/3] rounded-xl overflow-hidden group"
+                href={cat.href}
+                className="relative aspect-[4/3] rounded-xl overflow-hidden group outline-none focus-visible:ring-2 focus-visible:ring-champagne focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <Image
                   src={cat.image}
@@ -90,7 +95,7 @@ export default function AboutPage() {
                 <div className="absolute bottom-0 left-0 right-0 p-3.5 sm:p-4">
                   <p className="font-display text-white text-[15px] sm:text-sm leading-snug">{cat.name}</p>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
@@ -123,19 +128,15 @@ export default function AboutPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              href="/consign"
-              className="inline-flex items-center justify-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-8 py-3 text-sm font-medium transition-colors"
-            >
-              Consign With Us
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/gallery"
-              className="inline-flex items-center justify-center gap-2 border border-border rounded-lg px-8 py-3 text-sm font-medium hover:bg-secondary/50 transition-colors"
-            >
-              View Gallery
-            </Link>
+            <Button asChild variant="champagne" size="lg">
+              <Link href="/consign">
+                Consign With Us
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/gallery">View Gallery</Link>
+            </Button>
           </div>
         </div>
       </section>

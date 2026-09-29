@@ -16,15 +16,12 @@ export default function BrowseError({
     Sentry.captureException(error);
   }, [error]);
 
+  // Mirrors not-found.tsx: same height, eyebrow, heading scale and button pair.
   return (
     <div className="min-h-[60svh] flex items-center justify-center px-4 py-12">
       <div className="text-center max-w-md">
-        <p className="text-sm uppercase tracking-widest text-champagne-deep font-semibold mb-4">
-          Unexpected Error
-        </p>
-        <h1 className="font-display text-display-md text-charcoal mb-4">
-          Something went wrong
-        </h1>
+        <p className="text-eyebrow text-champagne-deep mb-4">Unexpected error</p>
+        <h1 className="font-display text-display-md mb-4">Something went wrong</h1>
         <p className="text-muted-foreground mb-8">
           We hit an unexpected error loading this page. Try again, or head back home.
         </p>

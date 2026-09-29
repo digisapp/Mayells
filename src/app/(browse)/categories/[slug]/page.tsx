@@ -7,11 +7,16 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
-import { eq, desc, and, inArray } from 'drizzle-orm';
+import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
 import { LotGrid } from '@/components/lots/LotGrid';
+import { Button } from '@/components/ui/button';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
+// ISR page, so no ?page=: the newest lots are shown with the true total, and
+// the full lists live on each sale's page.
+const LOT_LIMIT = 48;
 
 // Deduplicated per request — generateMetadata and the page component share one DB call
 const getCategory = cache(async (slug: string) => {
@@ -53,18 +58,26 @@ export default async function CategoryPage({
 
   if (!category) notFound();
 
-  const rows = await db
-    .select({ lot: lots, auctionSlug: bestAuctionSlugSql })
-    .from(lots)
-    // Public listing — never expose draft / pending / withdrawn / unsold lots.
-    .where(and(
-      eq(lots.categoryId, category!.id),
-      inArray(lots.status, ['for_sale', 'in_auction', 'sold']),
-    ))
-    .orderBy(desc(lots.createdAt))
-    .limit(48);
+  // Public listing — never expose draft / pending / withdrawn / unsold lots.
+  const visibleInCategory = and(
+    eq(lots.categoryId, category!.id),
+    inArray(lots.status, ['for_sale', 'in_auction', 'sold']),
+  );
+  const [rows, countRows] = await Promise.all([
+    db
+      .select({ lot: lots, auctionSlug: bestAuctionSlugSql })
+      .from(lots)
+      .where(visibleInCategory)
+      .orderBy(desc(lots.createdAt))
+      .limit(LOT_LIMIT),
+    db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(lots)
+      .where(visibleInCategory),
+  ]);
 
   const categoryLots = rows.map(({ lot, auctionSlug }) => ({ ...lot, auctionSlug }));
+  const total = Math.max(countRows[0]?.count ?? 0, categoryLots.length);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
@@ -75,7 +88,25 @@ export default async function CategoryPage({
         )}
       </div>
       {categoryLots.length > 0 ? (
-        <LotGrid lots={categoryLots} />
+        <section aria-labelledby="category-lots-heading">
+          <h2 id="category-lots-heading" className="sr-only">{category!.name} lots</h2>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-5 sm:mb-6">
+            <p className="text-sm text-muted-foreground">
+              {total > categoryLots.length ? <>Showing the newest {categoryLots.length} of {total}</> : total} lot
+              {total !== 1 ? 's' : ''}
+            </p>
+            {total > categoryLots.length && (
+              <Link
+                href="/auctions"
+                className="text-sm text-foreground underline underline-offset-4 decoration-border hover:decoration-foreground"
+              >
+                Browse every lot by sale
+              </Link>
+            )}
+          </div>
+          {/* Lots from several sales, so lot numbers would repeat. */}
+          <LotGrid lots={categoryLots} showLotNumber={false} />
+        </section>
       ) : (
         <div className="text-center py-16 sm:py-20 border border-border/60 rounded-2xl px-6">
           <p className="font-display text-display-sm">Nothing in {category!.name} right now</p>
@@ -83,12 +114,12 @@ export default async function CategoryPage({
             New pieces are catalogued regularly. Browse our current sales or the gallery in the meantime.
           </p>
           <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
-            <Link href="/auctions" className="inline-flex items-center justify-center h-11 px-6 rounded-lg bg-champagne text-charcoal text-sm font-semibold hover:bg-champagne/90 transition-colors">
-              View auctions
-            </Link>
-            <Link href="/gallery" className="inline-flex items-center justify-center h-11 px-6 rounded-lg border border-border text-sm font-medium hover:bg-secondary/50 transition-colors">
-              Shop the gallery
-            </Link>
+            <Button asChild variant="champagne" size="lg">
+              <Link href="/auctions">View auctions</Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/gallery">Shop the gallery</Link>
+            </Button>
           </div>
         </div>
       )}

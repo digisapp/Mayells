@@ -17,11 +17,13 @@ interface Props {
   label: string;
   /** What one bucket is, for the keyboard hint. */
   unit: 'hour' | 'day';
+  /** Shown over the empty axes when every value is zero. */
+  empty?: string;
   height?: number;
 }
 
 /** Lines over time on one count axis, with a crosshair readout that snaps to the nearest bucket. */
-export function LineChart({ buckets, series, extras = [], label, unit, height = 240 }: Props) {
+export function LineChart({ buckets, series, extras = [], label, unit, empty = 'Nothing recorded in this period.', height = 240 }: Props) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const count = buckets.length;
@@ -35,6 +37,7 @@ export function LineChart({ buckets, series, extras = [], label, unit, height = 
   const x = (i: number) => margin.left + (count <= 1 ? plotWidth / 2 : (i / (count - 1)) * plotWidth);
   const y = (v: number) => margin.top + plotHeight - (v / top) * plotHeight;
   const labels = [...labelIndices(count, plotWidth)].map((i) => ({ i, text: buckets[i].label }));
+  const hasData = series.some((s) => s.values.some((v) => v > 0));
 
   function indexAt(clientX: number, target: Element) {
     const px = clientX - target.getBoundingClientRect().left;
@@ -84,7 +87,7 @@ export function LineChart({ buckets, series, extras = [], label, unit, height = 
             {series.map((s) => (
               <circle key={s.name} cx={x(last)} cy={y(s.values[last] ?? 0)} r={4} fill={s.color} stroke="var(--card)" strokeWidth={2} />
             ))}
-            {!endsClash &&
+            {hasData && !endsClash &&
               ends.map(({ s, y: ey }) => (
                 <text key={s.name} x={x(last) + 9} y={ey} dominantBaseline="middle" className="fill-foreground text-[11px] font-medium tabular-nums">
                   {(s.values[last] ?? 0).toLocaleString()}
@@ -100,7 +103,10 @@ export function LineChart({ buckets, series, extras = [], label, unit, height = 
             )}
           </svg>
         )}
-        {active !== null && width > 0 && (
+        {!hasData && width > 0 && (
+          <p className="absolute inset-x-0 top-1/3 text-center text-sm text-muted-foreground">{empty}</p>
+        )}
+        {active !== null && width > 0 && hasData && (
           <Tooltip
             x={x(active)}
             width={width}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Upload, X, Star, ChevronLeft, ChevronRight, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import type { Category } from '@/db/schema/categories';
 import { ADMIN_UPLOAD_ACCEPT, uploadImageAsAdmin } from '@/lib/upload/admin-upload';
 
@@ -152,6 +153,9 @@ export function LotForm({
   const [uploading, setUploading] = useState(false);
   const [reordering, setReordering] = useState(false);
   const [error, setError] = useState('');
+  const errorRef = useRef<HTMLDivElement>(null);
+  // Index of a saved image awaiting "remove?" confirmation (deletes server-side).
+  const [confirmRemoveIdx, setConfirmRemoveIdx] = useState<number | null>(null);
 
   // Seller picker
   const [selectedSeller, setSelectedSeller] = useState<SellerSummary | null>(initialSeller ?? null);
@@ -233,6 +237,13 @@ export function LotForm({
 
   const visibleSellerResults = sellerQuery.trim().length >= 2 ? sellerResults : [];
 
+  function showError(message: string) {
+    setError(message);
+    toast.error(message);
+    // The banner sits above six cards; Save is at the bottom of the form.
+    requestAnimationFrame(() => errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
+
   function update<K extends keyof LotFormData>(field: K, value: LotFormData[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -294,17 +305,29 @@ export function LotForm({
     for (const message of failed) toast.error(message);
   }
 
+  /**
+   * Saved images are only removed via the confirm dialog, so a server failure
+   * toasts and then throws — ConfirmDialog stays open on a rejection. Unsaved
+   * images never hit the network and can't fail.
+   */
   async function removeImage(idx: number) {
     const img = images[idx];
     if (img.id && lotId) {
-      const res = await fetch(`/api/lots/${lotId}/images`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageId: img.id }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`/api/lots/${lotId}/images`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageId: img.id }),
+        });
+      } catch (err) {
+        toast.error('Network error — the image was not removed');
+        throw err;
+      }
       if (!res.ok) {
-        toast.error(await readError(res, 'Failed to remove image'));
-        return;
+        const message = await readError(res, 'Failed to remove image');
+        toast.error(message);
+        throw new Error(message);
       }
     }
     setImages((prev) => {
@@ -383,13 +406,13 @@ export function LotForm({
       if (raw === '') continue;
       const n = parseFloat(raw);
       if (!Number.isFinite(n) || n <= 0) {
-        setError(`${label} must be a positive amount.`);
+        showError(`${label} must be a positive amount.`);
         return;
       }
     }
     if (form.estimateLow.trim() && form.estimateHigh.trim()) {
       if (parseFloat(form.estimateHigh) < parseFloat(form.estimateLow)) {
-        setError('High estimate must be at least the low estimate.');
+        showError('High estimate must be at least the low estimate.');
         return;
       }
     }
@@ -415,35 +438,35 @@ export function LotForm({
         ...(lotId ? {} : { images: images.map(({ url, isPrimary }) => ({ url, isPrimary })) }),
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      showError(err instanceof Error && err.message ? err.message : 'Something went wrong');
     }
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
+        <div ref={errorRef} role="alert" className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
       )}
 
       <Card>
         <CardHeader><CardTitle>Basic Information</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Title *</Label>
-            <Input value={form.title} onChange={(e) => update('title', e.target.value)} required />
+            <Label htmlFor="lot-title">Title *</Label>
+            <Input id="lot-title" value={form.title} onChange={(e) => update('title', e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <Label>Subtitle</Label>
-            <Input value={form.subtitle} onChange={(e) => update('subtitle', e.target.value)} />
+            <Label htmlFor="lot-subtitle">Subtitle</Label>
+            <Input id="lot-subtitle" value={form.subtitle} onChange={(e) => update('subtitle', e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>Description *</Label>
-            <Textarea value={form.description} onChange={(e) => update('description', e.target.value)} rows={5} required />
+            <Label htmlFor="lot-description">Description *</Label>
+            <Textarea id="lot-description" value={form.description} onChange={(e) => update('description', e.target.value)} rows={5} required />
           </div>
           <div className="space-y-2">
-            <Label>Department *</Label>
+            <Label htmlFor="lot-department">Department *</Label>
             <Select value={form.categoryId} onValueChange={(v) => update('categoryId', v)}>
-              <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+              <SelectTrigger id="lot-department"><SelectValue placeholder="Select department" /></SelectTrigger>
               <SelectContent>
                 {categories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
@@ -453,13 +476,13 @@ export function LotForm({
           </div>
           {form.categoryId && (
             <div className="space-y-2">
-              <Label>Subcategory</Label>
+              <Label htmlFor="lot-subcategory">Subcategory</Label>
               <Select
                 value={form.subcategoryId || NO_SUBCATEGORY}
                 onValueChange={(v) => update('subcategoryId', v === NO_SUBCATEGORY ? '' : v)}
                 disabled={subcategoriesLoading || subcategories.length === 0}
               >
-                <SelectTrigger><SelectValue placeholder={subcategoriesLoading ? 'Loading…' : 'None'} /></SelectTrigger>
+                <SelectTrigger id="lot-subcategory"><SelectValue placeholder={subcategoriesLoading ? 'Loading…' : 'None'} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NO_SUBCATEGORY}>None</SelectItem>
                   {subcategories.map((sub) => (
@@ -506,6 +529,7 @@ export function LotForm({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
               <Input
+                aria-label="Search consignors"
                 value={sellerQuery}
                 onChange={(e) => setSellerQuery(e.target.value)}
                 placeholder="Search consignors by name or email"
@@ -550,15 +574,23 @@ export function LotForm({
               <div key={img.url} className="relative group aspect-square rounded-md overflow-hidden border">
                 {/* eslint-disable-next-line @next/next/no-img-element -- admin thumbnail / local file preview */}
                 <img src={img.url} alt={`Lot image ${idx + 1}`} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <button type="button" onClick={() => setPrimary(idx)} className="p-1.5 rounded-full bg-white/90 hover:bg-white" title="Set as primary">
+                {/* Controls show on hover, on keyboard focus, and always on
+                    touch screens (no hover there, so they'd be unreachable). */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 [@media(hover:none)]:bg-transparent transition-opacity flex items-center justify-center gap-2">
+                  <button type="button" onClick={() => setPrimary(idx)} className="p-1.5 rounded-full bg-white/90 hover:bg-white" title="Set as primary" aria-label={`Set image ${idx + 1} as primary`} aria-pressed={img.isPrimary}>
                     <Star className={`h-4 w-4 ${img.isPrimary ? 'fill-yellow-500 text-yellow-500' : 'text-gray-600'}`} />
                   </button>
-                  <button type="button" onClick={() => removeImage(idx)} className="p-1.5 rounded-full bg-white/90 hover:bg-white" title="Remove">
+                  <button
+                    type="button"
+                    onClick={() => (img.id && lotId ? setConfirmRemoveIdx(idx) : removeImage(idx))}
+                    className="p-1.5 rounded-full bg-white/90 hover:bg-white"
+                    title="Remove"
+                    aria-label={`Remove image ${idx + 1}`}
+                  >
                     <X className="h-4 w-4 text-red-600" />
                   </button>
                 </div>
-                <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                   <button
                     type="button"
                     onClick={() => moveImage(idx, -1)}
@@ -594,7 +626,7 @@ export function LotForm({
           </div>
           <p className="text-xs text-muted-foreground">JPEG, PNG, WebP, AVIF, or HEIC up to 15 MB each — photos upload straight to storage, so full-size phone shots are fine.</p>
           {images.length > 1 && (
-            <p className="text-xs text-muted-foreground">Hover an image to reorder it; the order here is the order shown on the site.</p>
+            <p className="text-xs text-muted-foreground">Use the arrows on an image to reorder it; the order here is the order shown on the site.</p>
           )}
         </CardContent>
       </Card>
@@ -603,9 +635,9 @@ export function LotForm({
         <CardHeader><CardTitle>Sale Type</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>How will this lot be sold? *</Label>
+            <Label htmlFor="lot-saleType">How will this lot be sold? *</Label>
             <Select value={form.saleType} onValueChange={(v) => update('saleType', v as LotFormData['saleType'])}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="lot-saleType"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="auction">Auction</SelectItem>
                 <SelectItem value="gallery">Gallery (Buy Now)</SelectItem>
@@ -615,8 +647,8 @@ export function LotForm({
           </div>
           {form.saleType === 'gallery' && (
             <div className="space-y-2">
-              <Label>Buy Now Price (USD) *</Label>
-              <Input type="number" min="0" step="0.01" value={form.buyNowPrice} onChange={(e) => update('buyNowPrice', e.target.value)} placeholder="$" required />
+              <Label htmlFor="lot-buyNowPrice">Buy Now Price (USD) *</Label>
+              <Input id="lot-buyNowPrice" type="number" min="0" step="0.01" value={form.buyNowPrice} onChange={(e) => update('buyNowPrice', e.target.value)} placeholder="$" required />
             </div>
           )}
           {form.saleType === 'private' && (
@@ -628,14 +660,14 @@ export function LotForm({
       <Card>
         <CardHeader><CardTitle>Attribution</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2"><Label>Artist</Label><Input value={form.artist} onChange={(e) => update('artist', e.target.value)} /></div>
-          <div className="space-y-2"><Label>Maker</Label><Input value={form.maker} onChange={(e) => update('maker', e.target.value)} /></div>
-          <div className="space-y-2"><Label>Period</Label><Input value={form.period} onChange={(e) => update('period', e.target.value)} placeholder="e.g., Mid-Century Modern" /></div>
-          <div className="space-y-2"><Label>Circa</Label><Input value={form.circa} onChange={(e) => update('circa', e.target.value)} placeholder="e.g., circa 1960" /></div>
-          <div className="space-y-2"><Label>Origin</Label><Input value={form.origin} onChange={(e) => update('origin', e.target.value)} placeholder="e.g., France" /></div>
-          <div className="space-y-2"><Label>Medium</Label><Input value={form.medium} onChange={(e) => update('medium', e.target.value)} placeholder="e.g., Oil on canvas" /></div>
-          <div className="space-y-2"><Label>Dimensions</Label><Input value={form.dimensions} onChange={(e) => update('dimensions', e.target.value)} placeholder="e.g., 24 x 36 inches" /></div>
-          <div className="space-y-2"><Label>Weight</Label><Input value={form.weight} onChange={(e) => update('weight', e.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="lot-artist">Artist</Label><Input id="lot-artist" value={form.artist} onChange={(e) => update('artist', e.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="lot-maker">Maker</Label><Input id="lot-maker" value={form.maker} onChange={(e) => update('maker', e.target.value)} /></div>
+          <div className="space-y-2"><Label htmlFor="lot-period">Period</Label><Input id="lot-period" value={form.period} onChange={(e) => update('period', e.target.value)} placeholder="e.g., Mid-Century Modern" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-circa">Circa</Label><Input id="lot-circa" value={form.circa} onChange={(e) => update('circa', e.target.value)} placeholder="e.g., circa 1960" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-origin">Origin</Label><Input id="lot-origin" value={form.origin} onChange={(e) => update('origin', e.target.value)} placeholder="e.g., France" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-medium">Medium</Label><Input id="lot-medium" value={form.medium} onChange={(e) => update('medium', e.target.value)} placeholder="e.g., Oil on canvas" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-dimensions">Dimensions</Label><Input id="lot-dimensions" value={form.dimensions} onChange={(e) => update('dimensions', e.target.value)} placeholder="e.g., 24 x 36 inches" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-weight">Weight</Label><Input id="lot-weight" value={form.weight} onChange={(e) => update('weight', e.target.value)} /></div>
         </CardContent>
       </Card>
 
@@ -643,9 +675,9 @@ export function LotForm({
         <CardHeader><CardTitle>Condition & Provenance</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Condition</Label>
+            <Label htmlFor="lot-condition">Condition</Label>
             <Select value={form.condition} onValueChange={(v) => update('condition', v)}>
-              <SelectTrigger><SelectValue placeholder="Select condition" /></SelectTrigger>
+              <SelectTrigger id="lot-condition"><SelectValue placeholder="Select condition" /></SelectTrigger>
               <SelectContent>
                 {conditions.map((c) => (
                   <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
@@ -658,20 +690,20 @@ export function LotForm({
               </button>
             )}
           </div>
-          <div className="space-y-2"><Label>Condition Notes</Label><Textarea value={form.conditionNotes} onChange={(e) => update('conditionNotes', e.target.value)} rows={3} /></div>
-          <div className="space-y-2"><Label>Provenance</Label><Textarea value={form.provenance} onChange={(e) => update('provenance', e.target.value)} rows={3} placeholder="Ownership history" /></div>
-          <div className="space-y-2"><Label>Literature</Label><Textarea value={form.literature} onChange={(e) => update('literature', e.target.value)} rows={3} placeholder="Publications in which this work is cited or illustrated" /></div>
-          <div className="space-y-2"><Label>Exhibited</Label><Textarea value={form.exhibited} onChange={(e) => update('exhibited', e.target.value)} rows={3} placeholder="Exhibition history" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-conditionNotes">Condition Notes</Label><Textarea id="lot-conditionNotes" value={form.conditionNotes} onChange={(e) => update('conditionNotes', e.target.value)} rows={3} /></div>
+          <div className="space-y-2"><Label htmlFor="lot-provenance">Provenance</Label><Textarea id="lot-provenance" value={form.provenance} onChange={(e) => update('provenance', e.target.value)} rows={3} placeholder="Ownership history" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-literature">Literature</Label><Textarea id="lot-literature" value={form.literature} onChange={(e) => update('literature', e.target.value)} rows={3} placeholder="Publications in which this work is cited or illustrated" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-exhibited">Exhibited</Label><Textarea id="lot-exhibited" value={form.exhibited} onChange={(e) => update('exhibited', e.target.value)} rows={3} placeholder="Exhibition history" /></div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader><CardTitle>Pricing (USD)</CardTitle></CardHeader>
         <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2"><Label>Low Estimate</Label><Input type="number" min="0" step="0.01" value={form.estimateLow} onChange={(e) => update('estimateLow', e.target.value)} placeholder="$" /></div>
-          <div className="space-y-2"><Label>High Estimate</Label><Input type="number" min="0" step="0.01" value={form.estimateHigh} onChange={(e) => update('estimateHigh', e.target.value)} placeholder="$" /></div>
-          <div className="space-y-2"><Label>Reserve Price (hidden)</Label><Input type="number" min="0" step="0.01" value={form.reservePrice} onChange={(e) => update('reservePrice', e.target.value)} placeholder="$" /></div>
-          <div className="space-y-2"><Label>Starting Bid</Label><Input type="number" min="0" step="0.01" value={form.startingBid} onChange={(e) => update('startingBid', e.target.value)} placeholder="$" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-estimateLow">Low Estimate</Label><Input id="lot-estimateLow" type="number" min="0" step="0.01" value={form.estimateLow} onChange={(e) => update('estimateLow', e.target.value)} placeholder="$" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-estimateHigh">High Estimate</Label><Input id="lot-estimateHigh" type="number" min="0" step="0.01" value={form.estimateHigh} onChange={(e) => update('estimateHigh', e.target.value)} placeholder="$" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-reservePrice">Reserve Price (hidden)</Label><Input id="lot-reservePrice" type="number" min="0" step="0.01" value={form.reservePrice} onChange={(e) => update('reservePrice', e.target.value)} placeholder="$" /></div>
+          <div className="space-y-2"><Label htmlFor="lot-startingBid">Starting Bid</Label><Input id="lot-startingBid" type="number" min="0" step="0.01" value={form.startingBid} onChange={(e) => update('startingBid', e.target.value)} placeholder="$" /></div>
           {lotId && (
             <p className="text-xs text-muted-foreground sm:col-span-2">Leave a field blank to clear the stored value.</p>
           )}
@@ -686,6 +718,20 @@ export function LotForm({
           {isLoading ? 'Saving...' : submitLabel}
         </Button>
       </div>
+
+      {/* Removing a saved image deletes it on the server straight away —
+          it doesn't wait for "Save lot" — so ask first. */}
+      <ConfirmDialog
+        open={confirmRemoveIdx !== null}
+        onOpenChange={(open) => !open && setConfirmRemoveIdx(null)}
+        title="Remove this image?"
+        description="The image is deleted from the lot immediately, without waiting for Save. This cannot be undone — you would need to upload it again."
+        confirmLabel="Remove image"
+        variant="destructive"
+        onConfirm={async () => {
+          if (confirmRemoveIdx !== null) await removeImage(confirmRemoveIdx);
+        }}
+      />
     </form>
   );
 }

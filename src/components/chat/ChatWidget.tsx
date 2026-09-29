@@ -15,19 +15,13 @@ const PANEL_ID = 'mayells-chat-panel';
 
 // The bubble rides 1rem above any sticky bottom bar a page shows on phones
 // (the bar publishes its height, safe-area padding included, as
-// --mobile-cta-bar), else 1rem above the safe area. On the city microsites the
-// StickyCallBar (below lg) owns the bottom of the screen, so the bubble sits
-// above it there. On phones the panel is a full-screen sheet, so its offset
-// only matters on larger screens. Literal class strings so Tailwind generates them.
+// --mobile-cta-bar only while it is shown, including the city microsites'
+// StickyCallBar), else 1rem above the safe area. On phones the panel is a
+// full-screen sheet, so its offset only matters on larger screens. Literal
+// class strings so Tailwind generates them.
 const OFFSETS = {
-  default: {
-    bubble: 'bottom-[max(calc(var(--mobile-cta-bar,0px)+1rem),max(1rem,env(safe-area-inset-bottom)))]',
-    panel: 'bottom-[max(calc(var(--mobile-cta-bar,0px)+5rem),calc(max(1rem,env(safe-area-inset-bottom))+4rem))]',
-  },
-  aboveStickyBar: {
-    bubble: 'bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:bottom-[max(1rem,env(safe-area-inset-bottom))]',
-    panel: 'bottom-[calc(env(safe-area-inset-bottom)+9.5rem)] lg:bottom-[calc(max(1rem,env(safe-area-inset-bottom))+4rem)]',
-  },
+  bubble: 'bottom-[max(calc(var(--mobile-cta-bar,0px)+1rem),max(1rem,env(safe-area-inset-bottom)))]',
+  panel: 'bottom-[max(calc(var(--mobile-cta-bar,0px)+5rem),calc(max(1rem,env(safe-area-inset-bottom))+4rem))]',
 } as const;
 
 // The labelled pill needs room: sm width AND 500px of height, so phones in
@@ -45,11 +39,9 @@ const PILL = {
 interface ChatWidgetProps {
   /** City microsite slug; see ChatPanel. */
   site?: string;
-  aboveStickyBar?: boolean;
 }
 
-export function ChatWidget({ site, aboveStickyBar = false }: ChatWidgetProps = {}) {
-  const offsets = aboveStickyBar ? OFFSETS.aboveStickyBar : OFFSETS.default;
+export function ChatWidget({ site }: ChatWidgetProps = {}) {
   const [open, setOpen] = useState(false);
   // Once opened, the panel stays mounted (hidden on close) so the chat
   // history survives closing and reopening the bubble.
@@ -94,7 +86,7 @@ export function ChatWidget({ site, aboveStickyBar = false }: ChatWidgetProps = {
           pendingMessage={pendingMessage}
           onPendingConsumed={() => setPendingMessage(null)}
           site={site}
-          offsetClassName={offsets.panel}
+          offsetClassName={OFFSETS.panel}
         />
       )}
 
@@ -109,7 +101,7 @@ export function ChatWidget({ site, aboveStickyBar = false }: ChatWidgetProps = {
           setEverOpened(true);
           setShowLabel(false);
         }}
-        className={`fixed ${offsets.bubble} right-[max(1rem,env(safe-area-inset-right))] sm:right-[max(1.5rem,env(safe-area-inset-right))] z-50 flex h-12 w-12 items-center justify-center gap-2 rounded-full bg-champagne text-charcoal shadow-lg transition-[bottom,box-shadow,scale] duration-300 ease-out hover:shadow-xl motion-reduce:transition-none ${PILL.button} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-charcoal focus-visible:ring-offset-2 ${
+        className={`fixed ${OFFSETS.bubble} right-[max(1rem,env(safe-area-inset-right))] sm:right-[max(1.5rem,env(safe-area-inset-right))] z-50 flex h-12 w-12 items-center justify-center gap-2 rounded-full bg-champagne text-charcoal shadow-lg transition-[bottom,box-shadow,scale] duration-300 ease-out hover:shadow-xl motion-reduce:transition-none ${PILL.button} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-charcoal focus-visible:ring-offset-2 ${
           open ? PILL.open : PILL.closed
         } ${!open && showLabel ? PILL.bounce : ''}`}
         aria-label={open ? 'Close chat' : 'Chat with us'}

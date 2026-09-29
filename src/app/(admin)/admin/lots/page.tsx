@@ -11,25 +11,25 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, ChevronLeft, ChevronRight, Search, Sparkles } from 'lucide-react';
-import { PageHeader } from '@/components/admin/PageHeader';
+import { Plus, Pencil, Search, Sparkles } from 'lucide-react';
+import { PageHeader, filterChipClass, filterChipCountClass } from '@/components/admin/PageHeader';
 import { formatCurrency } from '@/types';
+import { LOT_STATUS, lotStatus } from '@/lib/admin/status/sales';
+import { formatEstimate } from '@/lib/format/estimate';
+import { AutoSubmitSelect } from './_components/AutoSubmitSelect';
+import { Pager } from '../_components/Pager';
 
 const PAGE_SIZE = 50;
 
 type LotStatus = (typeof lots.status.enumValues)[number];
 type SaleType = (typeof lots.saleType.enumValues)[number];
 
+// "Needs review" leads because it is the one that asks for work.
 const STATUS_CHIPS: Array<{ value: LotStatus | ''; label: string }> = [
   { value: '', label: 'All' },
-  { value: 'pending_review', label: 'Needs review' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'approved', label: 'Approved' },
-  { value: 'for_sale', label: 'For sale' },
-  { value: 'in_auction', label: 'In auction' },
-  { value: 'sold', label: 'Sold' },
-  { value: 'unsold', label: 'Unsold' },
-  { value: 'withdrawn', label: 'Withdrawn' },
+  ...(['pending_review', 'draft', 'approved', 'for_sale', 'in_auction', 'sold', 'unsold', 'withdrawn'] as const).map(
+    (value) => ({ value, label: LOT_STATUS[value].label }),
+  ),
 ];
 
 const SALE_TYPE_OPTIONS: Array<{ value: SaleType | ''; label: string }> = [
@@ -45,17 +45,6 @@ const SORT_OPTIONS = [
   { value: 'price', label: 'Price (high to low)' },
 ] as const;
 type SortKey = (typeof SORT_OPTIONS)[number]['value'];
-
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  pending_review: 'bg-yellow-100 text-yellow-800',
-  approved: 'bg-blue-100 text-blue-800',
-  for_sale: 'bg-green-100 text-green-800',
-  in_auction: 'bg-purple-100 text-purple-800',
-  sold: 'bg-emerald-100 text-emerald-800',
-  unsold: 'bg-red-100 text-red-800',
-  withdrawn: 'bg-gray-100 text-gray-600',
-};
 
 type AuctionRef = { id: string; title: string; lotNumber: number } | null;
 
@@ -217,26 +206,24 @@ export default async function AdminLotsPage({
             <Link
               key={chip.label}
               href={hrefWith({ status: chip.value })}
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                active
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'bg-background text-muted-foreground hover:text-foreground hover:border-foreground/40',
-                chip.value === 'pending_review' && !active && count > 0 && 'border-yellow-400 text-yellow-800',
+              aria-current={active ? 'page' : undefined}
+              className={filterChipClass(
+                active,
+                chip.value === 'pending_review' && !active && count > 0 ? 'border-yellow-400 text-yellow-800' : undefined,
               )}
             >
               {chip.label}
-              <span className={cn('tabular-nums', active ? 'opacity-80' : 'opacity-70')}>{count}</span>
+              <span className={filterChipCountClass}>{count}</span>
             </Link>
           );
         })}
         <Link
           href={hrefWith({ missingSeller: missingSeller ? '' : '1' })}
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+          className={filterChipClass(
+            missingSeller,
             missingSeller
               ? 'bg-amber-600 text-white border-amber-600'
-              : 'bg-background text-amber-800 border-amber-300 hover:border-amber-500',
+              : 'text-amber-800 border-amber-300 hover:text-amber-900 hover:border-amber-500',
           )}
           title="Lots with no seller-of-record are skipped at payout time"
         >
@@ -244,7 +231,8 @@ export default async function AdminLotsPage({
         </Link>
       </div>
 
-      {/* Search / type / department / sort — a plain GET form, no client JS */}
+      {/* Search / type / department / sort — a plain GET form. The selects
+          submit it on change; the search box submits on Enter. */}
       <form method="get" action="/admin/lots" className="flex flex-wrap items-center gap-2 mb-6">
         {status && <input type="hidden" name="status" value={status} />}
         {missingSeller && <input type="hidden" name="missingSeller" value="1" />}
@@ -252,23 +240,23 @@ export default async function AdminLotsPage({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input name="q" defaultValue={q} placeholder="Search titles" className="pl-9" />
         </div>
-        <select name="saleType" defaultValue={saleType} className={selectClass} aria-label="Sale type">
+        <AutoSubmitSelect name="saleType" defaultValue={saleType} className={selectClass} aria-label="Sale type">
           {SALE_TYPE_OPTIONS.map((o) => (
             <option key={o.label} value={o.value}>{o.label}</option>
           ))}
-        </select>
-        <select name="category" defaultValue={category} className={cn(selectClass, 'max-w-[220px]')} aria-label="Department">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="category" defaultValue={category} className={cn(selectClass, 'max-w-[220px]')} aria-label="Department">
           <option value="">All departments</option>
           {departments.map((d) => (
             <option key={d.id} value={d.id}>{d.name}</option>
           ))}
-        </select>
-        <select name="sort" defaultValue={sort} className={selectClass} aria-label="Sort">
+        </AutoSubmitSelect>
+        <AutoSubmitSelect name="sort" defaultValue={sort} className={selectClass} aria-label="Sort">
           {SORT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
-        </select>
-        <Button type="submit" variant="outline" size="sm">Apply</Button>
+        </AutoSubmitSelect>
+        <Button type="submit" variant="outline" size="sm">Search</Button>
       </form>
 
       <div className="border rounded-lg overflow-x-auto">
@@ -332,16 +320,14 @@ export default async function AdminLotsPage({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge className={statusColors[lot.status] || ''}>
-                      {lot.status.replace('_', ' ')}
+                    <Badge className={lotStatus(lot.status).className}>
+                      {lotStatus(lot.status).label}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground whitespace-nowrap">
                     {lot.saleType === 'gallery' && lot.buyNowPrice
                       ? formatCurrency(lot.buyNowPrice)
-                      : lot.estimateLow && lot.estimateHigh
-                        ? `${formatCurrency(lot.estimateLow)} — ${formatCurrency(lot.estimateHigh)}`
-                        : '—'}
+                      : formatEstimate(lot.estimateLow, lot.estimateHigh) ?? '—'}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{lot.bidCount > 0 ? `${lot.bidCount} (${formatCurrency(lot.currentBidAmount)})` : '—'}</TableCell>
                   <TableCell>
@@ -363,29 +349,7 @@ export default async function AdminLotsPage({
         </Table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
-          <p className="text-muted-foreground">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            {page > 1 ? (
-              <Button asChild variant="outline" size="sm" className="gap-1">
-                <Link href={hrefWith({ page: page - 1 })}><ChevronLeft className="h-3.5 w-3.5" /> Prev</Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled className="gap-1"><ChevronLeft className="h-3.5 w-3.5" /> Prev</Button>
-            )}
-            {page < totalPages ? (
-              <Button asChild variant="outline" size="sm" className="gap-1">
-                <Link href={hrefWith({ page: page + 1 })}>Next <ChevronRight className="h-3.5 w-3.5" /></Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled className="gap-1">Next <ChevronRight className="h-3.5 w-3.5" /></Button>
-            )}
-          </div>
-        </div>
-      )}
+      <Pager page={page} totalPages={totalPages} hrefFor={(n) => hrefWith({ page: n })} />
     </div>
   );
 }

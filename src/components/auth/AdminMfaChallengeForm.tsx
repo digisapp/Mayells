@@ -1,31 +1,32 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-/** Only ever bounce back into the admin area — never to an arbitrary URL. */
-function safeNext(raw: string | null): string {
-  if (!raw || !raw.startsWith('/admin') || raw.startsWith('/admin/login') || raw.startsWith('//')) {
-    return '/admin';
-  }
-  return raw;
-}
+import { safeAdminNext } from '@/lib/auth/safe-next';
 
 export function AdminMfaChallengeForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next = safeNext(searchParams.get('next'));
+  // Only ever bounce back into the admin area — never to an arbitrary URL.
+  const next = safeAdminNext(searchParams.get('next'));
+  const codeRef = useRef<HTMLInputElement>(null);
   const supabase = useMemo(() => createClient(), []);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [ready, setReady] = useState(false);
+
+  // autoFocus is ignored while the input is disabled (it is until the factor
+  // loads), so focus it once it becomes usable.
+  useEffect(() => {
+    if (ready) codeRef.current?.focus();
+  }, [ready]);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,14 +37,14 @@ export function AdminMfaChallengeForm() {
       if (error || !totp) {
         // No factor to challenge (or no session): the middleware will route
         // this account to the right place.
-        router.replace(error ? '/admin/login' : '/admin');
+        router.replace(error ? `/admin/login${next !== '/admin' ? `?next=${encodeURIComponent(next)}` : ''}` : next);
         return;
       }
       setFactorId(totp.id);
       setReady(true);
     })();
     return () => { cancelled = true; };
-  }, [supabase, router]);
+  }, [supabase, router, next]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -89,13 +90,13 @@ export function AdminMfaChallengeForm() {
             <Label htmlFor="admin-mfa-code" className="text-zinc-300">Code</Label>
             <Input
               id="admin-mfa-code"
+              ref={codeRef}
               inputMode="numeric"
               autoComplete="one-time-code"
               placeholder="123 456"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required
-              autoFocus
               disabled={!ready}
               className="bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500 tracking-widest text-center text-lg"
             />

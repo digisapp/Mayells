@@ -39,10 +39,3 @@ export function formatDay(day: string | null | undefined): string {
   if (!m) return new Date(day).toLocaleDateString();
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString();
 }
-
-/** Today as YYYY-MM-DD in the operator's local timezone. */
-export function todayLocal(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}

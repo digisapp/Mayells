@@ -179,17 +179,21 @@ export async function GET(req: NextRequest) {
     }
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
+    // The CSV export walks every page; it has no use for the header numbers.
+    const withStats = searchParams.get('stats') !== '0';
+
     const [contacts, [{ total }], [statsRow]] = await Promise.all([
       db
         .select()
         .from(outreachContacts)
         .where(where)
-        .orderBy(asc(outreachContacts.nextFollowUpAt), desc(outreachContacts.createdAt))
+        // id last: OFFSET pages need a total order, or ties overlap/skip rows.
+        .orderBy(asc(outreachContacts.nextFollowUpAt), desc(outreachContacts.createdAt), asc(outreachContacts.id))
         .limit(PAGE_SIZE)
         .offset(offset),
       db.select({ total: sql<number>`count(*)::int` }).from(outreachContacts).where(where),
       // Global (unfiltered) pipeline numbers for the header cards
-      db
+      !withStats ? Promise.resolve([undefined]) : db
         .select({
           total: sql<number>`count(*)::int`,
           new: sql<number>`count(*) filter (where ${outreachContacts.status} = 'new')::int`,
@@ -203,7 +207,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       data: contacts,
-      stats: statsRow,
+      ...(statsRow ? { stats: statsRow } : {}),
       pagination: {
         page,
         pageSize: PAGE_SIZE,

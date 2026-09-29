@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { safeNext } from '../safe-next';
+import { safeAdminNext, safeNext } from '../safe-next';
 
 describe('safeNext', () => {
   it('keeps internal paths, with their query', () => {
@@ -20,5 +20,28 @@ describe('safeNext', () => {
     expect(safeNext('/\n/evil.example')).toBe('/');
     expect(safeNext('/\r\n/evil.example')).toBe('/');
     expect(safeNext('/lots\\..\\..\\evil')).toBe('/');
+  });
+});
+
+describe('safeAdminNext', () => {
+  it('keeps admin paths, with their query', () => {
+    expect(safeAdminNext('/admin')).toBe('/admin');
+    expect(safeAdminNext('/admin/lots/abc')).toBe('/admin/lots/abc');
+    expect(safeAdminNext('/admin?tab=today')).toBe('/admin?tab=today');
+  });
+
+  it('falls back to /admin outside the admin or back at the login pages', () => {
+    expect(safeAdminNext(null)).toBe('/admin');
+    expect(safeAdminNext('/')).toBe('/admin');
+    expect(safeAdminNext('/lots/abc')).toBe('/admin');
+    expect(safeAdminNext('/administrator')).toBe('/admin');
+    expect(safeAdminNext('/admin/login')).toBe('/admin');
+    expect(safeAdminNext('/admin/login/mfa')).toBe('/admin');
+  });
+
+  it('refuses anything safeNext refuses', () => {
+    expect(safeAdminNext('//evil.example/admin')).toBe('/admin');
+    expect(safeAdminNext('https://evil.example/admin')).toBe('/admin');
+    expect(safeAdminNext('/admin\\..\\..\\evil')).toBe('/admin');
   });
 });

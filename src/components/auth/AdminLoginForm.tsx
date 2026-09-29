@@ -1,15 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { safeAdminNext } from '@/lib/auth/safe-next';
 
 export function AdminLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = safeAdminNext(searchParams.get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -41,7 +44,9 @@ export function AdminLoginForm() {
         return;
       }
 
-      router.push('/admin');
+      // Accounts with two-factor are sent on to the code screen by the
+      // middleware, which carries `next` along.
+      router.push(next);
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');
@@ -77,7 +82,7 @@ export function AdminLoginForm() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="admin-password" className="text-zinc-300">Password</Label>
-              <a href="/forgot-password" className="text-xs text-zinc-500 hover:text-zinc-300 hover:underline">
+              <a href="/forgot-password" className="-my-2 py-2 text-xs text-zinc-500 hover:text-zinc-300 hover:underline">
                 Forgot password?
               </a>
             </div>

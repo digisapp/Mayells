@@ -41,3 +41,20 @@ export function PageHeader({
     </div>
   );
 }
+
+/**
+ * The filter-chip look every admin list shares (status chips under the
+ * header). Active chips are solid; the count sits in a `<span>` after the
+ * label with `filterChipCountClass`.
+ */
+export function filterChipClass(active: boolean, className?: string) {
+  return cn(
+    'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+    active
+      ? 'bg-foreground text-background border-foreground'
+      : 'bg-background text-muted-foreground border-border hover:text-foreground hover:border-foreground/50',
+    className,
+  );
+}
+
+export const filterChipCountClass = 'tabular-nums opacity-70';

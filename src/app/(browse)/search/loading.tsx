@@ -2,18 +2,18 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export default function SearchLoading() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Search bar */}
-      <div className="mb-8">
-        <Skeleton className="h-12 w-full rounded-lg" />
-      </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
+      {/* Heading */}
+      <Skeleton className="h-10 w-40 mx-auto mb-6 sm:mb-8" />
 
-      {/* Filter row */}
-      <div className="flex flex-wrap gap-3 mb-8">
-        <Skeleton className="h-9 w-32 rounded-full" />
-        <Skeleton className="h-9 w-28 rounded-full" />
-        <Skeleton className="h-9 w-36 rounded-full" />
-        <Skeleton className="h-9 w-24 rounded-full" />
+      {/* Search bar */}
+      <Skeleton className="h-12 w-full max-w-xl mx-auto rounded-md mb-4" />
+
+      {/* Mode + filter toggles */}
+      <div className="flex flex-wrap justify-center gap-2 mb-6">
+        <Skeleton className="h-11 lg:h-8 w-32 rounded-md" />
+        <Skeleton className="h-11 lg:h-8 w-28 rounded-md" />
+        <Skeleton className="h-11 lg:h-8 w-24 rounded-md" />
       </div>
 
       {/* Results count */}

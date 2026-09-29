@@ -9,10 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, ExternalLink, Loader2 } from 'lucide-react';
+import { Trash2, ExternalLink, Loader2, AlertCircle } from 'lucide-react';
 import { PageHeader } from '@/components/admin/PageHeader';
 import { toast } from 'sonner';
 import { formatCurrency, formatCurrencyWithCents } from '@/types';
+import { auctionStatus, lotStatus } from '@/lib/admin/status/sales';
+import { formatShortDateTime } from '@/lib/format/dates';
+import LotDetailLoading from './loading';
+import { INVOICE_STATUS, statusBadge } from '@/lib/admin/status/money';
 
 type LotStatus = 'draft' | 'pending_review' | 'approved' | 'for_sale' | 'in_auction' | 'sold' | 'unsold' | 'withdrawn';
 type SaleType = 'auction' | 'gallery' | 'private';
@@ -106,42 +110,10 @@ interface LotAction {
   };
 }
 
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  pending_review: 'bg-yellow-100 text-yellow-800',
-  approved: 'bg-blue-100 text-blue-800',
-  for_sale: 'bg-green-100 text-green-800',
-  in_auction: 'bg-purple-100 text-purple-800',
-  sold: 'bg-emerald-100 text-emerald-800',
-  unsold: 'bg-red-100 text-red-800',
-  withdrawn: 'bg-gray-100 text-gray-600',
-};
-
-const auctionStatusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  scheduled: 'bg-blue-100 text-blue-800',
-  preview: 'bg-indigo-100 text-indigo-800',
-  open: 'bg-green-100 text-green-800',
-  live: 'bg-red-100 text-red-800',
-  closing: 'bg-orange-100 text-orange-800',
-  closed: 'bg-gray-100 text-gray-600',
-  completed: 'bg-emerald-100 text-emerald-800',
-  cancelled: 'bg-red-100 text-red-600',
-};
-
-const invoiceStatusColors: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  paid: 'bg-green-100 text-green-800',
-  overdue: 'bg-red-100 text-red-800',
-  cancelled: 'bg-gray-100 text-gray-600',
-  refunded: 'bg-blue-100 text-blue-800',
-};
-
-const dateTimeFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—';
   const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? '—' : dateTimeFormat.format(d);
+  return Number.isNaN(d.getTime()) ? '—' : formatShortDateTime(d);
 }
 
 function bidderLabel(paddle: string | null | undefined, name: string | null | undefined, id?: string): string {
@@ -262,7 +234,9 @@ export default function EditLotPage() {
   const router = useRouter();
   const { lotId } = useParams<{ lotId: string }>();
   const [lot, setLot] = useState<AdminLot | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  // 'missing' is a real 404; 'failed' is a network/server error worth retrying.
+  const [loadError, setLoadError] = useState<'missing' | 'failed' | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [pending, setPending] = useState<{ kind: 'action'; action: LotAction } | { kind: 'delete' } | null>(null);
@@ -270,17 +244,29 @@ export default function EditLotPage() {
   const fetchLot = useCallback(async (): Promise<AdminLot> => {
     const res = await fetch(`/api/lots/${lotId}`, { cache: 'no-store' });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.data) throw new Error(data.error || 'Failed to load lot');
+    if (!res.ok || !data.data) {
+      throw Object.assign(new Error(data.error || 'Failed to load lot'), { status: res.status });
+    }
     return data.data as AdminLot;
   }, [lotId]);
 
+  const loadInitial = useCallback(async (isCancelled: () => boolean = () => false) => {
+    try {
+      const loaded = await fetchLot();
+      if (isCancelled()) return;
+      setLot(loaded);
+      setLoadError(null);
+    } catch (err) {
+      if (isCancelled()) return;
+      setLoadError((err as { status?: number }).status === 404 ? 'missing' : 'failed');
+    }
+  }, [fetchLot]);
+
   useEffect(() => {
     let cancelled = false;
-    fetchLot()
-      .then((loaded) => { if (!cancelled) setLot(loaded); })
-      .catch(() => { if (!cancelled) setLoadError(true); });
+    loadInitial(() => cancelled);
     return () => { cancelled = true; };
-  }, [fetchLot]);
+  }, [loadInitial]);
 
   async function refreshLot() {
     try {
@@ -330,8 +316,15 @@ export default function EditLotPage() {
     }
   }
 
+  /** Runs from the confirm dialog: toasts, then throws so it stays open. */
   async function handleDelete() {
-    const res = await fetch(`/api/lots/${lotId}`, { method: 'DELETE' });
+    let res: Response;
+    try {
+      res = await fetch(`/api/lots/${lotId}`, { method: 'DELETE' });
+    } catch (err) {
+      toast.error('Network error — the lot was not deleted');
+      throw err;
+    }
     if (res.ok) {
       toast.success('Lot deleted');
       router.push('/admin/lots');
@@ -339,12 +332,13 @@ export default function EditLotPage() {
     }
     const data = await res.json().catch(() => ({}));
     toast.error(data.error || 'Failed to delete');
+    throw new Error(data.error || 'Failed to delete');
   }
 
-  if (loadError) {
+  if (loadError === 'missing') {
     return (
       <div className="max-w-3xl">
-        <PageHeader title="Lot not found" description="This lot does not exist or could not be loaded." />
+        <PageHeader title="Lot not found" description="This lot does not exist or was deleted." />
         <Link href="/admin/lots" className="text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground">
           All lots
         </Link>
@@ -352,13 +346,32 @@ export default function EditLotPage() {
     );
   }
 
-  if (!lot) {
+  if (loadError === 'failed' && !lot) {
     return (
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+      <div className="max-w-3xl">
+        <PageHeader title="Lot" />
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertCircle className="h-10 w-10 text-destructive mx-auto mb-3" />
+            <p className="text-muted-foreground mb-4">Couldn&apos;t load this lot. Check your connection and try again.</p>
+            <Button
+              variant="outline"
+              disabled={retrying}
+              onClick={async () => {
+                setRetrying(true);
+                await loadInitial();
+                setRetrying(false);
+              }}
+            >
+              {retrying ? 'Retrying…' : 'Retry'}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
+
+  if (!lot) return <LotDetailLoading />;
 
   const formData: LotFormData = {
     title: lot.title || '',
@@ -402,8 +415,8 @@ export default function EditLotPage() {
   const effectiveHigh = Math.max(lot.currentBidAmount || 0, lot.hammerPrice || 0);
   const reserveState = lot.reservePrice
     ? effectiveHigh >= lot.reservePrice
-      ? { label: `Met (${formatCurrency(lot.reservePrice)})`, className: 'text-green-700' }
-      : { label: `Not met (${formatCurrency(lot.reservePrice)})`, className: 'text-amber-700' }
+      ? { label: `Met (${formatCurrencyWithCents(lot.reservePrice)})`, className: 'text-green-700' }
+      : { label: `Not met (${formatCurrencyWithCents(lot.reservePrice)})`, className: 'text-amber-700' }
     : { label: 'No reserve', className: 'text-muted-foreground' };
 
   const dialog = (() => {
@@ -431,7 +444,7 @@ export default function EditLotPage() {
     <div className="max-w-3xl">
       <PageHeader
         title={lot.title || 'Untitled lot'}
-        badges={<Badge className={statusColors[status]}>{status.replace('_', ' ')}</Badge>}
+        badges={<Badge className={lotStatus(status).className}>{lotStatus(status).label}</Badge>}
         actions={
           lot.publicPath && (
             <Button asChild variant="outline" size="sm" className="gap-1.5">
@@ -452,7 +465,7 @@ export default function EditLotPage() {
               <p className="text-muted-foreground">
                 Not assigned to any sale.
                 {lot.saleType === 'auction' && (
-                  <> Add it from the <Link href="/admin/auctions" className="underline underline-offset-2 hover:text-foreground">auction editor</Link>.</>
+                  <> Add it from a sale&apos;s Lots tab — see <Link href="/admin/auctions?status=draft" className="underline underline-offset-2 hover:text-foreground">draft sales</Link> or <Link href="/admin/auctions?status=scheduled" className="underline underline-offset-2 hover:text-foreground">scheduled sales</Link>.</>
                 )}
               </p>
             ) : (
@@ -462,7 +475,7 @@ export default function EditLotPage() {
                     <Link href={`/admin/auctions/${p.auctionId}`} className="font-medium hover:underline">
                       {p.auctionTitle}
                     </Link>
-                    <Badge className={auctionStatusColors[p.auctionStatus] || ''}>{p.auctionStatus}</Badge>
+                    <Badge className={auctionStatus(p.auctionStatus).className}>{auctionStatus(p.auctionStatus).label}</Badge>
                     <span className="text-muted-foreground">Lot {p.lotNumber}</span>
                     <span className="text-muted-foreground">
                       · {p.closingAt ? 'closes' : 'sale ends'} {formatDateTime(p.closingAt ?? p.biddingEndsAt)}
@@ -477,7 +490,7 @@ export default function EditLotPage() {
             <div>
               <dt className="text-xs uppercase tracking-wide text-muted-foreground">Current bid</dt>
               <dd className="mt-0.5 font-medium">
-                {lot.bidCount > 0 ? formatCurrency(lot.currentBidAmount) : '—'}
+                {lot.bidCount > 0 ? formatCurrencyWithCents(lot.currentBidAmount) : '—'}
                 <span className="ml-1.5 text-xs font-normal text-muted-foreground">
                   {lot.bidCount} bid{lot.bidCount === 1 ? '' : 's'}
                 </span>
@@ -510,8 +523,8 @@ export default function EditLotPage() {
                   <dd className="mt-0.5 flex flex-wrap items-center gap-1.5">
                     {lot.invoice ? (
                       <>
-                        <Link href="/admin/invoices" className="font-medium hover:underline">{lot.invoice.invoiceNumber}</Link>
-                        <Badge className={invoiceStatusColors[lot.invoice.status] || ''}>{lot.invoice.status}</Badge>
+                        <Link href={`/admin/invoices?q=${encodeURIComponent(lot.invoice.invoiceNumber)}`} className="font-medium hover:underline">{lot.invoice.invoiceNumber}</Link>
+                        <Badge className={statusBadge(INVOICE_STATUS, lot.invoice.status).className}>{statusBadge(INVOICE_STATUS, lot.invoice.status).label}</Badge>
                       </>
                     ) : (
                       <span className="text-muted-foreground">No invoice yet</span>

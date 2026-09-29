@@ -8,7 +8,7 @@ interface Props {
   /** Microsite slug — attributes the call to this city, like `microsite_lead`. */
   site: string;
   /** Where on the page the number was tapped. */
-  placement: 'header' | 'hero' | 'section' | 'faq' | 'footer' | 'sticky';
+  placement: 'header' | 'hero' | 'section' | 'faq' | 'footer' | 'sticky' | 'confirmation';
   className?: string;
   tabIndex?: number;
   children: ReactNode;

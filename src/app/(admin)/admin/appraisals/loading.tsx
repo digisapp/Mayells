@@ -14,7 +14,7 @@ export default function AppraisalsLoading() {
 
       <div className="flex flex-wrap gap-2 mb-6">
         {Array.from({ length: 7 }).map((_, i) => (
-          <Skeleton key={i} className="h-6 w-20 rounded-full" />
+          <Skeleton key={i} className="h-[30px] w-24 rounded-md" />
         ))}
       </div>
 

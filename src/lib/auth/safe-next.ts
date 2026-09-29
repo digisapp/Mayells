@@ -16,3 +16,13 @@ export function safeNext(next?: string): string {
   }
   return next;
 }
+
+/**
+ * `?next=` for the admin sign-in pages: a safeNext() path that stays inside
+ * the admin and never points back at the login pages; otherwise '/admin'.
+ * Shared by the middleware and the admin sign-in forms so both apply one rule.
+ */
+export function safeAdminNext(raw: string | null | undefined): string {
+  const next = safeNext(raw ?? undefined);
+  return /^\/admin(?:[/?#]|$)/.test(next) && !next.startsWith('/admin/login') ? next : '/admin';
+}

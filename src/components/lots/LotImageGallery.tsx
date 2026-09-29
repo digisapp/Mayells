@@ -116,7 +116,8 @@ export function LotImageGallery({ images, heroClassName = 'rounded-lg' }: LotIma
 
         {count > 1 && (
           <>
-            <span className="absolute bottom-3 right-3 rounded-full bg-black/50 px-2.5 py-1 text-xs font-medium text-white tabular-nums pointer-events-none">
+            {/* Solid chips: a translucent one disappears over pale photographs. */}
+            <span className="absolute bottom-3 right-3 rounded-full bg-charcoal px-2.5 py-1 text-xs font-medium text-white tabular-nums pointer-events-none">
               {index + 1} / {count}
             </span>
             {/* Desktop chevrons — phones swipe natively */}
@@ -125,7 +126,7 @@ export function LotImageGallery({ images, heroClassName = 'rounded-lg' }: LotIma
               onClick={() => goTo(Math.max(0, index - 1))}
               aria-label="Previous image"
               disabled={index === 0}
-              className="hidden sm:flex absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-background/80 shadow-sm transition-opacity hover:bg-background disabled:opacity-0"
+              className="hidden sm:flex absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background shadow-sm transition-opacity hover:bg-secondary disabled:opacity-0"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -134,7 +135,7 @@ export function LotImageGallery({ images, heroClassName = 'rounded-lg' }: LotIma
               onClick={() => goTo(Math.min(count - 1, index + 1))}
               aria-label="Next image"
               disabled={index === count - 1}
-              className="hidden sm:flex absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full bg-background/80 shadow-sm transition-opacity hover:bg-background disabled:opacity-0"
+              className="hidden sm:flex absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-background shadow-sm transition-opacity hover:bg-secondary disabled:opacity-0"
             >
               <ChevronRight className="h-5 w-5" />
             </button>

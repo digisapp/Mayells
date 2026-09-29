@@ -22,6 +22,13 @@ interface AuctionCountdownProps {
    * estimate over-reads by the network and hydration delay.
    */
   clockOffsetMs?: number | null;
+  /** compact only: false drops the clock icon, for a countdown set inside a sentence. */
+  showIcon?: boolean;
+  /** compact only: text around the running time, e.g. "(in " and ")". Not shown once expired. */
+  prefix?: string;
+  suffix?: string;
+  /** compact only: what to show at zero instead of "Closing" (prefix/suffix are dropped). */
+  expiredLabel?: string;
 }
 
 function getTimeRemaining(endTime: Date, nowMs: number) {
@@ -37,7 +44,18 @@ function getTimeRemaining(endTime: Date, nowMs: number) {
   };
 }
 
-export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inline', serverNow, clockOffsetMs }: AuctionCountdownProps) {
+export function AuctionCountdown({
+  endsAt,
+  onExpired,
+  className,
+  variant = 'inline',
+  serverNow,
+  clockOffsetMs,
+  showIcon = true,
+  prefix,
+  suffix,
+  expiredLabel = 'Closing',
+}: AuctionCountdownProps) {
   // Initialized to null and computed after mount: calling Date.now() during
   // render would produce different output on server vs client (hydration mismatch).
   const [time, setTime] = useState<ReturnType<typeof getTimeRemaining> | null>(null);
@@ -99,7 +117,16 @@ export function AuctionCountdown({ endsAt, onExpired, className, variant = 'inli
   }, [endsAtMs, serverNow, clockOffsetMs]);
 
   if (variant === 'compact') {
-    return <CompactCountdown time={time} className={className} />;
+    return (
+      <CompactCountdown
+        time={time}
+        className={className}
+        showIcon={showIcon}
+        prefix={prefix}
+        suffix={suffix}
+        expiredLabel={expiredLabel}
+      />
+    );
   }
 
   if (!time) {
@@ -163,9 +190,23 @@ function TimeUnit({ value, label, urgencyColor }: { value: number; label: string
   );
 }
 
-function CompactCountdown({ time, className }: { time: ReturnType<typeof getTimeRemaining> | null; className?: string }) {
+function CompactCountdown({
+  time,
+  className,
+  showIcon,
+  prefix,
+  suffix,
+  expiredLabel,
+}: {
+  time: ReturnType<typeof getTimeRemaining> | null;
+  className?: string;
+  showIcon: boolean;
+  prefix?: string;
+  suffix?: string;
+  expiredLabel: string;
+}) {
   if (time && time.total <= 0) {
-    return <span className={`text-muted-foreground ${className ?? ''}`}>Closing</span>;
+    return <span className={`text-muted-foreground ${className ?? ''}`}>{expiredLabel}</span>;
   }
   const pad = (n: number) => n.toString().padStart(2, '0');
   const isUrgent = !!time && time.total < 5 * 60 * 1000;
@@ -179,12 +220,16 @@ function CompactCountdown({ time, className }: { time: ReturnType<typeof getTime
         : `${pad(time.minutes)}:${pad(time.seconds)}`;
   return (
     <span
-      className={`inline-flex items-center gap-1 tabular-nums font-medium ${
+      // Without the icon it is plain inline text (a flex gap would split "(in " from the time).
+      className={`${showIcon ? 'inline-flex items-center gap-1' : 'whitespace-nowrap'} tabular-nums font-medium ${
         isUrgent ? 'text-red-500' : isWarning ? 'text-amber-600' : 'text-foreground'
       } ${className ?? ''}`}
     >
-      <Clock className="h-3 w-3 shrink-0" aria-hidden />
+      {showIcon && <Clock className="h-3 w-3 shrink-0" aria-hidden />}
+      {/* The surrounding words stay quiet; only the time takes the urgency colour. */}
+      {prefix && <span className="font-normal text-muted-foreground">{prefix}</span>}
       <span>{label}</span>
+      {suffix && <span className="font-normal text-muted-foreground">{suffix}</span>}
     </span>
   );
 }

@@ -2,7 +2,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export default function AuctionLotLoading() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12 sm:pt-8">
+      {/* Breadcrumb + lot pager */}
+      <div className="mb-6 sm:mb-8 flex h-6 items-center justify-between gap-6">
+        <Skeleton className="h-3.5 w-56" />
+        <Skeleton className="h-3.5 w-28" />
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
         {/* Images + title */}
         <div className="lg:col-span-2 space-y-8">

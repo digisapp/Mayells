@@ -77,7 +77,7 @@ export function AccountMenu({ onSignedOut }: { onSignedOut: () => void }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" sideOffset={8} className="w-64 rounded-xl p-1.5 shadow-luxury">
         <DropdownMenuLabel className="px-3 py-2.5 font-normal">
-          <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          <span className="block text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Signed in
           </span>
           <span className="mt-1 block truncate text-[14px] font-medium text-foreground">

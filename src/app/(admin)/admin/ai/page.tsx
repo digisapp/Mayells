@@ -24,10 +24,12 @@ export default function AdminAIPage() {
           <TabsTrigger value="authenticate" className="gap-2"><Shield className="h-4 w-4" /> Authenticate</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="catalog"><CatalogTab /></TabsContent>
-        <TabsContent value="appraise"><AppraiseTab /></TabsContent>
-        <TabsContent value="search"><SearchTab /></TabsContent>
-        <TabsContent value="authenticate"><AuthenticateTab /></TabsContent>
+        {/* forceMount keeps every tab's inputs and results when switching
+            between them; inactive panels are only hidden. */}
+        <TabsContent value="catalog" forceMount className="data-[state=inactive]:hidden"><CatalogTab /></TabsContent>
+        <TabsContent value="appraise" forceMount className="data-[state=inactive]:hidden"><AppraiseTab /></TabsContent>
+        <TabsContent value="search" forceMount className="data-[state=inactive]:hidden"><SearchTab /></TabsContent>
+        <TabsContent value="authenticate" forceMount className="data-[state=inactive]:hidden"><AuthenticateTab /></TabsContent>
       </Tabs>
     </div>
   );

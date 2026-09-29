@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ExternalLink, Gavel } from 'lucide-react';
 import { formatCurrency } from '@/types';
+import { formatEstimate } from '@/lib/format/estimate';
 import { Button } from '@/components/ui/button';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { BidForm } from '@/components/lots/BidForm';
@@ -31,7 +32,27 @@ interface LiveLotPanelProps {
   externalBidUrl?: string | null;
   /** Shown when the lot can't be bid on anywhere. */
   unavailableNote?: string | null;
+  /** The lot row's status at render; polls refresh it while biddable. */
+  lotStatus?: string;
+  /** Recorded hammer price, shown once the lot is sold. */
+  hammerPrice?: number | null;
+  /** Bidding is over (sold, unsold or past its close), as opposed to not yet open. */
+  biddingClosed?: boolean;
+  /**
+   * The sale runs on LiveAuctioneers and is still in progress: passing the
+   * scheduled close time doesn't end it, only a sold/unsold result does.
+   */
+  externalSaleInProgress?: boolean;
+  /**
+   * When bidding opens, for a lot whose sale hasn't started — already
+   * formatted by the server ("Thu, November 5 at 7:00 PM ET"), so the
+   * hydrated text is byte-for-byte the server's.
+   */
+  opensAtLabel?: string | null;
 }
+
+// The one small-caps label style in the panel and its phone bar.
+const LABEL = 'text-xs uppercase tracking-wider text-muted-foreground';
 
 // Polling is the fallback; while the realtime channel is connected every bid
 // arrives as a push and the poll only reconciles (clock drift, missed events).
@@ -68,6 +89,11 @@ export function LiveLotPanel({
   buyerPremiumPercent,
   externalBidUrl,
   unavailableNote,
+  lotStatus: initialLotStatus,
+  hammerPrice = null,
+  biddingClosed = false,
+  externalSaleInProgress = false,
+  opensAtLabel = null,
 }: LiveLotPanelProps) {
   const [currentBidAmount, setCurrentBidAmount] = useState(initialCurrentBidAmount);
   const [bidCount, setBidCount] = useState(initialBidCount);
@@ -75,6 +101,8 @@ export function LiveLotPanel({
   const [isHighBidder, setIsHighBidder] = useState(initialIsHighBidder);
   const [closingAt, setClosingAt] = useState(initialClosingAt);
   const [isBiddable, setIsBiddable] = useState(initialIsBiddable);
+  const [lotStatus, setLotStatus] = useState(initialLotStatus);
+  const [closed, setClosed] = useState(biddingClosed);
   const [flash, setFlash] = useState(false);
   // Server-minus-device clock offset from the fastest poll so far (see poll).
   const [clockOffsetMs, setClockOffsetMs] = useState<number | null>(null);
@@ -122,11 +150,23 @@ export function LiveLotPanel({
       }
       if (typeof data.isHighBidder === 'boolean') setIsHighBidder(data.isHighBidder);
       if (data.closingAt !== undefined) setClosingAt(data.closingAt);
-      if (typeof data.isBiddable === 'boolean') setIsBiddable(data.isBiddable);
+      if (typeof data.lotStatus === 'string') setLotStatus(data.lotStatus);
+      if (typeof data.isBiddable === 'boolean') {
+        setIsBiddable(data.isBiddable);
+        // Stopped because the clock ran out or the lot settled (not paused):
+        // the panel switches from "Current Bid" to its closed state.
+        const ranOut =
+          typeof data.closingAt === 'string' &&
+          typeof data.serverNow === 'number' &&
+          Date.parse(data.closingAt) <= data.serverNow;
+        if (!data.isBiddable && ((ranOut && !externalSaleInProgress) || data.lotStatus === 'sold' || data.lotStatus === 'unsold')) {
+          setClosed(true);
+        }
+      }
     } catch {
       // transient network error — keep the last known values
     }
-  }, [lotRef]);
+  }, [lotRef, externalSaleInProgress]);
 
   // After the user places a bid, reflect it immediately, then poll to reconcile
   // (e.g. a proxy war may have pushed the price higher server-side).
@@ -203,9 +243,17 @@ export function LiveLotPanel({
   }, [isBiddable, poll, pollMs]);
 
   const hasBid = currentBidAmount > 0;
+  const ended = !isBiddable && (closed || lotStatus === 'sold');
+  // Only a recorded hammer price is shown as a result — never the last bid,
+  // which may not have met the reserve.
+  const soldFor = ended && lotStatus === 'sold' && hammerPrice ? hammerPrice : null;
+  const upcoming = !isBiddable && !ended && !!opensAtLabel;
+  const estimateText = formatEstimate(estimateLow, estimateHigh);
+  // After a label word ("Estimate up to $2,000"); the standalone figure keeps "Up to".
+  const estimateInline = estimateText?.replace(/^Up to/, 'up to') ?? null;
   const barAction: 'bid' | 'signin' | 'external' | null = isBiddable
     ? signedIn ? 'bid' : 'signin'
-    : externalBidUrl ? 'external' : null;
+    : externalBidUrl && !ended ? 'external' : null;
   const signInHref = `/login?next=${encodeURIComponent(`/lots/${lotRef}`)}`;
 
   // Bar: bring the bid form up and put the cursor in the amount field. The
@@ -218,8 +266,8 @@ export function LiveLotPanel({
 
   const barPrice = hasBid
     ? { label: 'Current bid', value: formatCurrency(currentBidAmount) }
-    : estimateLow && estimateHigh
-      ? { label: 'Estimate', value: `${formatCurrency(estimateLow)}–${formatCurrency(estimateHigh)}` }
+    : estimateText
+      ? { label: 'Estimate', value: estimateText }
       : startingBid > 0
         ? { label: 'Opening bid', value: formatCurrency(startingBid) }
         : null;
@@ -227,26 +275,56 @@ export function LiveLotPanel({
 
   return (
     <div ref={panelRef}>
-      {hasBid ? (
+      {/* Price block: the result once it's over, else the live bid, else the
+          estimate, else the opening bid. The estimate stays as a reference line. */}
+      {soldFor ? (
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Current Bid</p>
+          <p className={`${LABEL} mb-1`}>Sold for</p>
+          <p className="font-display text-display-md">{formatCurrency(soldFor)}</p>
+          <p className="text-sm text-muted-foreground mt-1">Hammer price, before buyer&apos;s premium</p>
+          {estimateInline && <p className="text-sm text-muted-foreground">Estimate {estimateInline}</p>}
+        </div>
+      ) : ended ? (
+        <div>
+          <p className="font-display text-display-sm">Bidding closed</p>
+          {estimateInline && <p className="text-sm text-muted-foreground mt-1">Estimate {estimateInline}</p>}
+        </div>
+      ) : hasBid ? (
+        <div>
+          <p className={`${LABEL} mb-1`}>Current Bid</p>
           <p className={`font-display text-display-md transition-colors duration-500 ${flash ? 'text-champagne' : ''}`}>
             {formatCurrency(currentBidAmount)}
           </p>
-          <p className="text-sm text-muted-foreground mt-1">{bidCount} bid{bidCount !== 1 ? 's' : ''}</p>
-        </div>
-      ) : estimateLow && estimateHigh ? (
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Estimate</p>
-          <p className="font-display text-display-md">
-            {formatCurrency(estimateLow)} — {formatCurrency(estimateHigh)}
+          <p className="text-sm text-muted-foreground mt-1">
+            {bidCount} bid{bidCount !== 1 ? 's' : ''}
+            {estimateInline && <> · Estimate {estimateInline}</>}
           </p>
+        </div>
+      ) : estimateText ? (
+        <div>
+          <p className={`${LABEL} mb-1`}>Estimate</p>
+          <p className="font-display text-display-md">{estimateText}</p>
+          {startingBid > 0 && (
+            <p className="text-sm text-muted-foreground mt-1">Opening bid {formatCurrency(startingBid)}</p>
+          )}
+        </div>
+      ) : startingBid > 0 ? (
+        <div>
+          <p className={`${LABEL} mb-1`}>Opening Bid</p>
+          <p className="font-display text-display-md">{formatCurrency(startingBid)}</p>
         </div>
       ) : null}
 
+      {upcoming && opensAtLabel && (
+        <div className="mt-4">
+          <p className={`${LABEL} mb-1`}>Bidding opens</p>
+          <p className="font-medium">{opensAtLabel}</p>
+        </div>
+      )}
+
       {isBiddable && closingAt && (
         <div className="mt-4 flex items-center gap-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Closes in</span>
+          <span className={LABEL}>Closes in</span>
           <AuctionCountdown
             endsAt={new Date(closingAt)}
             serverNow={serverNow}
@@ -279,8 +357,9 @@ export function LiveLotPanel({
       )}
 
       {/* When the lot is biddable on-site, the bid form above is the primary
-          CTA. Otherwise fall back to LiveAuctioneers or an informational note. */}
-      {!isBiddable && (
+          CTA. Otherwise fall back to LiveAuctioneers or an informational note;
+          once bidding is over the price block says so and nothing is offered. */}
+      {!isBiddable && !ended && (
         externalBidUrl ? (
           <div ref={setCtaEl} className="mt-5">
             <Button asChild variant="champagne" size="xl" className="w-full gap-2">
@@ -290,6 +369,12 @@ export function LiveLotPanel({
               </a>
             </Button>
           </div>
+        ) : upcoming ? (
+          // The watchlist email goes out as a lot nears its close (see
+          // lib/bidding/ending-soon.ts); there is no "bidding opened" email.
+          <p className="mt-5 text-sm text-muted-foreground">
+            Watch this lot to get an email before it closes.
+          </p>
         ) : unavailableNote ? (
           <p className="mt-5 text-sm text-muted-foreground">{unavailableNote}</p>
         ) : null
@@ -310,7 +395,7 @@ export function LiveLotPanel({
       <MobileActionBar target={ctaEl} enabled={barAction !== null} label="Bid on this lot">
         <div className="min-w-0 flex-1">
           {/* Label row carries the clock so the price gets the full width. */}
-          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+          <div className={`flex items-center gap-2 ${LABEL}`}>
             <span className="min-w-0 truncate">
               {barPrice?.label ?? 'Lot'}
               {bidsText && <> · {bidsText}</>}

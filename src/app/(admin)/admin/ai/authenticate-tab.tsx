@@ -55,16 +55,16 @@ export default function AuthenticateTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Image URLs (one per line)</Label>
-            <Textarea rows={3} placeholder="https://example.com/front.jpg&#10;https://example.com/back.jpg&#10;https://example.com/detail.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
+            <Label htmlFor="auth-image-urls">Image URLs (one per line)</Label>
+            <Textarea id="auth-image-urls" rows={3} placeholder="https://example.com/front.jpg&#10;https://example.com/back.jpg&#10;https://example.com/detail.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
             <div className="flex items-center gap-2 pt-1">
               <UploadImagesButton onUploaded={appendUrls} disabled={loading} />
               <span className="text-xs text-muted-foreground">Uploaded photos are added to the list above.</span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Title</Label><Input placeholder="Item title" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
-            <div className="space-y-2"><Label>Attributed to</Label><Input placeholder="Artist/maker" value={artist} onChange={(e) => setArtist(e.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="auth-title">Title</Label><Input id="auth-title" placeholder="Item title" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="auth-artist">Attributed to</Label><Input id="auth-artist" placeholder="Artist/maker" value={artist} onChange={(e) => setArtist(e.target.value)} /></div>
           </div>
           <Button onClick={handleAuth} disabled={loading} className="bg-champagne text-charcoal hover:bg-champagne/90">
             {loading ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Analyzing...</> : <><Shield className="h-4 w-4 mr-2" />Run authentication</>}

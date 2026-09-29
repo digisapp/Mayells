@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { track } from '@vercel/analytics';
 import { sendMicrositeEvent } from '@/lib/microsites/beacon';
 import { toast } from 'sonner';
-import { Camera, CheckCircle, Loader2, X } from 'lucide-react';
+import { Camera, CheckCircle, Loader2, Phone, X } from 'lucide-react';
 import { MAX_PHOTOS } from '@/lib/upload/direct-upload';
 import {
   usePhotoAttachments,
@@ -16,6 +16,7 @@ import {
 } from '@/lib/upload/use-photo-attachments';
 import { keepScreenAwake } from '@/lib/upload/wake-lock';
 import { revealIfHidden } from '@/lib/upload/reveal-if-hidden';
+import { CallLink } from './CallLink';
 
 // text-base (16px) is load-bearing, not cosmetic: iOS Safari zooms the
 // viewport when a focused input's font-size is under 16px, which on a lead
@@ -30,11 +31,14 @@ interface Props {
   /** Microsite slug — attributes the lead to this city in the prospects funnel. */
   site: string;
   city: string;
+  /** The city's tracked number, offered again on the confirmation. */
+  phone: string;
+  phoneHref: string;
   /** Distinguishes the hero form from the repeat form for analytics. */
   placement: 'hero' | 'section';
 }
 
-export function CityConsignForm({ site, city, placement }: Props) {
+export function CityConsignForm({ site, city, phone, phoneHref, placement }: Props) {
   const uid = useId();
   const [form, setForm] = useState({ name: '', email: '', phone: '', items: '' });
   const [submitted, setSubmitted] = useState(false);
@@ -42,7 +46,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
   const [stage, setStage] = useState<'uploading' | 'submitting' | null>(null);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
   const [photoShortfall, setPhotoShortfall] = useState<PhotoUploadResult | null>(null);
-  const { photos, preparing, add, remove, upload, submissionId } = usePhotoAttachments();
+  const { photos, preparing, add, remove, clear, upload, submissionId } = usePhotoAttachments();
   // Honeypot. Real visitors never see the field; bots that fill every input
   // do, and the server drops those silently. Exact-match domains attract
   // form spam, and every fake lead lands in the admin prospects funnel.
@@ -50,11 +54,22 @@ export function CityConsignForm({ site, city, placement }: Props) {
   const started = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const confirmationRef = useRef<HTMLDivElement>(null);
+  const confirmationHeadingRef = useRef<HTMLHeadingElement>(null);
+  const itemsRef = useRef<HTMLTextAreaElement>(null);
+  const returningFromConfirmation = useRef(false);
 
   // The confirmation is much shorter than the form, so on a phone it would
   // land above the viewport and leave the seller looking at the next section.
+  // Focus moves to its heading so screen readers announce it (the button
+  // that had focus is gone); back on the form, to the description.
   useEffect(() => {
-    if (submitted) revealIfHidden(confirmationRef.current);
+    if (submitted) {
+      revealIfHidden(confirmationRef.current);
+      confirmationHeadingRef.current?.focus({ preventScroll: true });
+    } else if (returningFromConfirmation.current) {
+      returningFromConfirmation.current = false;
+      itemsRef.current?.focus();
+    }
   }, [submitted]);
 
   // First interaction with any field, once per form — gives the funnel a
@@ -126,16 +141,37 @@ export function CityConsignForm({ site, city, placement }: Props) {
     }
   };
 
+  // A second request (another property, a relative's estate) keeps the
+  // contact details and clears the description and photos, with a new
+  // submission id so it isn't taken for a retry of the first.
+  const startAnother = () => {
+    returningFromConfirmation.current = true;
+    setSubmitted(false);
+    setPhotoShortfall(null);
+    setForm((f) => ({ ...f, items: '' }));
+    clear();
+    started.current = false;
+  };
+
   if (submitted) {
     return (
-      <div ref={confirmationRef} className="scroll-mt-20 rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-8">
+      <div
+        ref={confirmationRef}
+        className="scroll-mt-20 rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-sm sm:p-8"
+      >
         <div className="flex items-start gap-3">
-          <CheckCircle className="mt-0.5 h-6 w-6 shrink-0" />
+          <CheckCircle className="mt-0.5 h-6 w-6 shrink-0 text-champagne-deep" aria-hidden />
           <div>
-            <p className="font-display text-2xl tracking-tight">Request received</p>
+            <h2
+              ref={confirmationHeadingRef}
+              tabIndex={-1}
+              className="font-display text-2xl tracking-tight outline-none"
+            >
+              Request received
+            </h2>
             <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
-              A specialist will call you about your {city} estate. If there is a deadline, call us
-              directly and say so — we will work to it.
+              A specialist will call you about your {city} estate within one business day. If there
+              is a deadline, call us directly and say so — we will work to it.
             </p>
           </div>
         </div>
@@ -152,6 +188,24 @@ export function CityConsignForm({ site, city, placement }: Props) {
             </p>
           </div>
         )}
+        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
+          <CallLink
+            href={phoneHref}
+            site={site}
+            placement="confirmation"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-champagne px-5 text-[15px] font-semibold text-charcoal transition-colors hover:bg-champagne/90"
+          >
+            <Phone className="h-4 w-4" aria-hidden />
+            <span className="tabular-nums">{phone}</span>
+          </CallLink>
+          <button
+            type="button"
+            onClick={startAnother}
+            className="inline-flex h-12 items-center justify-center rounded-lg border border-border px-5 text-[15px] font-medium transition-colors hover:bg-secondary"
+          >
+            Send another request
+          </button>
+        </div>
       </div>
     );
   }
@@ -168,7 +222,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
       onFocusCapture={handleFormStart}
       className="relative rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-7"
     >
-      <p className="font-display text-xl tracking-tight sm:text-2xl">Get a free appraisal</p>
+      <h2 className="font-display text-xl tracking-tight sm:text-2xl">Get a free appraisal</h2>
       <p className="mt-1.5 text-[14px] leading-relaxed text-muted-foreground">
         No charge, no obligation. We will tell you what is worth selling and what is not.
       </p>
@@ -211,7 +265,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
             What do you have?
           </label>
           <textarea
-            id={`${uid}-items`} rows={3} maxLength={5000}
+            ref={itemsRef} id={`${uid}-items`} rows={3} maxLength={5000}
             placeholder={`A house in ${city}, a single piece, a collection — and any deadline we should know about.`}
             value={form.items} onChange={(e) => setForm({ ...form, items: e.target.value })}
             className={`${FIELD} h-auto resize-y py-3 leading-relaxed`}
@@ -267,7 +321,7 @@ export function CityConsignForm({ site, city, placement }: Props) {
           // w-full (not flex-1) while the row is stacked: in a column flex
           // container `flex-basis:0%` from flex-1 overrides h-12 on the main
           // axis and collapses the button to its line-height.
-          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-6 text-[15px] font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60 sm:w-auto sm:flex-1"
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-champagne px-6 text-[15px] font-semibold text-charcoal transition-colors hover:bg-champagne/90 disabled:opacity-60 sm:w-auto sm:flex-1"
         >
           {(submitting || preparing) && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
           {busyLabel ?? 'Request my free appraisal'}

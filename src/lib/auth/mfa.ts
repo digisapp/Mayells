@@ -2,10 +2,11 @@
  * Admin two-factor (TOTP) gating — pure helpers shared by the middleware, the
  * challenge page and the enrollment page.
  *
- * Model: MFA is opt-in per account (enrolled from /admin/security). Once an
- * account has a VERIFIED TOTP factor, every admin page and every API call
- * from that account requires an `aal2` session, i.e. the code was entered
- * after password login. Accounts with no verified factor are unaffected.
+ * Model: MFA is opt-in per account (enrolled from the Security tab of
+ * /admin/settings). Once an account has a VERIFIED TOTP factor, every admin
+ * page and every API call from that account requires an `aal2` session, i.e.
+ * the code was entered after password login. Accounts with no verified
+ * factor are unaffected.
  */
 
 export type AssuranceLevel = 'aal1' | 'aal2' | (string & {});

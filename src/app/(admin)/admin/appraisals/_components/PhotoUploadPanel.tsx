@@ -158,7 +158,7 @@ export function PhotoUploadPanel({ visitId, onComplete, ctaLabel = 'Upload & Sta
                 <button
                   type="button"
                   onClick={() => removePicked(i)}
-                  className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                  className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
                   aria-label={`Remove ${p.file.name}`}
                 >
                   <X className="h-3 w-3" />

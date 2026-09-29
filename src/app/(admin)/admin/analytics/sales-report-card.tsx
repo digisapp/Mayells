@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { formatShortDate } from '@/lib/format/dates';
 import { fmt } from './fmt';
 
 export interface SaleRow {
@@ -101,7 +102,7 @@ export function SalesReportCard({ sales }: { sales: SaleRow[] }) {
                       </Link>
                       {s.ended_at && (
                         <p className="text-xs text-muted-foreground">
-                          {new Date(s.ended_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                          {formatShortDate(s.ended_at)}
                         </p>
                       )}
                     </td>

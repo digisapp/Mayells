@@ -7,8 +7,16 @@ import { hasVerifiedTotpFactor, needsMfaChallenge, isMfaExemptPath, MFA_CHALLENG
 import { profileCacheKey, PROFILE_CACHE_SECONDS } from '@/lib/auth/profile-cache';
 import { getMicrositeByHost } from '@/lib/microsites/config';
 import { supabaseAnonKey, supabaseUrl } from '@/lib/supabase/env';
+import { safeAdminNext } from '@/lib/auth/safe-next';
 
 const adminAuthRoutes = ['/admin/login'];
+
+/** Redirect to an admin auth page, carrying where the admin was headed. */
+function redirectWithNext(request: NextRequest, path: string, next: string) {
+  const url = new URL(path, request.url);
+  if (next !== '/admin') url.searchParams.set('next', next);
+  return NextResponse.redirect(url);
+}
 
 // `mfa`: the account has a verified TOTP factor. Cached alongside the role so
 // enforcing two-factor on API calls costs one Redis GET, not an Auth round
@@ -201,33 +209,37 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   const isChallengePage = pathname === MFA_CHALLENGE_PATH;
 
-  // Handle /admin/login and the MFA challenge page.
+  // Handle /admin/login and the MFA challenge page. `?next=` (the admin page
+  // that sent them here) rides along through both steps.
   if (adminAuthRoutes.some((route) => pathname.startsWith(route))) {
+    const next = safeAdminNext(request.nextUrl.searchParams.get('next'));
     if (!user) {
-      return isChallengePage ? NextResponse.redirect(new URL('/admin/login', request.url)) : response;
+      return isChallengePage ? redirectWithNext(request, '/admin/login', next) : response;
     }
     const profile = await getUserProfile(user.id);
     if (!isAdminUser(profile)) {
-      return isChallengePage ? NextResponse.redirect(new URL('/admin/login', request.url)) : response;
+      return isChallengePage ? redirectWithNext(request, '/admin/login', next) : response;
     }
     const mustChallenge = needsMfaChallenge({
       mfaEnrolled: hasVerifiedTotpFactor(user.factors) || profile?.mfa === true,
       aal: await currentAal(supabase),
     });
     if (mustChallenge) {
-      return isChallengePage ? response : NextResponse.redirect(new URL(MFA_CHALLENGE_PATH, request.url));
+      return isChallengePage ? response : redirectWithNext(request, MFA_CHALLENGE_PATH, next);
     }
     // Fully signed in — nothing to do on the auth pages.
-    return NextResponse.redirect(new URL('/admin', request.url));
+    return NextResponse.redirect(new URL(next, request.url));
   }
 
-  // Admin routes: require auth + admin role
+  // Admin routes: require auth + admin role. Remember the page (with its
+  // query) so sign-in returns there.
+  const requested = `${pathname}${request.nextUrl.search}`;
   if (!user) {
-    return NextResponse.redirect(new URL('/admin/login', request.url));
+    return redirectWithNext(request, '/admin/login', requested);
   }
   const profile = await getUserProfile(user.id);
   if (!isAdminUser(profile)) {
-    return NextResponse.redirect(new URL('/admin/login', request.url));
+    return redirectWithNext(request, '/admin/login', requested);
   }
 
   // Accounts that enrolled a TOTP factor must present the code once per
@@ -238,9 +250,7 @@ export async function middleware(request: NextRequest) {
     aal: await currentAal(supabase),
   });
   if (mustChallenge) {
-    const challenge = new URL(MFA_CHALLENGE_PATH, request.url);
-    challenge.searchParams.set('next', pathname);
-    return NextResponse.redirect(challenge);
+    return redirectWithNext(request, MFA_CHALLENGE_PATH, requested);
   }
   return response;
 }

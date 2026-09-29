@@ -358,7 +358,7 @@ export function BidForm({
       {verifyPrompt && (
         <div className="rounded-lg border border-champagne/40 bg-champagne/5 p-4 space-y-3">
           <div className="flex items-start gap-2">
-            <ShieldCheck className="h-5 w-5 text-champagne shrink-0 mt-0.5" />
+            <ShieldCheck className="h-5 w-5 text-champagne-deep shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-medium">Verification required</p>
               <p className="text-xs text-muted-foreground mt-0.5">{verifyPrompt.reason}</p>
@@ -370,7 +370,7 @@ export function BidForm({
                 {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                 Verify my identity
               </Button>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 For high-value lots we confirm your identity with a quick government-ID check, handled securely by Stripe. Takes about a minute.
               </p>
             </>
@@ -380,7 +380,7 @@ export function BidForm({
                 {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                 Add a card to verify
               </Button>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 We authorize your card to confirm you&apos;re a genuine bidder. You are not charged until you win.
               </p>
             </>
@@ -489,11 +489,11 @@ export function BidForm({
         {success && <p className="text-sm text-green-600 dark:text-green-500">{success}</p>}
       </div>
 
-      <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <span>Minimum next bid: {formatCurrency(minimum)}. Bids are binding.</span>
         {paddleNumber && (
           <span className="inline-flex items-center gap-1 shrink-0">
-            <ShieldCheck className="h-3 w-3 text-champagne" /> Paddle #{paddleNumber}
+            <ShieldCheck className="h-3 w-3 text-champagne-deep" /> Paddle #{paddleNumber}
           </span>
         )}
       </div>

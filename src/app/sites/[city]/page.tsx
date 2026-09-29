@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { ArrowRight, Check, Phone } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { formatCurrency } from '@/types';
+import { formatEstimate } from '@/lib/format/estimate';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
 import { getMicrositeBySlug, micrositeOgImagePath, micrositePhone, type Microsite } from '@/lib/microsites/config';
 import { getMicrositeData } from '@/lib/microsites/data';
@@ -77,7 +78,7 @@ function steps(site: Microsite) {
 function Eyebrow({ children, dark = false }: { children: React.ReactNode; dark?: boolean }) {
   return (
     <p
-      className={`text-[11.5px] font-semibold uppercase tracking-[0.2em] ${
+      className={`text-xs font-semibold uppercase tracking-[0.2em] ${
         dark ? 'text-champagne/90' : 'text-champagne-deep'
       }`}
     >
@@ -188,14 +189,14 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
             </div>
 
             <div data-lead-form className="shadow-luxury-hover rounded-2xl">
-              <CityConsignForm site={site.slug} city={site.city} placement="hero" />
+              <CityConsignForm site={site.slug} city={site.city} phone={phone.display} phoneHref={phone.href} placement="hero" />
             </div>
           </div>
         </div>
 
         {/* Attribution stays visible at every size: the Delray photograph is
             CC BY, and a credit that only desktop sees is not a credit. */}
-        <p className="absolute bottom-1.5 right-4 max-w-[80vw] truncate text-[11px] text-white/60">
+        <p className="absolute bottom-1.5 right-4 max-w-[80vw] truncate text-xs text-white/60">
           {hero.credit}
         </p>
       </section>
@@ -212,7 +213,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
               </p>
             </div>
             <div>
-              <Eyebrow>Neighbourhoods we work in</Eyebrow>
+              <Eyebrow>Neighborhoods we work in</Eyebrow>
               <p className="mt-2 text-[14.5px] leading-relaxed text-muted-foreground">
                 {site.neighborhoods.join(' · ')}
               </p>
@@ -238,47 +239,48 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
 
             {/* Scroll-snap rail on phones, grid from sm up */}
             <ul className="-mx-5 mt-8 flex snap-x snap-mandatory gap-4 overflow-x-auto px-5 pb-2 sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-x-6 sm:gap-y-8 sm:overflow-visible sm:px-0 lg:grid-cols-4">
-              {showcase.lots.map((lot) => (
-                <li key={lot.id} className="w-[68vw] shrink-0 snap-start sm:w-auto">
-                  <a href={`${BUSINESS.url}${lot.href}`} className="group block">
-                    <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border bg-secondary">
-                      {lot.primaryImageUrl ? (
-                        <Image
-                          src={lot.primaryImageUrl}
-                          alt={lot.title}
-                          fill
-                          sizes="(max-width: 640px) 68vw, (max-width: 1024px) 45vw, 23vw"
-                          className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
-                        />
-                      ) : (
-                        <span className="grid h-full place-items-center text-[11px] uppercase tracking-widest text-muted-foreground">
-                          {lot.categoryName ?? 'Lot'}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-3 line-clamp-2 text-[14.5px] font-semibold leading-snug">
-                      {lot.title}
-                    </p>
-                    {(lot.artist || lot.maker || lot.period) && (
-                      <p className="mt-1 line-clamp-1 text-[13px] text-muted-foreground">
-                        {[lot.artist ?? lot.maker, lot.period].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
-                    {lot.hammerPrice != null && (
-                      <>
-                        <p className="mt-2 font-display text-xl tabular-nums tracking-tight">
-                          {formatCurrency(lot.hammerPrice)}
-                        </p>
-                        {lot.estimateLow != null && lot.estimateHigh != null && (
-                          <p className="text-[13px] tabular-nums text-muted-foreground">
-                            est. {formatCurrency(lot.estimateLow)}–{formatCurrency(lot.estimateHigh)}
-                          </p>
+              {showcase.lots.map((lot) => {
+                const estimate = formatEstimate(lot.estimateLow, lot.estimateHigh);
+                return (
+                  <li key={lot.id} className="w-[68vw] shrink-0 snap-start sm:w-auto">
+                    <a href={`${BUSINESS.url}${lot.href}`} className="group block">
+                      <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border bg-secondary">
+                        {lot.primaryImageUrl ? (
+                          <Image
+                            src={lot.primaryImageUrl}
+                            alt={lot.title}
+                            fill
+                            sizes="(max-width: 640px) 68vw, (max-width: 1024px) 45vw, 23vw"
+                            className="object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                          />
+                        ) : (
+                          <span className="grid h-full place-items-center text-xs uppercase tracking-widest text-muted-foreground">
+                            {lot.categoryName ?? 'Lot'}
+                          </span>
                         )}
-                      </>
-                    )}
-                  </a>
-                </li>
-              ))}
+                      </div>
+                      <p className="mt-3 line-clamp-2 text-[14.5px] font-semibold leading-snug">
+                        {lot.title}
+                      </p>
+                      {(lot.artist || lot.maker || lot.period) && (
+                        <p className="mt-1 line-clamp-1 text-[13px] text-muted-foreground">
+                          {[lot.artist ?? lot.maker, lot.period].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                      {lot.hammerPrice != null && (
+                        <>
+                          <p className="mt-2 font-display text-xl tabular-nums tracking-tight">
+                            {formatCurrency(lot.hammerPrice)}
+                          </p>
+                          {estimate && (
+                            <p className="text-[13px] tabular-nums text-muted-foreground">Est. {estimate}</p>
+                          )}
+                        </>
+                      )}
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
 
             <p className="mt-7 text-[13.5px] leading-relaxed text-muted-foreground">
@@ -377,14 +379,16 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
                 href={phone.href}
                 site={site.slug}
                 placement="section"
-                className="mt-7 inline-flex h-12 items-center gap-2.5 rounded-lg bg-primary px-6 text-[16px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+                // Outlined, like the hero's: the form's champagne submit is the
+                // one filled action in this section.
+                className="mt-7 inline-flex h-12 items-center gap-2.5 rounded-lg border-2 border-foreground px-5 text-[16px] font-semibold text-foreground transition-colors hover:bg-foreground hover:text-background"
               >
                 <Phone className="h-4 w-4" />
                 <span className="tabular-nums">{phone.display}</span>
               </CallLink>
             </div>
             <div data-lead-form className="shadow-luxury rounded-2xl">
-              <CityConsignForm site={site.slug} city={site.city} placement="section" />
+              <CityConsignForm site={site.slug} city={site.city} phone={phone.display} phoneHref={phone.href} placement="section" />
             </div>
           </div>
         </div>
@@ -406,7 +410,7 @@ export default async function MicrositePage({ params }: { params: Promise<{ city
           <div className="mt-10 flex flex-wrap items-center gap-3">
             <a
               href="#appraisal"
-              className="inline-flex h-12 items-center gap-2 rounded-lg bg-primary px-6 text-[15px] font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+              className="inline-flex h-12 items-center gap-2 rounded-lg bg-champagne px-6 text-[15px] font-semibold text-charcoal transition-colors hover:bg-champagne/90"
             >
               Request a free appraisal
               <ArrowRight className="h-4 w-4" />

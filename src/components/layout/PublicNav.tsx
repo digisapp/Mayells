@@ -4,7 +4,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Search, Menu, X, Heart, Gavel, Phone, ChevronRight } from 'lucide-react';
+import { Search, Menu, X, Heart, Gavel, Phone, ChevronRight, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BUSINESS } from '@/lib/config';
 import { hasSessionCookie, loadProfile, resetAccountProfile, sessionKey, signInHref } from './account-profile';
@@ -225,10 +225,13 @@ export function PublicNav() {
                 covers the tablet range too. */}
             <nav aria-label="Main navigation" className="hidden lg:flex items-center gap-10">
               {navLinks.map((link) => (
+                // The current section matches the mobile menu: champagne-deep
+                // text, with the hover underline held in place.
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="text-[13px] uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground transition-colors duration-300 relative after:absolute after:bottom-[-4px] after:left-0 after:right-0 after:h-px after:bg-champagne after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-300 after:origin-center"
+                  aria-current={isCurrent(pathname, link.href) ? 'page' : undefined}
+                  className="text-[13px] uppercase tracking-[0.12em] text-muted-foreground hover:text-foreground transition-colors duration-300 relative after:absolute after:bottom-[-4px] after:left-0 after:right-0 after:h-px after:bg-champagne after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-300 after:origin-center aria-[current=page]:text-champagne-deep aria-[current=page]:after:scale-x-100"
                 >
                   {link.label}
                 </Link>
@@ -272,7 +275,8 @@ export function PublicNav() {
                 )}
               </div>
 
-              <Button asChild variant="champagne" size="sm" className="hidden sm:inline-flex text-[13px]">
+              {/* 44px tall on touch sizes; the compact desktop size from lg. */}
+              <Button asChild variant="champagne" size="sm" className="hidden sm:inline-flex h-11 px-4 lg:h-8 lg:px-3 text-[13px]">
                 <Link href="/consign">Sell With Us</Link>
               </Button>
 
@@ -336,6 +340,15 @@ export function PublicNav() {
                   My Watchlist
                 </Link>
               </li>
+              {/* Signed-in only, as in the desktop account menu. */}
+              {account && (
+                <li>
+                  <Link href="/invoices" className="flex min-h-11 items-center gap-2.5 text-[15px] text-muted-foreground transition-colors hover:text-foreground">
+                    <Receipt className="h-4 w-4" aria-hidden />
+                    Invoices
+                  </Link>
+                </li>
+              )}
             </ul>
           </nav>
 

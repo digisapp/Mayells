@@ -4,10 +4,14 @@ export const revalidate = 60;
 
 import { db } from '@/db';
 import { categories, lots } from '@/db/schema';
-import { desc, eq, sql } from 'drizzle-orm';
+import { asc, desc, eq, sql } from 'drizzle-orm';
 import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
 import { LotBrowser } from '@/components/lots/LotBrowser';
-import type { BrowseLot } from '@/components/lots/lot-browser';
+import type { BrowseLot, Department } from '@/components/lots/lot-browser';
+
+// The newest lots are sent to the client for filtering; the true totals come
+// from a separate count so the page never presents the cap as the whole sale.
+const LOT_LIMIT = 48;
 
 export const metadata = {
   title: 'Browse Lots',
@@ -51,45 +55,61 @@ const closesAtMsSql = sql<number | null>`(
 export default async function LotsPage() {
   // Only the fields a card renders (plus what the filter/sort needs): this
   // list is serialized to the client component, so no confidential columns.
-  const rows = await db
-    .select({
-      id: lots.id,
-      slug: lots.slug,
-      title: lots.title,
-      artist: lots.artist,
-      lotNumber: lots.lotNumber,
-      primaryImageUrl: lots.primaryImageUrl,
-      isFeatured: lots.isFeatured,
-      saleType: lots.saleType,
-      status: lots.status,
-      buyNowPrice: lots.buyNowPrice,
-      estimateLow: lots.estimateLow,
-      estimateHigh: lots.estimateHigh,
-      currentBidAmount: lots.currentBidAmount,
-      bidCount: lots.bidCount,
-      createdAt: lots.createdAt,
-      auctionSlug: bestAuctionSlugSql,
-      closesAtMs: closesAtMsSql.mapWith(Number).as('closes_at_ms'),
-      categoryName: categories.name,
-      categorySlug: categories.slug,
-      categorySortOrder: categories.sortOrder,
-    })
-    .from(lots)
-    .innerJoin(categories, eq(lots.categoryId, categories.id))
-    .where(eq(lots.status, 'in_auction'))
-    .orderBy(desc(lots.createdAt))
-    .limit(48);
+  const [rows, departmentRows] = await Promise.all([
+    db
+      .select({
+        id: lots.id,
+        slug: lots.slug,
+        title: lots.title,
+        artist: lots.artist,
+        lotNumber: lots.lotNumber,
+        primaryImageUrl: lots.primaryImageUrl,
+        isFeatured: lots.isFeatured,
+        saleType: lots.saleType,
+        status: lots.status,
+        buyNowPrice: lots.buyNowPrice,
+        estimateLow: lots.estimateLow,
+        estimateHigh: lots.estimateHigh,
+        currentBidAmount: lots.currentBidAmount,
+        bidCount: lots.bidCount,
+        createdAt: lots.createdAt,
+        auctionSlug: bestAuctionSlugSql,
+        closesAtMs: closesAtMsSql.mapWith(Number).as('closes_at_ms'),
+        categoryName: categories.name,
+        categorySlug: categories.slug,
+        categorySortOrder: categories.sortOrder,
+      })
+      .from(lots)
+      .innerJoin(categories, eq(lots.categoryId, categories.id))
+      .where(eq(lots.status, 'in_auction'))
+      .orderBy(desc(lots.createdAt))
+      .limit(LOT_LIMIT),
+    // Every department's full count, including lots beyond the cap.
+    db
+      .select({
+        slug: categories.slug,
+        name: categories.name,
+        count: sql<number>`count(*)`.mapWith(Number),
+      })
+      .from(lots)
+      .innerJoin(categories, eq(lots.categoryId, categories.id))
+      .where(eq(lots.status, 'in_auction'))
+      .groupBy(categories.id, categories.slug, categories.name, categories.sortOrder)
+      .orderBy(asc(categories.sortOrder), asc(categories.name)),
+  ]);
 
   const browseLots: BrowseLot[] = rows.map(({ createdAt, closesAtMs, ...lot }) => ({
     ...lot,
     createdAtMs: createdAt ? createdAt.getTime() : 0,
     closesAtMs: closesAtMs ?? null,
   }));
+  const departments: Department[] = departmentRows;
+  const total = departments.reduce((sum, d) => sum + d.count, 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
       <h1 className="font-display text-display-lg mb-4 sm:mb-8">Browse Lots</h1>
-      <LotBrowser lots={browseLots} />
+      <LotBrowser lots={browseLots} departments={departments} total={total} />
     </div>
   );
 }

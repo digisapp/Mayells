@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Loader2, ImageOff } from 'lucide-react';
 import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
+import { lotStatus } from '@/lib/admin/status/sales';
 
 interface SearchResult {
   id: string;
@@ -50,7 +51,7 @@ export default function SearchTab() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
-            <Input placeholder="Search lots with natural language..." value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1" />
+            <Input aria-label="Search lots" placeholder="Search lots with natural language..." value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="flex-1" />
             <Button onClick={handleSearch} disabled={loading} className="bg-champagne text-charcoal hover:bg-champagne/90">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
             </Button>
@@ -99,7 +100,7 @@ export default function SearchTab() {
                         {lot.estimateLow != null && lot.estimateHigh != null && (
                           <p className="text-sm">{formatCurrency(lot.estimateLow)} – {formatCurrency(lot.estimateHigh)}</p>
                         )}
-                        <Badge variant="outline" className="text-[11px] mt-0.5">{lot.status.replace(/_/g, ' ')}</Badge>
+                        <Badge className={`text-[11px] mt-0.5 ${lotStatus(lot.status).className}`}>{lotStatus(lot.status).label}</Badge>
                       </div>
                     </CardContent>
                   </Card>

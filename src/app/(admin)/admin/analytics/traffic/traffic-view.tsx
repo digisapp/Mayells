@@ -30,19 +30,7 @@ import { AutoRefresh } from './auto-refresh';
 import { BarList, Funnel, StatTile } from './blocks';
 import { LineChart } from './line-chart';
 import { StackedColumns } from './stacked-columns';
-
-const statusLabels: Record<string, string> = {
-  new: 'New lead',
-  contacted: 'Contacted',
-  upload_sent: 'Upload link sent',
-  items_received: 'Items received',
-  under_review: 'Under review',
-  agreement_sent: 'Agreement sent',
-  agreement_signed: 'Agreement signed',
-  accepted: 'Accepted',
-  declined: 'Declined',
-  archived: 'Archived',
-};
+import { prospectStatus } from '@/lib/admin/status/sales';
 
 const dateTime = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/New_York' });
 const dayOnly = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
@@ -238,6 +226,7 @@ export async function TrafficView({ rangeParam, siteParam }: { rangeParam?: stri
             <LineChart
               label="Visitors and page views"
               unit={unit}
+              empty="No visits in this period yet."
               buckets={series}
               series={[
                 { name: 'Visitors', color: '#2a78d6', values: series.map((p) => p.visitors) },
@@ -517,7 +506,7 @@ export async function TrafficView({ rangeParam, siteParam }: { rangeParam?: stri
                         </p>
                       </div>
                       <div className="shrink-0 text-right text-xs">
-                        <p>{statusLabels[l.status] ?? l.status}</p>
+                        <p>{prospectStatus(l.status).label}</p>
                         <p className="text-muted-foreground">{ago(l.createdAt, now)}</p>
                       </div>
                     </li>

@@ -8,8 +8,6 @@ import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { PageHeader } from '@/components/admin/PageHeader';
 import {
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   RotateCcw,
   CheckCircle,
   XCircle,
@@ -25,6 +23,8 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { FilterChip } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 
 interface WebhookLog {
   id: string;
@@ -260,6 +260,14 @@ export default function AdminWebhooksPage() {
     setOffset(0);
     setExpandedId(null);
     fetchLogs(0, merged);
+    // Keep the URL in step so reload / back / a shared link show this view.
+    const params = new URLSearchParams();
+    for (const key of ['provider', 'status', 'eventType', 'q'] as const) {
+      if (merged[key]) params.set(key, merged[key]);
+    }
+    // replaceState, not router.replace: the page reads the URL only on mount,
+    // so a server round trip per chip click would be wasted.
+    window.history.replaceState(null, '', `/admin/webhooks${params.size ? `?${params}` : ''}`);
   }
 
   function goToPage(nextOffset: number) {
@@ -392,33 +400,15 @@ export default function AdminWebhooksPage() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {(['', 'stripe', 'resend'] as const).map((p) => (
-          <button
-            key={p || 'all-provider'}
-            onClick={() => applyFilters({ provider: p })}
-            className={cn(
-              'px-3 py-1.5 rounded-md text-xs font-medium transition-colors border',
-              filters.provider === p
-                ? 'bg-foreground text-background border-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/50',
-            )}
-          >
+          <FilterChip key={p || 'all-provider'} active={filters.provider === p} onClick={() => applyFilters({ provider: p })}>
             {p ? (providerConfig[p]?.label ?? p) : 'All providers'}
-          </button>
+          </FilterChip>
         ))}
         <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
         {(['', 'success', 'failed', 'ignored'] as const).map((s) => (
-          <button
-            key={s || 'all-status'}
-            onClick={() => applyFilters({ status: s })}
-            className={cn(
-              'px-3 py-1.5 rounded-md text-xs font-medium transition-colors border',
-              filters.status === s
-                ? 'bg-foreground text-background border-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/50',
-            )}
-          >
+          <FilterChip key={s || 'all-status'} active={filters.status === s} onClick={() => applyFilters({ status: s })}>
             {s ? (statusConfig[s]?.label ?? s) : 'All statuses'}
-          </button>
+          </FilterChip>
         ))}
         <div className="w-px h-5 bg-border mx-1 hidden sm:block" />
         <select
@@ -687,32 +677,14 @@ export default function AdminWebhooksPage() {
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4 text-sm">
-          <p className="text-muted-foreground">
-            Page {currentPage} of {totalPages} · {total.toLocaleString()} events
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={offset === 0 || refreshing}
-              onClick={() => goToPage(Math.max(0, offset - PAGE_SIZE))}
-              className="gap-1"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> Prev
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={offset + PAGE_SIZE >= total || refreshing}
-              onClick={() => goToPage(offset + PAGE_SIZE)}
-              className="gap-1"
-            >
-              Next <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+      {!loading && !(loadError && logs.length === 0) && (
+        <Pager
+          page={currentPage}
+          totalPages={totalPages}
+          // Ignore clicks while a page is still loading (the old buttons were disabled).
+          onPageChange={(n) => { if (!refreshing) goToPage((n - 1) * PAGE_SIZE); }}
+          summary={<>Page {currentPage} of {totalPages} · {total.toLocaleString()} events</>}
+        />
       )}
 
       <ConfirmDialog

@@ -2,25 +2,33 @@ export const dynamic = 'force-dynamic';
 
 import { db } from '@/db';
 import { auctions } from '@/db/schema';
-import { and, desc, eq, inArray, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Radio } from 'lucide-react';
 import { PageHeader } from '@/components/admin/PageHeader';
+import { auctionStatus } from '@/lib/admin/status/sales';
+import { formatShortDateTime } from '@/lib/format/dates';
 
 function formatWhen(d: Date | null) {
-  if (!d) return null;
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  return d ? formatShortDateTime(d) : null;
 }
 
 export default async function AdminLivePage() {
   // The console is for auctioneer-led sales: live-format auctions awaiting
   // their session, plus anything currently broadcasting. Timed sales open and
   // settle on their own schedule and never belong here.
+  // auctions.totalBids is a denormalized counter nothing writes to; count the
+  // real rows, as the auctions list does. Retracted bids are not activity.
+  // Identifiers written literally: interpolated Drizzle columns render
+  // unqualified inside the subquery, so "id" would resolve to bids.id and
+  // every count would be 0.
+  const bidCount = sql<number>`(select count(*) from bids b where b.auction_id = "auctions"."id" and b.bid_status <> 'retracted')::int`;
+
   const liveAuctions = await db
-    .select()
+    .select({ auction: auctions, bidCount })
     .from(auctions)
     .where(
       or(
@@ -52,7 +60,7 @@ export default async function AdminLivePage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {liveAuctions.map((auction) => {
+          {liveAuctions.map(({ auction, bidCount: bidTotal }) => {
             const isLive = auction.status === 'live';
             const when = formatWhen(auction.biddingStartsAt);
             return (
@@ -64,11 +72,11 @@ export default async function AdminLivePage() {
                     </Link>
                     <div className="flex flex-wrap items-center gap-2 mt-1 text-sm text-muted-foreground">
                       <Badge variant={isLive ? 'destructive' : 'secondary'}>
-                        {isLive ? '● LIVE' : auction.status}
+                        {isLive ? '● LIVE' : auctionStatus(auction.status).label}
                       </Badge>
                       <span>{auction.lotCount} lots</span>
                       {when && <span>· {isLive ? 'started' : 'scheduled'} {when}</span>}
-                      {auction.totalBids > 0 && <span>· {auction.totalBids} bids</span>}
+                      {bidTotal > 0 && <span>· {bidTotal} {bidTotal === 1 ? 'bid' : 'bids'}</span>}
                     </div>
                   </div>
                   <Button asChild className={isLive ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-champagne text-charcoal hover:bg-champagne/90'}>

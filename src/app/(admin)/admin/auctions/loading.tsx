@@ -14,7 +14,7 @@ export default function AuctionsLoading() {
       {/* Status filter chips */}
       <div className="flex flex-wrap gap-2 mb-3">
         {Array.from({ length: 7 }).map((_, i) => (
-          <Skeleton key={i} className="h-8 w-24 rounded-md" />
+          <Skeleton key={i} className="h-[30px] w-24 rounded-md" />
         ))}
       </div>
       {/* Format filter chips */}

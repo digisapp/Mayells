@@ -6,6 +6,7 @@ import { eq, and, gt, inArray, sql, asc, type SQL } from 'drizzle-orm';
 import { sendSavedSearchAlert } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
 import { publicLotPath } from '@/lib/lots/urls';
+import { savedSearchHref } from '@/lib/search/saved-search-href';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -104,9 +105,7 @@ export async function GET(request: NextRequest) {
         await sendSavedSearchAlert({
           email: search.email,
           searchLabel,
-          searchUrl: search.query
-            ? `${BASE_URL}/search?q=${encodeURIComponent(search.query)}`
-            : `${BASE_URL}/search`,
+          searchUrl: `${BASE_URL}${savedSearchHref(search.query ?? '', search.categoryId)}`,
           baseUrl: BASE_URL,
           lots: matches.map((lot) => ({
             title: lot.title,

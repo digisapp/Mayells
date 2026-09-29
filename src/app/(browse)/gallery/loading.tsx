@@ -2,12 +2,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export default function GalleryLoading() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="text-center mb-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
+      <div className="text-center mb-8 sm:mb-12">
         <Skeleton className="h-10 w-40 mx-auto mb-3" />
         <Skeleton className="h-4 w-80 mx-auto" />
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-y-2 mb-8">
+      <div className="flex flex-wrap items-center justify-between gap-y-2 mb-6 sm:mb-8">
         <Skeleton className="h-4 w-20" />
         <div className="flex gap-1">
           <Skeleton className="h-8 w-16 rounded-full" />
@@ -20,7 +20,6 @@ export default function GalleryLoading() {
           <div key={i} className="rounded-xl overflow-hidden border border-border/70">
             <Skeleton className="aspect-[3/4] w-full rounded-none" />
             <div className="p-3 sm:p-4 space-y-1.5">
-              <Skeleton className="h-3 w-14" />
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-4 w-1/2" />
             </div>

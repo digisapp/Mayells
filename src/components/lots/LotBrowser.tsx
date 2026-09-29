@@ -13,6 +13,7 @@ import {
   parseBrowseState,
   type BrowseLot,
   type BrowseState,
+  type Department,
   type LotSort,
 } from './lot-browser';
 
@@ -36,12 +37,31 @@ function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function LotBrowser({ lots }: { lots: BrowseLot[] }) {
+interface LotBrowserProps {
+  /** The rows to filter and sort: the newest lots, possibly capped. */
+  lots: BrowseLot[];
+  /** Server-side department counts over every open lot, not just `lots`. */
+  departments?: Department[];
+  /** Every open lot, including those beyond the cap. */
+  total?: number;
+}
+
+export function LotBrowser({ lots, departments: allDepartments, total }: LotBrowserProps) {
   const search = useSyncExternalStore(subscribeToUrl, getUrlSearch, getServerUrlSearch);
   const state = useMemo(() => parseBrowseState(search), [search]);
-  const departments = useMemo(() => deriveDepartments(lots), [lots]);
+  const derivedDepartments = useMemo(() => deriveDepartments(lots), [lots]);
+  const departments = allDepartments ?? derivedDepartments;
   const visible = useMemo(() => applyBrowse(lots, state), [lots, state]);
   const activeDept = departments.find((d) => d.slug === state.dept) ?? null;
+  const allCount = Math.max(total ?? lots.length, lots.length);
+  // The true size of the current view; more than `visible` when the page's
+  // row cap cut some of it off.
+  const viewCount = state.dept ? Math.max(activeDept?.count ?? 0, visible.length) : allCount;
+  const truncated = visible.length < viewCount;
+  // Where the rest of a capped view lives: the department's own page, or the
+  // sales themselves (each sale page lists every lot).
+  const moreHref = activeDept ? `/categories/${activeDept.slug}` : '/auctions';
+  const moreLabel = activeDept ? `See all in ${activeDept.name}` : 'Browse by sale';
 
   const barRef = useRef<HTMLDivElement>(null);
   const chipsRef = useRef<HTMLDivElement>(null);
@@ -83,12 +103,12 @@ export function LotBrowser({ lots }: { lots: BrowseLot[] }) {
     }
   }
 
-  if (lots.length === 0) {
+  if (allCount === 0) {
     return (
       <div className="text-center py-16 sm:py-20 border border-border/60 rounded-2xl">
         <p className="font-display text-display-sm">No lots are open right now</p>
         <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
-          New sales are catalogued regularly. See what&apos;s coming up, or buy now from the gallery.
+          New sales are catalogued regularly. See what&apos;s coming up, or browse fixed-price pieces in the gallery.
         </p>
         <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center px-6">
           <Button asChild variant="champagne" size="lg">
@@ -126,7 +146,7 @@ export function LotBrowser({ lots }: { lots: BrowseLot[] }) {
           className="relative flex gap-2 overflow-x-auto scrollbar-hide overscroll-x-contain px-4 sm:px-6 scroll-px-4 sm:scroll-px-6 py-2.5 lg:px-0 lg:py-0 lg:flex-wrap lg:overflow-visible"
         >
           <button type="button" aria-pressed={!state.dept} onClick={() => update({ dept: null })} className={chipClass(!state.dept)}>
-            All lots <span className={countClass(!state.dept)}>{lots.length}</span>
+            All lots <span className={countClass(!state.dept)}>{allCount}</span>
           </button>
           {departments.map((dept) => {
             const active = dept.slug === state.dept;
@@ -147,8 +167,16 @@ export function LotBrowser({ lots }: { lots: BrowseLot[] }) {
 
       <div className="flex items-center justify-between gap-4 mt-4 mb-5 sm:mt-6 sm:mb-6">
         <p aria-live="polite" className="text-sm text-muted-foreground">
-          {visible.length} lot{visible.length !== 1 ? 's' : ''}
+          {truncated ? <>Showing {visible.length} of {viewCount}</> : viewCount} lot{viewCount !== 1 ? 's' : ''}
           {activeDept ? <> in {activeDept.name}</> : null}
+          {truncated && visible.length > 0 ? (
+            <>
+              {' '}&middot;{' '}
+              <Link href={moreHref} className="text-foreground underline underline-offset-4 decoration-border hover:decoration-foreground">
+                {moreLabel}
+              </Link>
+            </>
+          ) : null}
         </p>
         <label className="relative inline-flex items-center shrink-0">
           <span className="sr-only">Sort lots</span>
@@ -169,12 +197,28 @@ export function LotBrowser({ lots }: { lots: BrowseLot[] }) {
       </div>
 
       <div ref={resultsRef}>
+        <h2 className="sr-only">Lots</h2>
         {visible.length > 0 ? (
-          <LotGrid lots={visible} />
+          // Lots here come from many sales, so lot numbers would repeat.
+          <LotGrid lots={visible} showLotNumber={false} />
+        ) : truncated ? (
+          // The department has open lots, just none among the newest rows.
+          <div className="text-center py-16 sm:py-20 border border-border/60 rounded-2xl px-6">
+            <p className="font-display text-display-sm">
+              {viewCount} lot{viewCount !== 1 ? 's' : ''}
+              {activeDept ? <> in {activeDept.name}</> : null}
+            </p>
+            <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
+              {activeDept ? <>They are listed on the department&apos;s own page.</> : <>Each sale lists its full catalogue.</>}
+            </p>
+            <Button asChild variant="outline" size="lg" className="mt-6">
+              <Link href={moreHref}>{moreLabel}</Link>
+            </Button>
+          </div>
         ) : (
-          <div className="text-center py-16 border border-border/60 rounded-2xl">
+          <div className="text-center py-16 sm:py-20 border border-border/60 rounded-2xl px-6">
             <p className="font-display text-display-sm">No lots in this department right now</p>
-            <p className="text-muted-foreground mt-2 max-w-sm mx-auto px-6">
+            <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
               Try another department, or browse every lot in our current sales.
             </p>
             <Button variant="outline" size="lg" className="mt-6" onClick={() => update({ dept: null })}>

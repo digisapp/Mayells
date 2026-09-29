@@ -25,8 +25,10 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { SettingsSection, Toggle, NumberField, MoneyField } from './controls';
 import { ConciergeSettings } from './concierge-settings';
+import { useUnsavedChangesGuard, UNSAVED_MESSAGE } from './use-unsaved-guard';
+import type { SettingsTab } from './tabs';
 
-export type SettingsTab = 'sales' | 'shipping' | 'commission' | 'ai' | 'prospects' | 'notifications' | 'security';
+export type { SettingsTab };
 
 export const SETTINGS_TABS: ReadonlyArray<{ value: SettingsTab; label: string; icon: typeof Receipt }> = [
   { value: 'sales', label: 'Sales & Invoicing', icon: Receipt },
@@ -163,6 +165,9 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [fieldError, setFieldError] = useState<FieldProblem | null>(null);
+  // The chat concierge (AI tab) is its own record with its own Save; it
+  // reports whether it has unsaved edits so the guard below covers it too.
+  const [conciergeDirty, setConciergeDirty] = useState(false);
 
   const applyResponse = useCallback((body: { data: LiveSettings; updatedAt: string | null; updatedBy: Meta['updatedBy'] }) => {
     setLoaded(body.data);
@@ -196,18 +201,15 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
   const changedCount = Object.keys(patch).length;
   const dirty = changedCount > 0 || problems.length > 0;
 
-  // Don't let a tab close or a sidebar click throw away unsaved edits.
-  useEffect(() => {
-    if (!dirty) return;
-    const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [dirty]);
+  // Don't let a tab close, a sidebar click or the System log link throw away
+  // unsaved edits (either form).
+  useUnsavedChangesGuard(dirty || conciergeDirty);
 
   function selectTab(next: string) {
     const value = next as SettingsTab;
+    // The concierge form unmounts with the AI tab, taking its edits with it.
+    if (tab === 'ai' && value !== 'ai' && conciergeDirty && !window.confirm(UNSAVED_MESSAGE)) return;
+    if (value !== 'ai') setConciergeDirty(false);
     setTab(value);
     // Keep the URL shareable without a server round-trip.
     const url = new URL(window.location.href);
@@ -271,10 +273,12 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
 
   const failedWebhooks = adminBadges?.webhooks.failed24h ?? 0;
 
+  // Saves every changed setting on every tab except the chat concierge,
+  // which has its own button — the label says "settings" to keep them apart.
   const saveButton = (size: 'default' | 'lg' = 'default') => (
     <Button onClick={save} disabled={!canSave} size={size}>
       {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
-      {saving ? 'Saving…' : changedCount > 0 ? `Save ${changedCount === 1 ? 'change' : `${changedCount} changes`}` : 'Save changes'}
+      {saving ? 'Saving…' : changedCount > 0 ? `Save ${changedCount === 1 ? '1 setting' : `${changedCount} settings`}` : 'Save settings'}
     </Button>
   );
 
@@ -305,7 +309,7 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
         <div className="overflow-x-auto -mx-1 px-1 pb-1 mb-6 flex items-center gap-2">
           <TabsList>
             {SETTINGS_TABS.map(({ value, label, icon: Icon }) => (
-              <TabsTrigger key={value} value={value} className="gap-2">
+              <TabsTrigger key={value} value={value} className="gap-2" aria-label={label}>
                 <Icon className="h-4 w-4" />
                 <span className={cn(value !== tab && 'hidden sm:inline')}>{label}</span>
               </TabsTrigger>
@@ -314,6 +318,7 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
           {/* The webhook delivery log lives at its own route but belongs to Settings. */}
           <Link
             href="/admin/webhooks"
+            aria-label={`System log${failedWebhooks > 0 ? `, ${failedWebhooks} failed in the last 24 hours` : ''}`}
             className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium whitespace-nowrap text-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
           >
             <ScrollText className="h-4 w-4" />
@@ -461,13 +466,17 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
                   </p>
                 </Toggle>
               </SettingsSection>
+              {/* This tab holds two records; each Save sits under the one it saves. */}
+              <div className="flex justify-end -mt-4">{saveButton()}</div>
 
               <section className="space-y-4">
                 <div>
                   <h2 className="font-display text-lg">Chat concierge</h2>
-                  <p className="text-sm text-muted-foreground mt-1">The AI chat widget on the public site. Saved separately with its own button.</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    The AI chat widget on the public site. Saved separately with &ldquo;Save chat concierge&rdquo; below.
+                  </p>
                 </div>
-                <ConciergeSettings />
+                <ConciergeSettings onDirtyChange={setConciergeDirty} />
               </section>
             </TabsContent>
 
@@ -533,7 +542,7 @@ export function SettingsClient({ initialTab }: { initialTab: SettingsTab }) {
               </SettingsSection>
             </TabsContent>
 
-            <div className="mt-8 flex justify-end">{tab !== 'security' && saveButton('lg')}</div>
+            <div className="mt-8 flex justify-end">{tab !== 'security' && tab !== 'ai' && saveButton('lg')}</div>
           </>
         )}
 

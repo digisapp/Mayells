@@ -10,22 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trash2, Plus, X, Download, ExternalLink, Radio, Ban, Play, Square, Search, Receipt } from 'lucide-react';
+import { Trash2, Plus, X, Download, ExternalLink, Radio, Ban, Play, Square, Search, Receipt, AlertCircle, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/admin/PageHeader';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/types';
-
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  scheduled: 'bg-blue-100 text-blue-800',
-  preview: 'bg-indigo-100 text-indigo-800',
-  open: 'bg-green-100 text-green-800',
-  live: 'bg-red-100 text-red-800',
-  closing: 'bg-orange-100 text-orange-800',
-  closed: 'bg-gray-100 text-gray-600',
-  completed: 'bg-emerald-100 text-emerald-800',
-  cancelled: 'bg-red-100 text-red-600',
-};
+import { auctionStatus, lotStatus } from '@/lib/admin/status/sales';
+import { formatShortDateTime } from '@/lib/format/dates';
+import { formatEstimate } from '@/lib/format/estimate';
+import AuctionDetailLoading from './loading';
 
 const statusHelp: Record<string, string> = {
   draft: 'Not visible to the public. Assign lots and set a schedule, then mark it scheduled.',
@@ -49,8 +41,7 @@ function formatDate(d: string | null) {
 }
 
 function formatWhen(d: string | null) {
-  if (!d) return '—';
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(d));
+  return d ? formatShortDateTime(d) : '—';
 }
 
 interface AssignedLot {
@@ -75,7 +66,12 @@ interface AvailableLot {
   primaryImageUrl: string | null;
 }
 
+/** Status moves that don't need their own explanation dialog. */
+type StatusMove = { to: 'scheduled' | 'preview' | 'draft'; success: string };
+
 type PendingAction =
+  | { kind: 'publish' }
+  | { kind: 'status'; move: StatusMove }
   | { kind: 'open' }
   | { kind: 'end' }
   | { kind: 'cancel' }
@@ -89,22 +85,39 @@ function EditAuctionContent() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab') === 'lots' ? 'lots' : 'details';
   const [auction, setAuction] = useState<Record<string, unknown> | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  // 'missing' is a real 404; 'failed' is a network/server error worth retrying.
+  const [loadError, setLoadError] = useState<'missing' | 'failed' | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [assignedLots, setAssignedLots] = useState<AssignedLot[]>([]);
   const [availableLots, setAvailableLots] = useState<AvailableLot[]>([]);
   const [lotSearch, setLotSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [pending, setPending] = useState<PendingAction>(null);
   const [renumbering, setRenumbering] = useState<string | null>(null);
+  // One sale-control request at a time: a double click must not fire a second
+  // PATCH (which the API answers with a 409 toast).
+  const [busyStatus, setBusyStatus] = useState<string | null>(null);
+  const [addingLotId, setAddingLotId] = useState<string | null>(null);
+  // Unsaved edits on the Details tab. A status change remounts the form (the
+  // server may have changed the schedule), so those moves warn first.
+  const [detailsDirty, setDetailsDirty] = useState(false);
 
   const loadAuction = useCallback(async () => {
     try {
       const res = await fetch(`/api/auctions/${auctionId}`);
-      const d = await res.json();
-      if (d.data) setAuction(d.data);
-      else setLoadError(true);
+      if (res.status === 404) {
+        setLoadError('missing');
+        return;
+      }
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && d.data) {
+        setAuction(d.data);
+        setLoadError(null);
+      } else {
+        setLoadError('failed');
+      }
     } catch {
-      setLoadError(true);
+      setLoadError('failed');
     }
   }, [auctionId]);
 
@@ -151,10 +164,10 @@ function EditAuctionContent() {
     return { low, high, bids, current, sold, withBids };
   }, [assignedLots]);
 
-  if (loadError) {
+  if (loadError === 'missing') {
     return (
       <div className="max-w-4xl">
-        <PageHeader title="Auction not found" description="This auction does not exist or could not be loaded." />
+        <PageHeader title="Auction not found" description="This auction does not exist or was deleted." />
         <Link href="/admin/auctions" className="text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground">
           All auctions
         </Link>
@@ -162,9 +175,32 @@ function EditAuctionContent() {
     );
   }
 
-  if (!auction) {
-    return <div className="text-muted-foreground">Loading...</div>;
+  if (loadError === 'failed' && !auction) {
+    return (
+      <div className="max-w-4xl">
+        <PageHeader title="Auction" />
+        <Card>
+          <CardContent className="py-12 text-center">
+            <AlertCircle className="h-10 w-10 text-destructive mx-auto mb-3" />
+            <p className="text-muted-foreground mb-4">Couldn&apos;t load this auction. Check your connection and try again.</p>
+            <Button
+              variant="outline"
+              disabled={retrying}
+              onClick={async () => {
+                setRetrying(true);
+                await Promise.all([loadAuction(), loadAssignedLots()]);
+                setRetrying(false);
+              }}
+            >
+              {retrying ? 'Retrying…' : 'Retry'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
+
+  if (!auction) return <AuctionDetailLoading />;
 
   const formData: AuctionFormData = {
     ...defaultAuctionFormData,
@@ -186,12 +222,26 @@ function EditAuctionContent() {
     isFeatured: (auction.isFeatured as boolean) ?? false,
   };
 
+  /**
+   * fetch that toasts a network failure before rethrowing, so confirm-dialog
+   * handlers (ConfirmDialog stays open on a rejection but shows nothing) always
+   * surface why.
+   */
+  async function fetchOrToast(input: string, init: RequestInit, failure: string) {
+    try {
+      return await fetch(input, init);
+    } catch (err) {
+      toast.error(`Network error — ${failure}`);
+      throw err;
+    }
+  }
+
   async function patchStatus(newStatus: string) {
-    const res = await fetch(`/api/auctions/${auctionId}`, {
+    const res = await fetchOrToast(`/api/auctions/${auctionId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus }),
-    });
+    }, 'the status was not changed');
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       toast.error(data.error || 'Failed to update status');
@@ -199,6 +249,29 @@ function EditAuctionContent() {
     }
     setAuction(data.data ?? null);
     loadAssignedLots();
+  }
+
+  /**
+   * `rethrow` is for the confirm dialog: a rejection keeps it open (the
+   * reason is already toasted). Quick-action buttons swallow the error.
+   */
+  async function runStatusMove(move: StatusMove, { rethrow = false } = {}) {
+    setBusyStatus(move.to);
+    try {
+      await patchStatus(move.to);
+      toast.success(move.success);
+    } catch (err) {
+      // patchStatus already toasted the reason.
+      if (rethrow) throw err;
+    } finally {
+      setBusyStatus(null);
+    }
+  }
+
+  /** Quick moves run straight away unless they would discard Details edits. */
+  function requestStatusMove(move: StatusMove) {
+    if (detailsDirty) setPending({ kind: 'status', move });
+    else runStatusMove(move);
   }
 
   async function handleSubmit(data: Record<string, unknown>) {
@@ -209,8 +282,8 @@ function EditAuctionContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error);
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || `Could not save (${res.status})`);
       setAuction(result.data);
       toast.success('Auction saved');
       if (biddingOpen) loadAssignedLots();
@@ -220,7 +293,7 @@ function EditAuctionContent() {
   }
 
   async function handleDelete() {
-    const res = await fetch(`/api/auctions/${auctionId}`, { method: 'DELETE' });
+    const res = await fetchOrToast(`/api/auctions/${auctionId}`, { method: 'DELETE' }, 'the auction was not deleted');
     if (res.ok) {
       toast.success('Auction deleted');
       router.push('/admin/auctions');
@@ -232,29 +305,37 @@ function EditAuctionContent() {
   }
 
   async function assignLot(lotId: string) {
-    const res = await fetch(`/api/auctions/${auctionId}/lots`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lotId }),
-    });
-    if (res.ok) {
-      toast.success('Lot added to sale');
-      loadAssignedLots();
-      loadAvailableLots(lotSearch);
-      loadAuction();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      toast.error(data.error || 'Failed to assign lot');
-      if (res.status === 409) loadAssignedLots();
+    if (addingLotId) return;
+    setAddingLotId(lotId);
+    try {
+      const res = await fetch(`/api/auctions/${auctionId}/lots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lotId }),
+      });
+      if (res.ok) {
+        toast.success('Lot added to sale');
+        loadAssignedLots();
+        loadAvailableLots(lotSearch);
+        loadAuction();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.error || 'Failed to assign lot');
+        if (res.status === 409) loadAssignedLots();
+      }
+    } catch {
+      toast.error('Network error — the lot was not added');
+    } finally {
+      setAddingLotId(null);
     }
   }
 
   async function removeLot(lot: AssignedLot) {
-    const res = await fetch(`/api/auctions/${auctionId}/lots`, {
+    const res = await fetchOrToast(`/api/auctions/${auctionId}/lots`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lotId: lot.id }),
-    });
+    }, 'the lot was not removed');
     if (res.ok) {
       toast.success(`Lot ${lot.lotNumber} removed`);
       loadAssignedLots();
@@ -310,13 +391,34 @@ function EditAuctionContent() {
   const assignedIds = new Set(assignedLots.map((l) => l.id));
   const unassignedLots = availableLots.filter((l) => !assignedIds.has(l.id));
 
+  const discardNote = detailsDirty ? ' Unsaved edits on the Details tab will be discarded — save them first to keep them.' : '';
+  const opensAt = auction.biddingStartsAt as string | null;
+
   const dialog = (() => {
     if (!pending) return null;
     switch (pending.kind) {
+      case 'publish':
+        return {
+          title: 'Publish this sale?',
+          description: `The sale and its ${assignedLots.length} ${assignedLots.length === 1 ? 'lot' : 'lots'} become public on the site as upcoming. ${
+            opensAt ? `Bidding opens automatically ${formatWhen(opensAt)}.` : 'No bidding start time is set yet.'
+          }${discardNote}`,
+          confirmLabel: 'Publish',
+          variant: 'default' as const,
+          onConfirm: () => patchStatus('scheduled').then(() => { toast.success('Auction scheduled'); }),
+        };
+      case 'status':
+        return {
+          title: 'Discard unsaved edits?',
+          description: `You have unsaved changes on the Details tab. Changing the sale status reloads the form and they will be lost.`,
+          confirmLabel: 'Discard and continue',
+          variant: 'destructive' as const,
+          onConfirm: () => runStatusMove(pending.move, { rethrow: true }),
+        };
       case 'open':
         return {
           title: 'Open bidding now?',
-          description: `Every assigned lot (${assignedLots.length}) becomes biddable immediately and the sale appears as open on the site. This ignores the scheduled opening time.`,
+          description: `Every assigned lot (${assignedLots.length}) becomes biddable immediately and the sale appears as open on the site. This ignores the scheduled opening time.${discardNote}`,
           confirmLabel: 'Open bidding',
           variant: 'default' as const,
           onConfirm: () => patchStatus('open'),
@@ -324,7 +426,7 @@ function EditAuctionContent() {
       case 'end':
         return {
           title: 'End bidding now?',
-          description: 'Bidding stops on every lot immediately, including lots whose staggered close time is still in the future. Settlement (winners, invoices) runs automatically within a few minutes and cannot be undone.',
+          description: 'Bidding stops on every lot immediately, including lots whose staggered close time is still in the future. Settlement (winners, invoices) runs automatically within a few minutes and cannot be undone.' + discardNote,
           confirmLabel: 'End bidding',
           variant: 'destructive' as const,
           onConfirm: () => patchStatus('closing'),
@@ -333,8 +435,8 @@ function EditAuctionContent() {
         return {
           title: 'Cancel this auction?',
           description: biddingOpen
-            ? 'Only possible while no bids have been placed. Assigned lots go back to approved inventory and the sale is marked cancelled.'
-            : 'Assigned lots stay in inventory (status approved) and the sale is marked cancelled. It will no longer be listed publicly.',
+            ? 'Only possible while no bids have been placed. Assigned lots go back to approved inventory and the sale is marked cancelled.' + discardNote
+            : 'Assigned lots stay in inventory (status approved) and the sale is marked cancelled. It will no longer be listed publicly.' + discardNote,
           confirmLabel: 'Cancel auction',
           variant: 'destructive' as const,
           onConfirm: () => patchStatus('cancelled'),
@@ -366,7 +468,7 @@ function EditAuctionContent() {
         title={auction.title as string}
         badges={
           <>
-            <Badge className={statusColors[status]}>{status}</Badge>
+            <Badge className={auctionStatus(status).className}>{auctionStatus(status).label}</Badge>
             {(auction.saleNumber as string) && (
               <span className="text-sm text-muted-foreground">Sale {auction.saleNumber as string}</span>
             )}
@@ -400,7 +502,7 @@ function EditAuctionContent() {
           </CardContent></Card>
           <Card><CardContent className="pt-5">
             <p className="text-xs text-muted-foreground">Total estimate</p>
-            <p className="text-xl font-semibold">{summary.low ? `${formatCurrency(summary.low)} – ${formatCurrency(summary.high)}` : '—'}</p>
+            <p className="text-xl font-semibold">{formatEstimate(summary.low, summary.high) ?? '—'}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
             <p className="text-xs text-muted-foreground">Bids · lots with bids</p>
@@ -418,27 +520,41 @@ function EditAuctionContent() {
           <CardHeader className="pb-3"><CardTitle className="text-sm">Sale controls</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap items-center gap-2">
             {status === 'draft' && (
-              <Button size="sm" onClick={() => patchStatus('scheduled').then(() => toast.success('Auction scheduled')).catch(() => {})} disabled={assignedLots.length === 0}>
+              <Button size="sm" onClick={() => setPending({ kind: 'publish' })} disabled={assignedLots.length === 0 || !!busyStatus}>
                 Publish as scheduled
               </Button>
             )}
             {status === 'scheduled' && (
-              <Button size="sm" variant="outline" onClick={() => patchStatus('preview').then(() => toast.success('Preview opened')).catch(() => {})}>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => requestStatusMove({ to: 'preview', success: 'Preview opened' })}
+                disabled={!!busyStatus}
+              >
+                {busyStatus === 'preview' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Open preview
               </Button>
             )}
             {(status === 'scheduled' || status === 'preview') && type === 'timed' && (
-              <Button size="sm" className="gap-1.5" onClick={() => setPending({ kind: 'open' })} disabled={assignedLots.length === 0}>
+              <Button size="sm" className="gap-1.5" onClick={() => setPending({ kind: 'open' })} disabled={assignedLots.length === 0 || !!busyStatus}>
                 <Play className="h-3.5 w-3.5" /> Open bidding now
               </Button>
             )}
             {(status === 'scheduled' || status === 'preview') && (
-              <Button size="sm" variant="ghost" onClick={() => patchStatus('draft').then(() => toast.success('Moved back to draft')).catch(() => {})}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="gap-1.5"
+                onClick={() => requestStatusMove({ to: 'draft', success: 'Moved back to draft' })}
+                disabled={!!busyStatus}
+              >
+                {busyStatus === 'draft' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Unpublish (back to draft)
               </Button>
             )}
             {status === 'open' && (
-              <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => setPending({ kind: 'end' })}>
+              <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => setPending({ kind: 'end' })} disabled={!!busyStatus}>
                 <Square className="h-3.5 w-3.5" /> End bidding now
               </Button>
             )}
@@ -446,7 +562,7 @@ function EditAuctionContent() {
               <span className="text-sm text-muted-foreground">Live session in progress — end it from the live console.</span>
             )}
             {(preOpen || (biddingOpen && summary.bids === 0)) && (
-              <Button size="sm" variant="ghost" className="gap-1.5 text-red-600 hover:text-red-700 ml-auto" onClick={() => setPending({ kind: 'cancel' })}>
+              <Button size="sm" variant="ghost" className="gap-1.5 text-red-600 hover:text-red-700 ml-auto" onClick={() => setPending({ kind: 'cancel' })} disabled={!!busyStatus}>
                 <Ban className="h-3.5 w-3.5" /> Cancel auction
               </Button>
             )}
@@ -463,15 +579,20 @@ function EditAuctionContent() {
           <TabsTrigger value="lots">Lots ({assignedLots.length})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="details" className="mt-6">
+        {/* forceMount keeps the form (and any unsaved edits) alive while the
+            Lots tab is showing. Keyed on status only: adding a lot or saving
+            bumps updatedAt, which must not reset what's being typed; a status
+            change does, since the server may move the schedule. */}
+        <TabsContent value="details" forceMount className="mt-6 data-[state=inactive]:hidden">
           <AuctionForm
-            key={`${status}-${auction.updatedAt as string}`}
+            key={status}
             initialData={formData}
             locked={biddingOpen || finished}
             onSubmit={handleSubmit}
             isLoading={isLoading}
             submitLabel="Save changes"
             cancelHref="/admin/auctions"
+            onDirtyChange={setDetailsDirty}
           />
         </TabsContent>
 
@@ -505,6 +626,7 @@ function EditAuctionContent() {
                           min={1}
                           defaultValue={lot.lotNumber}
                           className="w-16 h-8 text-sm"
+                          aria-label={`New lot number for ${lot.title}`}
                           onBlur={(e) => renumberLot(lot, e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
@@ -531,14 +653,14 @@ function EditAuctionContent() {
                       <div className="flex-1 min-w-0">
                         <Link href={`/admin/lots/${lot.id}`} className="font-medium text-sm truncate block hover:underline">{lot.title}</Link>
                         <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3">
-                          <span>{lot.estimateLow ? `${formatCurrency(lot.estimateLow)} – ${formatCurrency(lot.estimateHigh ?? lot.estimateLow)}` : 'No estimate'}</span>
+                          <span>{formatEstimate(lot.estimateLow, lot.estimateHigh) ?? 'No estimate'}</span>
                           {lot.bidCount > 0 && <span>{lot.bidCount} bids · {formatCurrency(lot.currentBidAmount)}</span>}
                           {biddingOpen && lot.closingAt && <span>closes {formatWhen(lot.closingAt)}</span>}
-                          <span className="capitalize">{lot.status.replace('_', ' ')}</span>
+                          <span>{lotStatus(lot.status).label}</span>
                         </div>
                       </div>
                       {!finished && (
-                        <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'remove-lot', lot })} className="text-red-600 hover:text-red-700" title="Remove from sale">
+                        <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'remove-lot', lot })} className="text-red-600 hover:text-red-700" title="Remove from sale" aria-label={`Remove lot ${lot.lotNumber} from sale`}>
                           <X className="h-4 w-4" />
                         </Button>
                       )}
@@ -583,8 +705,12 @@ function EditAuctionContent() {
                             {lot.artist || ''} {lot.estimateLow ? `· Est. ${formatCurrency(lot.estimateLow)}` : ''}
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => assignLot(lot.id)}>
-                          <Plus className="h-4 w-4 mr-1" /> Add
+                        <Button variant="outline" size="sm" onClick={() => assignLot(lot.id)} disabled={!!addingLotId} aria-label={`Add ${lot.title} to sale`}>
+                          {addingLotId === lot.id ? (
+                            <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Adding…</>
+                          ) : (
+                            <><Plus className="h-4 w-4 mr-1" /> Add</>
+                          )}
                         </Button>
                       </div>
                     ))}
@@ -624,7 +750,7 @@ function EditAuctionContent() {
 export default function EditAuctionPage() {
   // useSearchParams requires a Suspense boundary
   return (
-    <Suspense>
+    <Suspense fallback={<AuctionDetailLoading />}>
       <EditAuctionContent />
     </Suspense>
   );

@@ -275,7 +275,7 @@ export function StageMessage({
 
 export function LivePill() {
   return (
-    <span className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-white backdrop-blur-sm">
+    <span className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold uppercase tracking-[0.15em] text-white backdrop-blur-sm">
       <span aria-hidden className="size-1.5 rounded-full bg-red-500 motion-safe:animate-pulse" />
       Live
     </span>

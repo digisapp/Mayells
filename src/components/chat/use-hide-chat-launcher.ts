@@ -10,10 +10,11 @@ function sync() {
 }
 
 /**
- * Hide the floating chat bubble while `ref`'s element is on screen. Over a
- * lead form it sits on the fields and the submit button, and the forms offer
- * their own "chat with a specialist" link. An open chat keeps its bubble,
- * which is its close button (see globals.css).
+ * Hide the floating chat bubble while `ref`'s element is on screen, below the
+ * lg breakpoint only (see globals.css). On a phone it sits on a lead form's
+ * fields and submit button, and the forms offer their own "chat with a
+ * specialist" link; on desktop there is room for both, so it stays. An open
+ * chat keeps its bubble, which is its close button.
  */
 export function useHideChatLauncher(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {

@@ -54,7 +54,7 @@ export default async function MicrositeLayout({
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5 sm:h-[72px]">
           <Link href="/" className="flex min-h-11 flex-col justify-center leading-none">
             <span className="font-logo text-[19px] tracking-[0.15em] sm:text-[21px]">MAYELLS</span>
-            <span className="mt-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+            <span className="mt-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
               {site.city}, {site.state}
             </span>
           </Link>
@@ -88,11 +88,13 @@ export default async function MicrositeLayout({
 
       <footer className="relative bg-charcoal text-white">
         <div className="absolute inset-x-0 top-0 gradient-line" />
-        <div className="mx-auto max-w-6xl px-5 py-14">
+        {/* Bottom padding keeps the last row clear of the chat bubble and, on
+            phones, of the sticky call bar (--mobile-cta-bar, set while it shows). */}
+        <div className="mx-auto max-w-6xl px-5 pt-14 pb-[calc(max(calc(var(--mobile-cta-bar,0px)+1rem),max(1rem,env(safe-area-inset-bottom)))+4.5rem)] lg:pb-14">
           <div className="flex flex-col gap-10 sm:flex-row sm:items-start sm:justify-between">
             <div className="max-w-md">
               <p className="font-logo text-2xl tracking-[0.15em]">MAYELLS</p>
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-champagne/90">
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-champagne/90">
                 {site.city}, {site.state}
               </p>
               {/*
@@ -142,7 +144,7 @@ export default async function MicrositeLayout({
           </div>
         </div>
       </footer>
-      <ChatWidget site={site.slug} aboveStickyBar />
+      <ChatWidget site={site.slug} />
     </div>
   );
 }

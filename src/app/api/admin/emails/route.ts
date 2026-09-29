@@ -89,7 +89,10 @@ const listColumns = {
   // "Answered" is derived from the thread, never written onto the row: an
   // outbound email counts as answered when the customer replied to it; an
   // inbound one when we replied. (Statuses on outbound rows stay delivery-only.)
-  hasResponse: sql<boolean>`exists (select 1 from ${emails} r where r.in_reply_to_id = ${emails.id} and r.direction <> ${emails.direction})`,
+  // Outer columns written literally as "emails".…: interpolated ones render
+  // bare ("id", "direction"), which inside the subquery resolve to r's own
+  // columns, so the check could never be true.
+  hasResponse: sql<boolean>`exists (select 1 from ${emails} r where r.in_reply_to_id = "emails"."id" and r.direction <> "emails"."direction")`,
 };
 
 const unreadCondition = and(

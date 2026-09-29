@@ -4,6 +4,7 @@ export const revalidate = 3600;
 import Link from 'next/link';
 import { Monitor, Phone, FileText, ArrowRight, ExternalLink } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
+import { Button } from '@/components/ui/button';
 import { db } from '@/db';
 import { auctions } from '@/db/schema';
 import { and, isNotNull, inArray } from 'drizzle-orm';
@@ -65,15 +66,12 @@ export default async function HowToBuyPage() {
             </p>
             {liveAuction && (
               <div className="mt-8">
-                <a
-                  href={liveAuction.liveauctioneersUrl!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-6 py-3 text-sm font-medium transition-colors"
-                >
-                  Bid Now on LiveAuctioneers
-                  <ExternalLink className="h-4 w-4" />
-                </a>
+                <Button asChild variant="champagne" size="lg">
+                  <a href={liveAuction.liveauctioneersUrl!} target="_blank" rel="noopener noreferrer">
+                    Bid Now on LiveAuctioneers
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
               </div>
             )}
           </div>
@@ -93,7 +91,7 @@ export default async function HowToBuyPage() {
           {/* Online */}
           <div className="border border-border/60 rounded-2xl p-6 sm:p-8 hover:border-champagne/40 transition-colors">
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-5 sm:mb-6">
-              <Monitor className="h-7 w-7 text-champagne" />
+              <Monitor className="h-7 w-7 text-champagne-deep" />
             </div>
             <h3 className="font-display text-xl mb-3">Bid Online</h3>
             <p className="text-[15px] text-muted-foreground leading-relaxed mb-5">
@@ -119,7 +117,7 @@ export default async function HowToBuyPage() {
           {/* Phone */}
           <div className="border border-border/60 rounded-2xl p-6 sm:p-8 hover:border-champagne/40 transition-colors">
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-5 sm:mb-6">
-              <Phone className="h-7 w-7 text-champagne" />
+              <Phone className="h-7 w-7 text-champagne-deep" />
             </div>
             <h3 className="font-display text-xl mb-3">Bid by Phone</h3>
             <p className="text-[15px] text-muted-foreground leading-relaxed mb-5">
@@ -143,7 +141,7 @@ export default async function HowToBuyPage() {
           {/* Absentee */}
           <div className="border border-border/60 rounded-2xl p-6 sm:p-8 hover:border-champagne/40 transition-colors">
             <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-champagne/10 flex items-center justify-center mb-5 sm:mb-6">
-              <FileText className="h-7 w-7 text-champagne" />
+              <FileText className="h-7 w-7 text-champagne-deep" />
             </div>
             <h3 className="font-display text-xl mb-3">Leave an Absentee Bid</h3>
             <p className="text-[15px] text-muted-foreground leading-relaxed mb-5">
@@ -189,21 +187,28 @@ export default async function HowToBuyPage() {
           Browse our upcoming auctions and find something extraordinary.
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button asChild variant="champagne" size="lg">
+            <Link href="/auctions">
+              View Auctions
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="lg">
+            <a href={BUSINESS.phoneHref}>
+              <Phone className="h-4 w-4" />
+              {BUSINESS.phone}
+            </a>
+          </Button>
+        </div>
+        <p className="mt-6 text-sm text-muted-foreground">
+          Looking for something to buy today?{' '}
           <Link
             href="/gallery"
-            className="inline-flex items-center justify-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-8 py-3 text-sm font-medium transition-colors"
+            className="inline-flex min-h-11 items-center font-medium text-champagne-deep underline-offset-4 hover:underline"
           >
-            Browse Gallery
-            <ArrowRight className="h-4 w-4" />
+            Browse the gallery
           </Link>
-          <a
-            href={BUSINESS.phoneHref}
-            className="inline-flex items-center justify-center gap-2 border border-border rounded-lg px-8 py-3 text-sm font-medium hover:bg-secondary/50 transition-colors"
-          >
-            <Phone className="h-4 w-4" />
-            {BUSINESS.phone}
-          </a>
-        </div>
+        </p>
       </section>
     </div>
   );

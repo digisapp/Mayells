@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Bell, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { savedSearchHref } from '@/lib/search/saved-search-href';
 
 interface SavedSearchRow {
   id: string;
@@ -44,7 +45,7 @@ export function SavedSearchList() {
   return (
     <section className="mb-12">
       <div className="flex items-center gap-2.5 mb-4">
-        <Bell className="h-4 w-4 text-champagne" />
+        <Bell className="h-4 w-4 text-champagne-deep" />
         <h2 className="font-display text-xl">Followed Searches</h2>
       </div>
       {rows.length === 0 ? (
@@ -59,13 +60,11 @@ export function SavedSearchList() {
         <div className="flex flex-wrap gap-2">
           {rows.map((row) => {
             const label = [row.query, row.categoryName].filter(Boolean).join(' · ') || 'All items';
-            const href = row.query
-              ? `/search?q=${encodeURIComponent(row.query)}`
-              : '/search';
+            const href = savedSearchHref(row.query, row.categoryId);
             return (
               <span
                 key={row.id}
-                className="inline-flex items-center gap-0.5 min-h-10 border border-border rounded-full pl-4 pr-1 text-sm bg-secondary/40"
+                className="inline-flex items-center gap-0.5 min-h-11 border border-border rounded-full pl-4 pr-1 text-sm bg-secondary/40"
               >
                 <Link href={href} className="py-2.5 hover:text-champagne-deep transition-colors">
                   {label}
@@ -75,7 +74,7 @@ export function SavedSearchList() {
                   aria-label={`Stop following "${label}"`}
                   onClick={() => remove(row.id)}
                   disabled={removing === row.id}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                 >
                   {removing === row.id ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />

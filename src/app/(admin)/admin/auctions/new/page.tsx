@@ -20,11 +20,9 @@ export default function NewAuctionPage() {
       });
       const result = await res.json().catch(() => ({}));
       if (!res.ok) {
-        // Toast it and rethrow: AuctionForm shows the message inline next to
-        // the fields so the operator can fix (e.g.) a duplicate slug in place.
-        const message = result.error || `Could not create the auction (${res.status})`;
-        toast.error(message);
-        throw new Error(message);
+        // Rethrow: AuctionForm toasts it and shows the message inline next
+        // to the fields so the operator can fix (e.g.) a duplicate slug.
+        throw new Error(result.error || `Could not create the auction (${res.status})`);
       }
       toast.success('Auction created — add lots next');
       router.push(`/admin/auctions/${result.data.id}?tab=lots`);

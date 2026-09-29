@@ -10,18 +10,21 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, Pencil, Download, Search, X, ChevronLeft, ChevronRight, CalendarClock, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Download, Search, X, CalendarClock, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { OutreachContact } from '@/db/schema/outreach';
 import {
   statusColors, categoryLabels, statusLabels, statusOptions, categoryOptions,
   type OutreachStatus,
 } from '@/lib/config/outreach';
-import { PageHeader } from '@/components/admin/PageHeader';
+import { PageHeader, filterChipCountClass } from '@/components/admin/PageHeader';
 import { BulkEmailDialog } from './bulk-email-dialog';
 import { ImportDialog } from './import-dialog';
-import { readFailure, formatDay, todayLocal } from './form-utils';
+import { readFailure, formatDay } from './form-utils';
 import { toCsv } from '@/lib/invoicing/csv';
+import { formatShortDate, todayInHouseTz } from '@/lib/format/dates';
+import { FilterChip } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 
 interface Stats {
   total: number;
@@ -40,6 +43,9 @@ interface Pagination {
 }
 
 const EMPTY_STATS: Stats = { total: 0, new: 0, followUp: 0, interested: 0, converted: 0, due: 0 };
+
+/** Export cap, matching the invoices / payouts CSV routes. */
+const EXPORT_MAX_ROWS = 10_000;
 
 export function OutreachClient() {
   const router = useRouter();
@@ -61,6 +67,14 @@ export function OutreachClient() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkUpdating, setBulkUpdating] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // A selection only ever covers rows on screen: bulk status / email act on
+  // exactly what the operator can see, never on contacts from another page
+  // or a previous filter.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page, statusFilter, categoryFilter, dueOnly, searchQuery]);
 
   function setParams(next: Record<string, string | null>) {
     const params = new URLSearchParams(searchParams.toString());
@@ -158,8 +172,39 @@ export function OutreachClient() {
     }
   }
 
-  function exportCSV() {
-    const rows = contacts.map((c) => ({
+  /**
+   * Every contact matching the current filters, not just this page: walks the
+   * list API page by page (same filters, same order) and writes one CSV.
+   */
+  async function exportCSV() {
+    setExporting(true);
+    const all: OutreachContact[] = [];
+    let matching = 0;
+    try {
+      const seen = new Set<string>();
+      for (let p = 1; all.length < EXPORT_MAX_ROWS; p++) {
+        const params = new URLSearchParams({ page: String(p), stats: '0' });
+        if (statusFilter) params.set('status', statusFilter);
+        if (categoryFilter) params.set('category', categoryFilter);
+        if (dueOnly) params.set('due', '1');
+        if (searchQuery) params.set('search', searchQuery);
+        const r = await fetch(`/api/admin/outreach?${params}`);
+        if (!r.ok) throw new Error((await readFailure(r, 'Export failed')).error);
+        const d = await r.json();
+        matching = d.pagination?.total ?? matching;
+        for (const c of (d.data ?? []) as OutreachContact[]) {
+          if (!seen.has(c.id)) { seen.add(c.id); all.push(c); }
+        }
+        if (!d.pagination || p >= d.pagination.totalPages) break;
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Export failed');
+      setExporting(false);
+      return;
+    }
+    setExporting(false);
+
+    const rows = all.slice(0, EXPORT_MAX_ROWS).map((c) => ({
       'Company Name': c.companyName,
       'Contact Name': c.contactName || '',
       'Title': c.title || '',
@@ -173,11 +218,11 @@ export function OutreachClient() {
       'City': c.city || '',
       'State': c.state || '',
       'Notes': c.notes || '',
-      'Last Contacted': c.lastContactedAt ? new Date(c.lastContactedAt).toLocaleDateString() : '',
+      'Last Contacted': c.lastContactedAt ? formatShortDate(c.lastContactedAt) : '',
       'Next Follow-Up': c.nextFollowUpAt ? formatDay(c.nextFollowUpAt) : '',
     }));
     if (rows.length === 0) {
-      toast.error('Nothing to export on this page');
+      toast.error('No contacts match these filters');
       return;
     }
 
@@ -190,13 +235,19 @@ export function OutreachClient() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `mayells-outreach-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `mayells-outreach-${todayInHouseTz()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success(`Exported ${rows.length} contacts (this page)`);
+    toast.success(
+      matching > EXPORT_MAX_ROWS
+        ? `Exported the first ${EXPORT_MAX_ROWS.toLocaleString('en-US')} of ${matching.toLocaleString('en-US')} contacts${hasFilters ? ' matching these filters' : ''}`
+        : `Exported ${rows.length} contact${rows.length !== 1 ? 's' : ''}${hasFilters ? ' matching these filters' : ''}`,
+    );
   }
 
-  const today = todayLocal();
+  // Same "today" as the server's due count (house timezone), so the red
+  // follow-up dates match the "Due or overdue" tile.
+  const today = todayInHouseTz();
   const hasFilters = !!(statusFilter || categoryFilter || dueOnly || searchQuery);
 
   return (
@@ -206,12 +257,13 @@ export function OutreachClient() {
         actions={
           <>
             <ImportDialog onImported={load} />
-            <Button variant="outline" size="sm" onClick={exportCSV} className="gap-1.5">
-              <Download className="h-3.5 w-3.5" /> Export CSV
+            <Button variant="outline" size="sm" onClick={exportCSV} disabled={exporting} className="gap-1.5">
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {exporting ? 'Exporting…' : 'Export CSV'}
             </Button>
-            <Link href="/admin/outreach/new">
-              <Button className="gap-2" size="sm"><Plus className="h-4 w-4" /> New contact</Button>
-            </Link>
+            <Button asChild className="gap-2" size="sm">
+              <Link href="/admin/outreach/new"><Plus className="h-4 w-4" /> New contact</Link>
+            </Button>
           </>
         }
       >
@@ -225,12 +277,16 @@ export function OutreachClient() {
             { label: 'Converted', value: stats.converted, color: 'text-emerald-600', onClick: () => setParams({ status: 'converted', due: null }) },
             { label: 'Due or overdue', value: stats.due, color: stats.due > 0 ? 'text-red-600' : 'text-foreground', onClick: () => setParams({ due: '1', status: null }) },
           ].map((s) => (
-            <Card key={s.label} className="cursor-pointer hover:border-champagne/60 transition-colors" onClick={s.onClick}>
-              <CardContent className="pt-4 pb-3 text-center">
-                <p className={`text-2xl font-semibold ${s.color}`}>{s.value}</p>
-                <p className="text-xs text-muted-foreground">{s.label}</p>
-              </CardContent>
-            </Card>
+            <button
+              key={s.label}
+              type="button"
+              onClick={s.onClick}
+              aria-label={`${s.label}: ${s.value} — show these contacts`}
+              className="rounded-xl border bg-card text-card-foreground shadow-sm pt-4 pb-3 text-center hover:border-champagne/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <p className={`text-2xl font-semibold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-muted-foreground">{s.label}</p>
+            </button>
           ))}
         </div>
       </PageHeader>
@@ -241,13 +297,14 @@ export function OutreachClient() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search contacts..."
+            aria-label="Search contacts"
             className="pl-9 h-9"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
         <Select value={statusFilter || 'all'} onValueChange={(v) => setParams({ status: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[150px] h-9">
+          <SelectTrigger className="w-[150px] h-9" aria-label="Filter by status">
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
           <SelectContent>
@@ -258,7 +315,7 @@ export function OutreachClient() {
           </SelectContent>
         </Select>
         <Select value={categoryFilter || 'all'} onValueChange={(v) => setParams({ category: v === 'all' ? null : v })}>
-          <SelectTrigger className="w-[190px] h-9">
+          <SelectTrigger className="w-[190px] h-9" aria-label="Filter by category">
             <SelectValue placeholder="All Categories" />
           </SelectTrigger>
           <SelectContent>
@@ -268,19 +325,11 @@ export function OutreachClient() {
             ))}
           </SelectContent>
         </Select>
-        <button
-          type="button"
-          onClick={() => setParams({ due: dueOnly ? null : '1' })}
-          className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            dueOnly
-              ? 'border-red-300 bg-red-50 text-red-700'
-              : 'border-border text-muted-foreground hover:text-foreground hover:border-red-200'
-          }`}
-        >
+        <FilterChip active={dueOnly} onClick={() => setParams({ due: dueOnly ? null : '1' })}>
           <CalendarClock className="h-3.5 w-3.5" />
           Due today / Overdue
-          {stats.due > 0 && <span className="opacity-70">{stats.due}</span>}
-        </button>
+          {stats.due > 0 && <span className={filterChipCountClass}>{stats.due}</span>}
+        </FilterChip>
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={() => { setSearchInput(''); router.replace('/admin/outreach'); }}>
             <X className="h-3.5 w-3.5 mr-1" /> Clear filters
@@ -404,9 +453,11 @@ export function OutreachClient() {
                   {contact.nextFollowUpAt ? formatDay(contact.nextFollowUpAt) : '—'}
                 </TableCell>
                 <TableCell>
-                  <Link href={`/admin/outreach/${contact.id}`}>
-                    <Button variant="ghost" size="sm" aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
-                  </Link>
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href={`/admin/outreach/${contact.id}`} aria-label={`Edit ${contact.companyName}`}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
                 </TableCell>
               </TableRow>
               );
@@ -423,20 +474,13 @@ export function OutreachClient() {
       </div>
       )}
 
-      {pagination.totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
-          <p className="text-muted-foreground">
-            Page {pagination.page} of {pagination.totalPages} · {pagination.total} contacts
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setParams({ page: String(page - 1) })} className="gap-1">
-              <ChevronLeft className="h-3.5 w-3.5" /> Prev
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= pagination.totalPages} onClick={() => setParams({ page: String(page + 1) })} className="gap-1">
-              Next <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+      {!loading && !loadError && (
+        <Pager
+          page={page}
+          totalPages={pagination.totalPages}
+          onPageChange={(next) => setParams({ page: String(next) })}
+          summary={<>Page {pagination.page} of {pagination.totalPages} · {pagination.total} contacts</>}
+        />
       )}
     </div>
   );

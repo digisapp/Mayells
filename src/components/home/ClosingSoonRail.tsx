@@ -29,7 +29,7 @@ export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {
               <span className="animate-ping motion-reduce:animate-none absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400" />
             </span>
-            <h2 className="font-sans text-xl sm:text-2xl font-semibold tracking-tight">
+            <h2 className="font-display text-display-sm sm:text-display-md">
               Closing Soon
             </h2>
           </div>
@@ -92,7 +92,7 @@ export function ClosingSoonRail({ items, serverNow }: ClosingSoonRailProps) {
                         <span className="text-[15px] font-semibold tracking-tight tabular-nums">
                           {formatCurrency(lot.startingBid ?? 0)}
                         </span>
-                        <span className="text-[11px] text-champagne uppercase tracking-wider">
+                        <span className="text-xs text-champagne uppercase tracking-wider">
                           Opening bid
                         </span>
                       </>

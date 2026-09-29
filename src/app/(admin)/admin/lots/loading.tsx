@@ -16,7 +16,7 @@ export default function LotsLoading() {
       {/* Status chips */}
       <div className="flex flex-wrap gap-2 mb-4">
         {Array.from({ length: 9 }).map((_, i) => (
-          <Skeleton key={i} className="h-6 w-20 rounded-full" />
+          <Skeleton key={i} className="h-[30px] w-24 rounded-md" />
         ))}
       </div>
 
@@ -68,8 +68,8 @@ export default function LotsLoading() {
       <div className="flex items-center justify-between mt-4">
         <Skeleton className="h-4 w-40" />
         <div className="flex gap-2">
-          <Skeleton className="h-9 w-16 rounded-md" />
-          <Skeleton className="h-9 w-16 rounded-md" />
+          <Skeleton className="h-8 w-24 rounded-md" />
+          <Skeleton className="h-8 w-20 rounded-md" />
         </div>
       </div>
     </div>

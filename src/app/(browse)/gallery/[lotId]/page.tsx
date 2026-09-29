@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
 import { formatCondition } from '@/components/lots/condition';
+import { Breadcrumbs } from '@/components/lots/Breadcrumbs';
 import { generateLotJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 import { track } from '@vercel/analytics/server';
 
@@ -76,7 +77,7 @@ export default async function GalleryDetailPage({
   const { lotId } = await params;
 
   const lot = await getLot(lotId);
-  // Gallery detail serves both gallery buy-now lots and private-sale lots
+  // Gallery detail serves both gallery fixed-price lots and private-sale lots
   // (which render an "Inquire for Price" panel) — LotCard links both here.
   if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private')) notFound();
   // An `approved` lot is only visible while catalogued in a public sale.
@@ -113,7 +114,11 @@ export default async function GalleryDetailPage({
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12 sm:pt-8">
+      <Breadcrumbs
+        className="mb-6 sm:mb-8"
+        items={[{ label: 'Gallery', href: '/gallery' }, { label: lot.title }]}
+      />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
         {/* Images + title — first on mobile so the purchase panel lands right after */}
         <div className="lg:col-span-2 space-y-8">
@@ -131,7 +136,7 @@ export default async function GalleryDetailPage({
           {/* Lot info */}
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <Badge className="bg-champagne text-charcoal border-0 text-[11px] uppercase tracking-wider font-semibold">
+              <Badge className="bg-champagne text-charcoal border-0 text-xs uppercase tracking-wider font-semibold">
                 Gallery
               </Badge>
               {lot.condition && (
@@ -145,7 +150,7 @@ export default async function GalleryDetailPage({
           </div>
         </div>
 
-        {/* Buy Now Panel — right column on desktop; on mobile it sits directly
+        {/* Purchase panel — right column on desktop; on mobile it sits directly
             under the title so the purchase CTA never requires scrolling past
             the full catalog entry */}
         <div className="lg:row-span-2">

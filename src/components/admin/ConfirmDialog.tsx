@@ -45,6 +45,9 @@ export function ConfirmDialog({
     try {
       await onConfirm();
       onOpenChange(false);
+    } catch {
+      // A rejected onConfirm keeps the dialog open; the caller has already
+      // reported the failure (toast/inline), so there is nothing to rethrow.
     } finally {
       setBusy(false);
     }

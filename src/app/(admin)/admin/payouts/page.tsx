@@ -10,9 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { PageHeader } from '@/components/admin/PageHeader';
-import { CircleDollarSign, ChevronLeft, ChevronRight, Search, Download } from 'lucide-react';
+import { CircleDollarSign, Search, Download } from 'lucide-react';
 import { formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
+import { formatShortDate, todayInHouseTz } from '@/lib/format/dates';
+import { PAYOUT_STATUS, statusBadge } from '@/lib/admin/status/money';
+import { FilterChip } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 
 type PayoutStatus = 'pending' | 'paid' | 'cancelled' | 'reversed';
 
@@ -76,13 +80,6 @@ const EMPTY_STATS: PayoutStats = {
   commissionEarned: 0, commissionEarnedThisMonth: 0,
 };
 
-const statusColors: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  pending: 'outline',
-  paid: 'default',
-  cancelled: 'secondary',
-  reversed: 'destructive',
-};
-
 const SOURCE_LABEL: Record<string, string> = {
   consignment: 'consignment rate',
   prospect: 'agreed rate',
@@ -113,10 +110,6 @@ function errorMessage(res: Response, body: Record<string, unknown> | null, fallb
   return typeof err === 'string' && err ? err : `${fallback} (HTTP ${res.status})`;
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function sellerLabel(s: PayoutRow['seller']): string {
   return s.fullName ? `${s.fullName} (${s.email})` : s.email;
 }
@@ -134,13 +127,14 @@ export default function AdminPayoutsPage() {
   const [pending, setPending] = useState<PendingAction>(null);
   // Filters can arrive in the URL (the dashboard, settlement and user pages
   // link here with ?status= / ?sellerId= / ?q=). Read them once on mount,
-  // then fetch — avoids a wasted unfiltered request.
+  // then fetch — avoids a wasted unfiltered request. After that the URL
+  // follows the filters.
   const [ready, setReady] = useState(false);
 
   // Mark-paid form state (shared by the single and bulk dialogs)
   const [method, setMethod] = useState<Method>('wire');
   const [reference, setReference] = useState('');
-  const [paidAt, setPaidAt] = useState(todayIso());
+  const [paidAt, setPaidAt] = useState(() => todayInHouseTz());
   const [notes, setNotes] = useState('');
 
   const buildParams = useCallback((page: number, f: Filters) => {
@@ -192,6 +186,19 @@ export default function AdminPayoutsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, pagination.page, filters]);
 
+  // Mirror the filters into the URL (reload, shared link and back button
+  // return to the same view).
+  useEffect(() => {
+    if (!ready) return;
+    const params = buildParams(1, filters);
+    params.delete('page');
+    const qs = params.toString();
+    if (qs === window.location.search.replace(/^\?/, '')) return;
+    // replaceState, not router.replace: the page reads the URL only on mount,
+    // so a server round trip per chip click or keystroke would be wasted.
+    window.history.replaceState(null, '', `/admin/payouts${qs ? `?${qs}` : ''}`);
+  }, [ready, filters, buildParams]);
+
   useEffect(() => {
     if (!ready) return;
     const t = setTimeout(() => {
@@ -209,7 +216,7 @@ export default function AdminPayoutsPage() {
   function openAction(action: NonNullable<PendingAction>) {
     setMethod('wire');
     setReference('');
-    setPaidAt(todayIso());
+    setPaidAt(todayInHouseTz());
     setNotes('');
     setPending(action);
   }
@@ -276,9 +283,9 @@ export default function AdminPayoutsPage() {
   const dialogFields = (
     <div className="grid grid-cols-2 gap-3">
       <div className="space-y-1.5">
-        <Label>Method</Label>
+        <Label htmlFor="payoutMethod">Method</Label>
         <Select value={method} onValueChange={(v) => setMethod(v as Method)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger id="payoutMethod"><SelectValue /></SelectTrigger>
           <SelectContent>
             {METHODS.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
           </SelectContent>
@@ -286,7 +293,7 @@ export default function AdminPayoutsPage() {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="payoutPaidAt">Sent on</Label>
-        <Input id="payoutPaidAt" type="date" value={paidAt} max={todayIso()} onChange={(e) => setPaidAt(e.target.value)} />
+        <Input id="payoutPaidAt" type="date" value={paidAt} max={todayInHouseTz()} onChange={(e) => setPaidAt(e.target.value)} />
       </div>
       <div className="space-y-1.5 col-span-2">
         <Label htmlFor="payoutReference">Reference (wire ID / check #)</Label>
@@ -315,18 +322,9 @@ export default function AdminPayoutsPage() {
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {STATUS_FILTERS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => updateFilters({ status: s })}
-            className={`text-xs px-3 py-1.5 rounded-md border transition-colors capitalize ${
-              filters.status === s
-                ? 'bg-foreground text-background border-foreground'
-                : 'border-border/50 hover:bg-accent/10'
-            }`}
-          >
+          <FilterChip key={s} active={filters.status === s} onClick={() => updateFilters({ status: s })} className="capitalize">
             {s}
-          </button>
+          </FilterChip>
         ))}
         <div className="relative min-w-[200px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -334,6 +332,7 @@ export default function AdminPayoutsPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Consignor, lot, invoice #, reference"
+            aria-label="Search payouts"
             className="h-8 pl-8 text-xs"
           />
         </div>
@@ -393,7 +392,7 @@ export default function AdminPayoutsPage() {
         </div>
       )}
 
-      {!loading && rows.length > 0 && (
+      {!loading && !loadError && rows.length > 0 && (
         <div className="border border-border/50 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -435,7 +434,9 @@ export default function AdminPayoutsPage() {
                   ...sellerRows.map(({ payout, lot, invoice, auction }) => (
                     <tr key={payout.id} className="border-b border-border/30 hover:bg-muted/10">
                       <td className="px-4 py-3">
-                        <Badge variant={statusColors[payout.status] || 'outline'}>{payout.status}</Badge>
+                        <Badge className={statusBadge(PAYOUT_STATUS, payout.status).className}>
+                          {statusBadge(PAYOUT_STATUS, payout.status).label}
+                        </Badge>
                         {payout.status === 'pending' && invoice.status !== 'paid' && (
                           <div className="text-[11px] text-red-600 mt-1">invoice {invoice.status}</div>
                         )}
@@ -466,7 +467,7 @@ export default function AdminPayoutsPage() {
                             <span className="capitalize">{payout.method || '—'}</span>
                             {payout.reference && <span className="font-mono text-xs ml-1">({payout.reference})</span>}
                             <div className="text-xs text-muted-foreground">
-                              {payout.paidAt ? new Date(payout.paidAt).toLocaleDateString() : ''}
+                              {payout.paidAt ? formatShortDate(payout.paidAt) : ''}
                             </div>
                             {payout.status === 'reversed' && (
                               <div className="text-[11px] text-destructive">clawback required</div>
@@ -474,7 +475,7 @@ export default function AdminPayoutsPage() {
                           </div>
                         ) : (
                           <span className="text-muted-foreground text-xs">
-                            created {new Date(payout.createdAt).toLocaleDateString()}
+                            created {formatShortDate(payout.createdAt)}
                           </span>
                         )}
                       </td>
@@ -499,22 +500,12 @@ export default function AdminPayoutsPage() {
         </div>
       )}
 
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4 text-sm">
-          <p className="text-muted-foreground">
-            Page {pagination.page} of {pagination.totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={pagination.page <= 1}
-              onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))} className="gap-1">
-              <ChevronLeft className="h-3.5 w-3.5" /> Prev
-            </Button>
-            <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages}
-              onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))} className="gap-1">
-              Next <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+      {!loading && !loadError && (
+        <Pager
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+        />
       )}
 
       <ConfirmDialog

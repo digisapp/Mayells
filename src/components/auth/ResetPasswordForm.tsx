@@ -3,17 +3,18 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { AuthError, AuthHeading, AUTH_INPUT } from './AuthShell';
 
-export function ResetPasswordForm() {
+export function ResetPasswordForm({ linkValid = true }: { linkValid?: boolean }) {
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
-  const [expired, setExpired] = useState(false);
+  const [expired, setExpired] = useState(!linkValid);
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -32,18 +33,37 @@ export function ResetPasswordForm() {
       });
       const data = await res.json();
       if (!res.ok) {
-        if (res.status === 401) setExpired(true);
+        setIsLoading(false);
+        if (res.status === 401) {
+          setExpired(true);
+          return;
+        }
         setError(data.error || 'Something went wrong. Please try again.');
         return;
       }
-      // Recovery already signed them in; land them where they belong.
+      toast.success('Password updated');
+      // Recovery already signed them in; land them where they belong. The
+      // button stays disabled while the page navigates away.
       router.push(data.role === 'admin' ? '/admin' : '/');
       router.refresh();
     } catch {
-      setError('Couldn’t connect. Check your connection and try again.');
-    } finally {
       setIsLoading(false);
+      setError('Couldn’t connect. Check your connection and try again.');
     }
+  }
+
+  if (expired) {
+    return (
+      <div>
+        <AuthHeading title="This link has expired">
+          Password reset links work once and only for a limited time. Request a new one and we&rsquo;ll email it
+          to you straight away.
+        </AuthHeading>
+        <Button asChild size="lg" className="mt-8 w-full">
+          <Link href="/forgot-password">Request a new link</Link>
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -51,19 +71,7 @@ export function ResetPasswordForm() {
       <AuthHeading title="Choose a new password">Pick something you haven&rsquo;t used here before.</AuthHeading>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-        {error && (
-          <AuthError>
-            {error}
-            {expired && (
-              <>
-                {' '}
-                <Link href="/forgot-password" className="font-medium underline underline-offset-2">
-                  Request a new link
-                </Link>
-              </>
-            )}
-          </AuthError>
-        )}
+        {error && <AuthError>{error}</AuthError>}
         <div className="space-y-2">
           <Label htmlFor="new-password">New password</Label>
           <PasswordInput

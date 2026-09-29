@@ -318,8 +318,21 @@ export default function UploadPage() {
   const itemsWithMedia = items.filter((item) => item.taskIds.length > 0);
   const currentItemHasMedia = items[items.length - 1]?.taskIds.length > 0;
   const totalMediaCount = items.reduce((sum, item) => sum + item.taskIds.length, 0);
-  // "Hello, Nathan", not "Hello, Nathan Mayell".
+  // "Hello, Jane", not "Hello, Jane Whitfield".
   const firstName = linkData?.prospectName?.trim().split(/\s+/)[0] ?? '';
+  const remainingItems = linkData?.maxItems ? Math.max(0, linkData.maxItems - linkData.itemCount) : null;
+  // A full link refuses any send, so don't offer to take photos for one.
+  const atItemLimit = remainingItems === 0;
+
+  const itemLimitNotice = (
+    <>
+      This link has reached its item limit. To send more, email{' '}
+      <a href={`mailto:${BUSINESS.email}`} className="underline underline-offset-4">
+        {BUSINESS.email}
+      </a>
+      .
+    </>
+  );
 
   const offlineBanner = !isOnline && (
     <div
@@ -434,7 +447,7 @@ export default function UploadPage() {
             </h1>
             <p className="text-charcoal/65 leading-relaxed">
               We have your {submittedCount} {submittedCount === 1 ? 'item' : 'items'}. A Mayells specialist
-              will look through them and be in touch within 1&ndash;2 business days.
+              will look through them and be in touch within one business day.
             </p>
             <p className="mt-4 text-charcoal/65 leading-relaxed">
               More to show us? You can use this same link again at any time.
@@ -490,7 +503,7 @@ export default function UploadPage() {
   return (
     <>
       <UploadHeader>
-        {itemsWithMedia.length > 0 ? (
+        {itemsWithMedia.length > 0 && !atItemLimit ? (
           <div className="flex items-center gap-3">
             <span className="hidden min-[420px]:inline whitespace-nowrap text-xs text-charcoal/55 tabular-nums">
               {itemsWithMedia.length} {itemsWithMedia.length === 1 ? 'item' : 'items'} &middot;{' '}
@@ -538,38 +551,44 @@ export default function UploadPage() {
                 Send us photos of the pieces you would like to consign. A specialist will review them and
                 come back to you with our thoughts, free and with no obligation.
               </p>
-              {linkData?.maxItems && (
+              {remainingItems !== null && (
                 <p className="mt-3 text-sm text-champagne-deep">
-                  Up to {linkData.maxItems - linkData.itemCount} more items on this link
+                  {remainingItems > 0
+                    ? `Up to ${remainingItems} more ${remainingItems === 1 ? 'item' : 'items'} on this link`
+                    : itemLimitNotice}
                 </p>
               )}
             </div>
 
-            <ol className="mt-9 space-y-5">
-              {[
-                ['Photograph one piece at a time', 'Take as many photos of it as you like: the whole piece, the back or underside, any signature, maker’s mark or label, and any damage.'],
-                ['Tap “Next item” for the next piece', 'That keeps each piece’s photos together, so we know what belongs with what.'],
-                ['Review and send', 'Add anything you know about each piece, such as where it came from or how old it is, then send it to us.'],
-              ].map(([title, text], i) => (
-                <li key={title} className="flex gap-4">
-                  <span className="font-display text-2xl leading-none text-champagne-deep tabular-nums w-5 shrink-0">
-                    {i + 1}
-                  </span>
-                  <div>
-                    <p className="font-medium text-[15px]">{title}</p>
-                    <p className="mt-1 text-[14.5px] leading-relaxed text-charcoal/65">{text}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            {!atItemLimit && (
+              <>
+                <ol className="mt-9 space-y-5">
+                  {[
+                    ['Photograph one piece at a time', 'Take as many photos of it as you like: the whole piece, the back or underside, any signature, maker’s mark or label, and any damage.'],
+                    ['Tap “Next item” for the next piece', 'That keeps each piece’s photos together, so we know what belongs with what.'],
+                    ['Review and send', 'Add anything you know about each piece, such as where it came from or how old it is, then send it to us.'],
+                  ].map(([title, text], i) => (
+                    <li key={title} className="flex gap-4">
+                      <span className="font-display text-2xl leading-none text-champagne-deep tabular-nums w-5 shrink-0">
+                        {i + 1}
+                      </span>
+                      <div>
+                        <p className="font-medium text-[15px]">{title}</p>
+                        <p className="mt-1 text-[14.5px] leading-relaxed text-charcoal/65">{text}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
 
-            <div className="mt-9 rounded-2xl border border-charcoal/10 bg-white p-4 text-[14px] leading-relaxed text-charcoal/70">
-              <p className="font-medium text-charcoal">For the best photos</p>
-              <p className="mt-1">
-                Daylight near a window, no flash. Fill the frame with the piece, and keep it in focus.
-                Phone photos are perfect. Short videos are welcome too, up to about 20 seconds.
-              </p>
-            </div>
+                <div className="mt-9 rounded-2xl border border-charcoal/10 bg-white p-4 text-[14px] leading-relaxed text-charcoal/70">
+                  <p className="font-medium text-charcoal">For the best photos</p>
+                  <p className="mt-1">
+                    Daylight near a window, no flash. Fill the frame with the piece, and keep it in focus.
+                    Phone photos are perfect. Short videos are welcome too, up to about 20 seconds.
+                  </p>
+                </div>
+              </>
+            )}
 
             <p className="mt-6 flex items-start gap-2 text-[13px] leading-relaxed text-charcoal/55">
               <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -579,6 +598,11 @@ export default function UploadPage() {
           </>
         ) : (
           <div className="pt-5 space-y-4">
+            {atItemLimit && (
+              <p role="status" className="rounded-xl border border-champagne/40 bg-champagne/10 px-3.5 py-3 text-[14px] leading-snug text-charcoal/80">
+                {itemLimitNotice}
+              </p>
+            )}
             {itemsWithMedia.map((item, idx) => (
               <ItemCard
                 key={item.id}
@@ -594,7 +618,7 @@ export default function UploadPage() {
                 canRemove={itemsWithMedia.length > 1}
               />
             ))}
-            {!currentItemHasMedia && (
+            {!currentItemHasMedia && !atItemLimit && (
               <p className="rounded-2xl border-2 border-dashed border-charcoal/15 px-4 py-6 text-center text-[14.5px] text-charcoal/55">
                 Item {items.length}: add photos with the buttons below
               </p>
@@ -603,12 +627,14 @@ export default function UploadPage() {
         )}
       </main>
 
-      <CaptureBar
-        onFilesSelected={handleFilesSelected}
-        onNextItem={handleNextItem}
-        hasCurrentItemMedia={currentItemHasMedia}
-        itemNumber={items.length}
-      />
+      {!atItemLimit && (
+        <CaptureBar
+          onFilesSelected={handleFilesSelected}
+          onNextItem={handleNextItem}
+          hasCurrentItemMedia={currentItemHasMedia}
+          itemNumber={items.length}
+        />
+      )}
     </>
   );
 }

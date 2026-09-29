@@ -4,6 +4,7 @@ import { auctions } from '@/db/schema';
 import { eq, or } from 'drizzle-orm';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { loadOgImage } from '@/lib/seo/og-image';
+import { auctionWithVisibleLotCount } from '@/components/auctions/visible-lot-count';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
@@ -14,8 +15,9 @@ async function getAuction(auctionId: string) {
   // like one (a non-UUID cast throws in Postgres and would break the image).
   // A DB hiccup degrades to the generic branded card rather than a 500.
   try {
+    // The same visible-lot count the sale page and its cards show.
     const [auction] = await db
-      .select()
+      .select(auctionWithVisibleLotCount)
       .from(auctions)
       .where(
         UUID_RE.test(auctionId)
@@ -128,9 +130,9 @@ export default async function OGImage({ params }: { params: Promise<{ auctionId:
             ) : null}
             {/* Single text child: satori rejects a non-flex element with more
                 than one child node, and `{n} lots` is two nodes. */}
-            {!!auction?.lotCount && auction.lotCount > 0 ? (
+            {!!auction?.visibleLotCount && auction.visibleLotCount > 0 ? (
               <div style={{ fontSize: 18, color: 'rgba(255,255,255,0.65)' }}>
-                {`${auction.lotCount} lots`}
+                {`${auction.visibleLotCount} ${auction.visibleLotCount === 1 ? 'lot' : 'lots'}`}
               </div>
             ) : null}
           </div>

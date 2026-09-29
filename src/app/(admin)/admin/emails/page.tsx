@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { PageHeader } from '@/components/admin/PageHeader';
+import { PageHeader, filterChipCountClass } from '@/components/admin/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,23 @@ import { toast } from 'sonner';
 import { escapeHtml } from '@/lib/email/escape';
 import { EMAIL_TEMPLATES } from '@/lib/config/outreach';
 import { refreshAdminBadges } from '@/hooks/useAdminBadges';
+import { HOUSE_TIME_ZONE, formatShortDate, formatShortDateTime } from '@/lib/format/dates';
+import { FilterChip } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
+
+const listDateThisYear = new Intl.DateTimeFormat('en-US', {
+  month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: HOUSE_TIME_ZONE,
+});
+const listDateOlder = new Intl.DateTimeFormat('en-US', {
+  month: 'short', day: 'numeric', year: 'numeric', timeZone: HOUSE_TIME_ZONE,
+});
+const yearOf = new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: HOUSE_TIME_ZONE });
+
+/** "Sep 28, 3:04 PM" this year; "Sep 28, 2025" for anything older, so last year's mail never reads as this year's. */
+function formatListDate(iso: string): string {
+  const d = new Date(iso);
+  return yearOf.format(d) === yearOf.format(new Date()) ? listDateThisYear.format(d) : listDateOlder.format(d);
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -183,14 +200,14 @@ function quotedHtml(email: EmailRow, detail: EmailDetail | null | undefined): st
   return `
     <br /><br />
     <div style="border-left: 2px solid #ccc; padding-left: 12px; margin-top: 16px; color: #666; font-size: 13px;">
-      <p style="margin: 0 0 4px;">On ${new Date(email.createdAt).toLocaleDateString()}, ${escapeHtml(email.fromName || email.fromEmail)} wrote:</p>
+      <p style="margin: 0 0 4px;">On ${formatShortDate(email.createdAt)}, ${escapeHtml(email.fromName || email.fromEmail)} wrote:</p>
       <div>${quoted}</div>
     </div>`;
 }
 
 function quotedText(email: EmailRow, detail: EmailDetail | null | undefined): string {
   if (!detail?.bodyText) return '';
-  return `\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${detail.bodyText.split('\n').join('\n> ')}`;
+  return `\n\n> On ${formatShortDate(email.createdAt)}, ${email.fromName || email.fromEmail} wrote:\n> ${detail.bodyText.split('\n').join('\n> ')}`;
 }
 
 /**
@@ -218,7 +235,7 @@ function forwardSubject(subject: string | null): string {
 function forwardBody(email: EmailRow, detail: EmailDetail): string {
   const original = detail.bodyText?.trim() || (detail.bodyHtml ? htmlToText(detail.bodyHtml) : '');
   const from = email.fromName ? `${email.fromName} <${email.fromEmail}>` : email.fromEmail;
-  const date = new Date(email.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const date = formatShortDateTime(email.createdAt);
   return [
     '',
     '',
@@ -548,9 +565,7 @@ function QuotedOriginal({ email, detail }: { email: EmailRow; detail: EmailDetai
   return (
     <div className="mt-3 border-l-2 border-muted pl-3 text-xs text-muted-foreground">
       <p className="font-medium mb-1">
-        On {new Date(email.createdAt).toLocaleDateString(undefined, {
-          month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
-        })}, {email.fromName || email.fromEmail} wrote:
+        On {formatShortDateTime(email.createdAt)}, {email.fromName || email.fromEmail} wrote:
       </p>
       <p className="whitespace-pre-wrap">{preview}</p>
     </div>
@@ -582,7 +597,7 @@ function CounterpartyLinks({ links }: { links: EmailLinks | undefined }) {
       {links.userId && (
         <a href={`/admin/users/${links.userId}`} className="flex items-center gap-1 text-purple-600 hover:text-purple-800 transition-colors">
           <User className="h-3 w-3" />
-          View user profile
+          View client profile
         </a>
       )}
       {links.prospectId && (
@@ -978,7 +993,11 @@ function AdminEmailsPageInner() {
 
   // ─── Thread view ───────────────────────────────────────────────────────────
 
+  // The thread most recently asked for: a slower response for a thread the
+  // operator has already left must not land under the one now open.
+  const latestThreadRef = useRef<string | null>(null);
   const openThread = useCallback(async (threadId: string) => {
+    latestThreadRef.current = threadId;
     setThreadLoading(true);
     setThreadView(threadId);
     setReplyingTo(null);
@@ -986,6 +1005,7 @@ function AdminEmailsPageInner() {
       const res = await fetch(`/api/admin/emails?thread_id=${threadId}`);
       if (!res.ok) throw new Error(await readError(res, 'Failed to load thread'));
       const d = await res.json();
+      if (latestThreadRef.current !== threadId) return;
       const rows: EmailRow[] = d.data ?? [];
       setThreadEmails(rows);
       // Thread rows are slim headers — fetch each email's body on demand
@@ -994,23 +1014,64 @@ function AdminEmailsPageInner() {
       const unreadIds = rows.filter(isUnread).map((e) => e.id);
       if (unreadIds.length > 0) void setRead(unreadIds, true, true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to load thread');
+      if (latestThreadRef.current === threadId) {
+        toast.error(err instanceof Error ? err.message : 'Failed to load thread');
+      }
     } finally {
-      setThreadLoading(false);
+      if (latestThreadRef.current === threadId) setThreadLoading(false);
     }
   }, [loadEmailDetail, setRead]);
 
-  function closeThread() {
+  // The open thread lives in the URL (?thread=<id>): opening one from the
+  // list pushes a history entry, so the browser Back button returns to the
+  // list instead of leaving the inbox. Other admin pages deep-link the same way.
+  const pushedThread = useRef(false);
+  function showThread(threadId: string) {
+    if (searchParams.get('thread') === threadId) {
+      void openThread(threadId);
+      return;
+    }
+    pushedThread.current = true;
+    router.push(`/admin/emails?thread=${encodeURIComponent(threadId)}`, { scroll: false });
+  }
+
+  function resetThread() {
     setThreadView(null);
     setThreadEmails([]);
     setReplyingTo(null);
-    if (searchParams.get('thread')) router.replace('/admin/emails');
   }
 
-  // Deep link from other admin pages: /admin/emails?thread=<id>
+  function closeThread() {
+    resetThread();
+    if (!searchParams.get('thread')) return;
+    if (pushedThread.current) {
+      // Pop our own entry so Back/Forward stay in step with what's on screen.
+      pushedThread.current = false;
+      router.back();
+    } else {
+      router.replace('/admin/emails', { scroll: false });
+    }
+  }
+
   const deepLinkedThread = searchParams.get('thread');
+  // What ?thread was on the previous run: undefined before the first one.
+  const prevThread = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (deepLinkedThread) void openThread(deepLinkedThread);
+    const prev = prevThread.current;
+    prevThread.current = deepLinkedThread;
+    if (deepLinkedThread) {
+      // Arrived here from the list this page was showing (our push, or the
+      // browser's Forward after a Back): the entry behind this one is the
+      // list, so closing should pop back to it, not leave a duplicate entry.
+      if (prev === null) pushedThread.current = true;
+      void openThread(deepLinkedThread);
+    } else {
+      // Browser Back (or the breadcrumb) removed ?thread: show the list again.
+      pushedThread.current = false;
+      setThreadView(null);
+      setThreadEmails([]);
+      setReplyingTo(null);
+    }
   }, [deepLinkedThread, openThread]);
 
   // ─── Bulk actions ──────────────────────────────────────────────────────────
@@ -1049,19 +1110,17 @@ function AdminEmailsPageInner() {
     }
   }
 
+  /** Throws on failure so the confirm dialog stays open with the error toasted. */
   async function performDelete(ids: string[]) {
     const res = await fetch('/api/admin/emails', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ids.length === 1 ? { id: ids[0] } : { ids }),
     }).catch(() => null);
-    if (!res) {
-      toast.error('Network error');
-      return;
-    }
-    if (!res.ok) {
-      toast.error(await readError(res, 'Failed to delete'));
-      return;
+    if (!res || !res.ok) {
+      const message = res ? await readError(res, 'Failed to delete') : 'Network error';
+      toast.error(message);
+      throw new Error(message);
     }
     toast.success(ids.length === 1 ? 'Email deleted' : `Deleted ${ids.length} emails`);
     void refreshAdminBadges();
@@ -1350,7 +1409,9 @@ function AdminEmailsPageInner() {
             )}
           </div>
         )}
+        <label htmlFor="composeTo" className="sr-only">To</label>
         <input
+          id="composeTo"
           type="email"
           placeholder="To email address"
           value={composeTo}
@@ -1358,7 +1419,9 @@ function AdminEmailsPageInner() {
           className="w-full px-3 py-2 border rounded-md text-sm bg-background"
           autoFocus={!!forwardOf}
         />
+        <label htmlFor="composeSubject" className="sr-only">Subject</label>
         <input
+          id="composeSubject"
           type="text"
           placeholder="Subject"
           value={composeSubject}
@@ -1366,6 +1429,7 @@ function AdminEmailsPageInner() {
           className="w-full px-3 py-2 border rounded-md text-sm bg-background"
         />
         <Textarea
+          aria-label="Message"
           placeholder="Write your message..."
           value={composeBody}
           onChange={(e) => setComposeBody(e.target.value)}
@@ -1421,24 +1485,25 @@ function AdminEmailsPageInner() {
     }
     return (
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-          <div className="flex items-center gap-3 min-w-0">
-            <Button variant="ghost" size="sm" onClick={closeThread}>
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
-            </Button>
-            <h1 className="font-display text-display-sm leading-tight truncate">{threadSubject}</h1>
-          </div>
-          {threadEmails.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">{threadEmails.length} message{threadEmails.length === 1 ? '' : 's'}</span>
-              <Button size="sm" variant="outline" onClick={archiveThread}>
-                <Archive className="h-3.5 w-3.5 mr-1" />
-                Archive thread
+        <PageHeader
+          title={threadLoading && threadEmails.length === 0 ? 'Loading thread…' : threadSubject}
+          description={threadEmails.length > 0 && `${threadEmails.length} message${threadEmails.length === 1 ? '' : 's'}`}
+          actions={
+            <>
+              {/* The breadcrumb ends at Inbox on this URL, so the way back lives here. */}
+              <Button variant="outline" size="sm" onClick={closeThread}>
+                <ArrowLeft className="h-3.5 w-3.5 mr-1" />
+                Inbox
               </Button>
-            </div>
-          )}
-        </div>
+              {threadEmails.length > 0 && (
+                <Button size="sm" variant="outline" onClick={archiveThread}>
+                  <Archive className="h-3.5 w-3.5 mr-1" />
+                  Archive thread
+                </Button>
+              )}
+            </>
+          }
+        />
 
         {composeCard}
 
@@ -1482,9 +1547,7 @@ function AdminEmailsPageInner() {
                         )}
                       </div>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(email.createdAt).toLocaleDateString(undefined, {
-                          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                        })}
+                        {formatListDate(email.createdAt)}
                       </span>
                     </div>
                     <p className="text-sm text-muted-foreground">{email.subject}</p>
@@ -1503,9 +1566,7 @@ function AdminEmailsPageInner() {
                       <p key={f.id} className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Forward className="h-3 w-3" />
                         Forwarded to {f.toEmail} on{' '}
-                        {new Date(f.createdAt).toLocaleDateString(undefined, {
-                          month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
-                        })}
+                        {formatShortDateTime(f.createdAt)}
                       </p>
                     ))}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1661,38 +1722,24 @@ function AdminEmailsPageInner() {
       {/* Filter chips */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {(tab === 'inbox' ? (['all', 'unread', 'needs_review', 'archived'] as Filter[]) : (['all', 'archived'] as Filter[])).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => switchFilter(f)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-              filter === f
-                ? 'border-champagne bg-champagne/15 text-foreground'
-                : 'border-border text-muted-foreground hover:text-foreground hover:border-champagne/50'
-            }`}
-          >
+          <FilterChip key={f} active={filter === f} onClick={() => switchFilter(f)}>
             {filterLabels[f]}
-            {f === 'unread' && unreadCount > 0 && <span className="ml-1 text-champagne">{unreadCount}</span>}
-          </button>
+            {f === 'unread' && unreadCount > 0 && <span className={filterChipCountClass}>{unreadCount}</span>}
+          </FilterChip>
         ))}
         {tab === 'inbox' && categories.length > 0 && (
           <>
             <span className="h-4 w-px bg-border mx-1" aria-hidden />
             {categories.map((c) => (
-              <button
+              <FilterChip
                 key={c.category}
-                type="button"
+                active={category === c.category}
                 onClick={() => switchCategory(category === c.category ? null : c.category)}
-                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                  category === c.category
-                    ? 'border-purple-300 bg-purple-50 text-purple-800'
-                    : 'border-border text-muted-foreground hover:text-foreground hover:border-purple-200'
-                }`}
               >
                 <Bot className="h-2.5 w-2.5" />
                 {categoryLabels[c.category] || c.category}
-                <span className="opacity-60">{c.count}</span>
-              </button>
+                <span className={filterChipCountClass}>{c.count}</span>
+              </FilterChip>
             ))}
           </>
         )}
@@ -1850,7 +1897,7 @@ function AdminEmailsPageInner() {
                             {email.userId && (
                               <Badge variant="secondary" className="bg-purple-100 text-purple-800 gap-1 text-xs">
                                 <User className="h-2.5 w-2.5" />
-                                User
+                                Client
                               </Badge>
                             )}
                             <StatusBadge status={email.status} />
@@ -1872,26 +1919,9 @@ function AdminEmailsPageInner() {
                             {email.archivedAt && (
                               <Badge variant="outline" className="gap-1 text-xs"><Archive className="h-2.5 w-2.5" />Archived</Badge>
                             )}
-                            {email.threadId && (
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                onClick={(e) => { e.stopPropagation(); openThread(email.threadId!); }}
-                                onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openThread(email.threadId!); } }}
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                                title="View thread"
-                              >
-                                <MessageSquare className="h-3.5 w-3.5" />
-                              </span>
-                            )}
                           </div>
                           <span className="text-xs text-muted-foreground flex-shrink-0">
-                            {new Date(email.createdAt).toLocaleDateString(undefined, {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit',
-                            })}
+                            {formatListDate(email.createdAt)}
                           </span>
                         </div>
                         <p className={`text-sm truncate mt-0.5 flex items-center gap-1.5 ${unread ? 'text-foreground' : 'text-muted-foreground'}`}>
@@ -1914,6 +1944,20 @@ function AdminEmailsPageInner() {
                       )}
                     </div>
                   </button>
+
+                  {/* Its own button, not nested inside the row's expand button. */}
+                  {email.threadId && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="flex-shrink-0 text-muted-foreground"
+                      onClick={() => showThread(email.threadId!)}
+                      title="View thread"
+                      aria-label="View thread"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
 
                   {/* Row actions */}
                   <DropdownMenu>
@@ -1994,7 +2038,7 @@ function AdminEmailsPageInner() {
                           <Bot className="h-4 w-4 text-purple-600" />
                           <span className="text-sm font-medium text-purple-800">AI Draft Reply</span>
                           <span className="text-xs text-purple-500">
-                            {expandedDetail.aiDraftedAt && `Generated ${new Date(expandedDetail.aiDraftedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
+                            {expandedDetail.aiDraftedAt && `Generated ${formatListDate(expandedDetail.aiDraftedAt)}`}
                           </span>
                         </div>
                         <pre className="text-sm whitespace-pre-wrap text-foreground mb-3">{expandedDetail.aiDraftText}</pre>
@@ -2048,7 +2092,7 @@ function AdminEmailsPageInner() {
                         AI auto-replied to this email
                         {email.aiCategory && <span>({categoryLabels[email.aiCategory] || email.aiCategory})</span>}
                         {email.threadId && (
-                          <button type="button" className="underline" onClick={() => openThread(email.threadId!)}>
+                          <button type="button" className="underline" onClick={() => showThread(email.threadId!)}>
                             see the reply
                           </button>
                         )}
@@ -2085,7 +2129,7 @@ function AdminEmailsPageInner() {
                           Forward
                         </Button>
                         {email.threadId && (
-                          <Button size="sm" variant="outline" onClick={() => openThread(email.threadId!)}>
+                          <Button size="sm" variant="outline" onClick={() => showThread(email.threadId!)}>
                             <MessageSquare className="h-3.5 w-3.5 mr-2" />
                             View Thread
                           </Button>
@@ -2119,33 +2163,12 @@ function AdminEmailsPageInner() {
           </div>
 
           {/* Pagination */}
-          {pagination.totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 mt-6">
-              <p className="text-sm text-muted-foreground">
-                Page {pagination.page} of {pagination.totalPages} ({pagination.total} emails)
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pagination.page <= 1}
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pager
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+            summary={<>Page {pagination.page} of {pagination.totalPages} ({pagination.total} emails)</>}
+          />
         </>
       )}
       {confirmDialog}

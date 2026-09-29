@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { requireAdminPage } from '@/lib/auth/require-admin';
-import { SettingsClient, SETTINGS_TABS, type SettingsTab } from './settings-client';
+import { SettingsClient } from './settings-client';
+import { isSettingsTab, type SettingsTab } from './tabs';
 
 export const metadata: Metadata = {
   title: 'Settings — Mayells Admin',
@@ -14,6 +15,6 @@ export default async function AdminSettingsPage({
 }) {
   await requireAdminPage();
   const { tab } = await searchParams;
-  const initialTab: SettingsTab = SETTINGS_TABS.some((t) => t.value === tab) ? (tab as SettingsTab) : 'sales';
+  const initialTab: SettingsTab = isSettingsTab(tab) ? tab : 'sales';
   return <SettingsClient initialTab={initialTab} />;
 }

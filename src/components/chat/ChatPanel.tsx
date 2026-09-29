@@ -118,6 +118,19 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
   );
   const { messages, sendMessage, status, error, regenerate, clearError, setMessages } = useChat({ transport });
 
+  // Replies stream in place, so a live message list would be read in
+  // fragments. Instead, hand each finished reply to one polite live region
+  // (adjusting state during render when the stream ends).
+  const [prevStatus, setPrevStatus] = useState(status);
+  const [announcement, setAnnouncement] = useState('');
+  if (status !== prevStatus) {
+    setPrevStatus(status);
+    const last = messages[messages.length - 1];
+    if ((prevStatus === 'streaming' || prevStatus === 'submitted') && status === 'ready' && last?.role === 'assistant') {
+      setAnnouncement(messageText(last));
+    }
+  }
+
   const contact = useMemo(() => {
     const micro = site ? getMicrositeBySlug(site) : undefined;
     const phone = micro ? micrositePhone(micro) : { display: BUSINESS.phone, href: BUSINESS.phoneHref };
@@ -391,9 +404,9 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
             : 'pl-6 pr-3.5 py-3.5'
         }`}
       >
-        <h3 id={`${id}-title`} className={`font-display ${isPhone ? 'text-[22px]' : 'text-2xl'}`}>
+        <h2 id={`${id}-title`} className={`font-display ${isPhone ? 'text-[22px]' : 'text-2xl'}`}>
           Mayells Concierge
-        </h3>
+        </h2>
         <button
           type="button"
           onClick={onClose}
@@ -407,7 +420,7 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
       {!chatEnabled ? (
         <div className="flex-1 px-6 py-10 text-center">
           <p className="font-display text-xl text-charcoal">Our concierge is offline</p>
-          <p className="mt-2 text-base text-gray-500">
+          <p className="mt-2 text-base text-charcoal/70">
             A specialist can help by phone or email.
           </p>
           <div className="mt-6 flex justify-center">{contactLinks}</div>
@@ -417,6 +430,8 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
           {/* Messages */}
           <div
             ref={listRef}
+            role="region"
+            aria-label="Conversation"
             className={`flex-1 overflow-y-auto overscroll-contain space-y-4 ${
               isPhone
                 ? 'min-h-0 py-5 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]'
@@ -425,7 +440,7 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
           >
             {messages.length === 0 && (
               <div className={isPhone ? 'pt-4' : 'text-center py-8'}>
-                <p className={`text-base ${isPhone ? 'text-charcoal/75 leading-relaxed' : 'text-gray-500'}`}>{greeting}</p>
+                <p className={`text-base ${isPhone ? 'text-charcoal/75 leading-relaxed' : 'text-charcoal/70'}`}>{greeting}</p>
                 {isPhone && (
                   <div className="mt-6 flex flex-col items-start gap-2.5">
                     {SUGGESTIONS.map((s) => (
@@ -491,6 +506,10 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
             {errorNotice}
           </div>
 
+          <div className="sr-only" aria-live="polite">
+            {announcement}
+          </div>
+
           {/* Photo preview */}
           {(photo || preparingPhoto) && (
             <div
@@ -510,7 +529,7 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
                   <Loader2 className="h-5 w-5 animate-spin text-champagne" aria-hidden />
                 </div>
               )}
-              <span className="text-sm text-gray-500 flex-1" aria-live="polite">
+              <span className="text-sm text-charcoal/70 flex-1" aria-live="polite">
                 {photo ? 'Photo ready to send' : 'Preparing photo…'}
               </span>
               {photo && (
@@ -518,7 +537,7 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
                   type="button"
                   onClick={() => setPhoto(null)}
                   aria-label="Remove photo"
-                  className="flex h-11 w-11 items-center justify-center rounded-full text-gray-400 hover:text-gray-600"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-charcoal/60 hover:text-charcoal"
                 >
                   <X className="h-5 w-5" aria-hidden />
                 </button>
@@ -552,7 +571,7 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
               disabled={preparingPhoto}
               aria-label="Add a photo"
               title="Add a photo"
-              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:text-champagne-deep disabled:opacity-40"
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-charcoal/60 transition-colors hover:text-champagne-deep disabled:opacity-40"
             >
               <Camera className="h-6 w-6" aria-hidden />
             </button>
@@ -572,7 +591,7 @@ export function ChatPanel({ id, visible, onClose, pendingMessage, onPendingConsu
                     ? 'How can we help?'
                     : 'Ask about appraisals, consignment...'
               }
-              className="min-w-0 flex-1 h-11 px-1 text-base bg-transparent outline-none placeholder:text-gray-400 text-charcoal"
+              className="min-w-0 flex-1 h-11 px-1 text-base bg-transparent outline-none placeholder:text-charcoal/55 text-charcoal"
             />
             <button
               type="submit"

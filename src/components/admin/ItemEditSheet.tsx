@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, RefreshCw, Save, AlertCircle } from 'lucide-react';
+import { Trash2, RefreshCw, Save, AlertCircle, Loader2 } from 'lucide-react';
 import { LensButton } from '@/components/admin/LensButton';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 
@@ -51,9 +51,9 @@ interface EstateVisitItem {
 interface ItemEditSheetProps {
   item: EstateVisitItem;
   onClose: () => void;
-  onSave: (updates: Partial<EstateVisitItem>) => void;
+  onSave: (updates: Partial<EstateVisitItem>) => void | Promise<void>;
   onDelete: () => void | Promise<void>;
-  onReprocess: () => void;
+  onReprocess: () => void | Promise<void>;
 }
 
 // Money is stored in cents and edited in dollars. A $0 estimate is a real
@@ -84,22 +84,31 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
   const [estimateHigh, setEstimateHigh] = useState(centsToDollarsInput(item.estimateHigh));
   const [adminNotes, setAdminNotes] = useState(item.adminNotes || '');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmReanalyze, setConfirmReanalyze] = useState(false);
+  // Guards against a double PATCH from a second click while the first saves.
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    onSave({
-      title: title || null,
-      description: description || null,
-      artist: artist || null,
-      period: period || null,
-      medium: medium || null,
-      dimensions: dimensions || null,
-      condition: condition || null,
-      conditionNotes: conditionNotes || null,
-      suggestedCategory: suggestedCategory || null,
-      estimateLow: dollarsInputToCents(estimateLow),
-      estimateHigh: dollarsInputToCents(estimateHigh),
-      adminNotes: adminNotes || null,
-    });
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave({
+        title: title || null,
+        description: description || null,
+        artist: artist || null,
+        period: period || null,
+        medium: medium || null,
+        dimensions: dimensions || null,
+        condition: condition || null,
+        conditionNotes: conditionNotes || null,
+        suggestedCategory: suggestedCategory || null,
+        estimateLow: dollarsInputToCents(estimateLow),
+        estimateHigh: dollarsInputToCents(estimateHigh),
+        adminNotes: adminNotes || null,
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -153,15 +162,15 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
 
             {/* Title */}
             <div className="space-y-1.5">
-              <Label htmlFor="title">Title</Label>
-              <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <Label htmlFor="item-title">Title</Label>
+              <Input id="item-title" value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
 
             {/* Description */}
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="item-description">Description</Label>
               <Textarea
-                id="description"
+                id="item-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
@@ -171,32 +180,32 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
             {/* Artist / Period row */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="artist">Artist / Maker</Label>
-                <Input id="artist" value={artist} onChange={(e) => setArtist(e.target.value)} />
+                <Label htmlFor="item-artist">Artist / Maker</Label>
+                <Input id="item-artist" value={artist} onChange={(e) => setArtist(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="period">Period</Label>
-                <Input id="period" value={period} onChange={(e) => setPeriod(e.target.value)} />
+                <Label htmlFor="item-period">Period</Label>
+                <Input id="item-period" value={period} onChange={(e) => setPeriod(e.target.value)} />
               </div>
             </div>
 
             {/* Medium / Dimensions row */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="medium">Medium</Label>
-                <Input id="medium" value={medium} onChange={(e) => setMedium(e.target.value)} />
+                <Label htmlFor="item-medium">Medium</Label>
+                <Input id="item-medium" value={medium} onChange={(e) => setMedium(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="dimensions">Dimensions</Label>
-                <Input id="dimensions" value={dimensions} onChange={(e) => setDimensions(e.target.value)} />
+                <Label htmlFor="item-dimensions">Dimensions</Label>
+                <Input id="item-dimensions" value={dimensions} onChange={(e) => setDimensions(e.target.value)} />
               </div>
             </div>
 
             {/* Category */}
             <div className="space-y-1.5">
-              <Label htmlFor="category">Category</Label>
+              <Label htmlFor="item-category">Category</Label>
               <Input
-                id="category"
+                id="item-category"
                 value={suggestedCategory}
                 onChange={(e) => setSuggestedCategory(e.target.value)}
               />
@@ -204,9 +213,9 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
 
             {/* Condition */}
             <div className="space-y-1.5">
-              <Label>Condition</Label>
+              <Label htmlFor="item-condition">Condition</Label>
               <Select value={condition} onValueChange={setCondition}>
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="item-condition" className="w-full">
                   <SelectValue placeholder="Select condition" />
                 </SelectTrigger>
                 <SelectContent>
@@ -223,9 +232,9 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
 
             {/* Condition Notes */}
             <div className="space-y-1.5">
-              <Label htmlFor="conditionNotes">Condition Notes</Label>
+              <Label htmlFor="item-conditionNotes">Condition Notes</Label>
               <Textarea
-                id="conditionNotes"
+                id="item-conditionNotes"
                 value={conditionNotes}
                 onChange={(e) => setConditionNotes(e.target.value)}
                 rows={2}
@@ -235,9 +244,9 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
             {/* Estimates */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="estimateLow">Low Estimate ($)</Label>
+                <Label htmlFor="item-estimateLow">Low Estimate ($)</Label>
                 <Input
-                  id="estimateLow"
+                  id="item-estimateLow"
                   type="number"
                   value={estimateLow}
                   onChange={(e) => setEstimateLow(e.target.value)}
@@ -245,9 +254,9 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="estimateHigh">High Estimate ($)</Label>
+                <Label htmlFor="item-estimateHigh">High Estimate ($)</Label>
                 <Input
-                  id="estimateHigh"
+                  id="item-estimateHigh"
                   type="number"
                   value={estimateHigh}
                   onChange={(e) => setEstimateHigh(e.target.value)}
@@ -258,9 +267,9 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
 
             {/* Verification Notes */}
             <div className="space-y-1.5">
-              <Label htmlFor="adminNotes">Verification Notes</Label>
+              <Label htmlFor="item-adminNotes">Verification Notes</Label>
               <Textarea
-                id="adminNotes"
+                id="item-adminNotes"
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
                 rows={3}
@@ -283,11 +292,11 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
           </div>
 
           <SheetFooter className="flex-row gap-2 border-t pt-4">
-            <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)}>
+            <Button variant="destructive" size="sm" onClick={() => setConfirmDelete(true)} disabled={saving}>
               <Trash2 className="h-4 w-4 mr-1" />
               Delete
             </Button>
-            <Button variant="outline" size="sm" onClick={onReprocess}>
+            <Button variant="outline" size="sm" onClick={() => setConfirmReanalyze(true)} disabled={saving}>
               <RefreshCw className="h-4 w-4 mr-1" />
               Re-analyze
             </Button>
@@ -296,13 +305,26 @@ export function ItemEditSheet({ item, onClose, onSave, onDelete, onReprocess }: 
               size="sm"
               className="bg-champagne text-charcoal hover:bg-champagne/90"
               onClick={handleSave}
+              disabled={saving}
             >
-              <Save className="h-4 w-4 mr-1" />
-              Save
+              {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+              {saving ? 'Saving…' : 'Save'}
             </Button>
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={confirmReanalyze}
+        onOpenChange={setConfirmReanalyze}
+        title="Re-analyze this item?"
+        description="Re-analyze will replace the title, description and estimates with a fresh AI analysis, overwriting anything you verified or corrected. Unsaved edits in this panel are discarded. Verification notes are kept."
+        confirmLabel="Re-analyze"
+        variant="destructive"
+        onConfirm={async () => {
+          await onReprocess();
+        }}
+      />
 
       <ConfirmDialog
         open={confirmDelete}

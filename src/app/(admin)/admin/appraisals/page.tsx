@@ -8,33 +8,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PageHeader } from '@/components/admin/PageHeader';
-import { Plus, ClipboardCheck, ChevronLeft, ChevronRight, Users2 } from 'lucide-react';
-import { formatCurrency } from '@/types';
-import { cn } from '@/lib/utils';
+import { PageHeader, filterChipClass, filterChipCountClass } from '@/components/admin/PageHeader';
+import { Plus, ClipboardCheck, Users2 } from 'lucide-react';
+import { VISIT_STATUS, VISIT_STATUS_ORDER, visitStatus, type VisitStatusKey } from '@/lib/admin/status/sales';
+import { formatDayOnly } from '@/lib/format/dates';
+import { formatEstimate } from '@/lib/format/estimate';
+import { Pager } from '../_components/Pager';
 
 const PAGE_SIZE = 50;
 
-const VISIT_STATUSES = ['draft', 'uploading', 'processing', 'review', 'sent', 'archived'] as const;
-type VisitStatus = (typeof VISIT_STATUSES)[number];
-
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-700',
-  uploading: 'bg-blue-100 text-blue-700',
-  processing: 'bg-yellow-100 text-yellow-700',
-  review: 'bg-orange-100 text-orange-700',
-  sent: 'bg-green-100 text-green-700',
-  archived: 'bg-gray-100 text-gray-500',
-};
-
-const statusLabels: Record<VisitStatus, string> = {
-  draft: 'Draft',
-  uploading: 'Uploading',
-  processing: 'Processing',
-  review: 'In review',
-  sent: 'Sent',
-  archived: 'Archived',
-};
+const VISIT_STATUSES = VISIT_STATUS_ORDER;
+type VisitStatus = VisitStatusKey;
 
 function hrefFor(page: number, status?: VisitStatus): string {
   const q = new URLSearchParams();
@@ -44,10 +28,10 @@ function hrefFor(page: number, status?: VisitStatus): string {
   return `/admin/appraisals${qs ? `?${qs}` : ''}`;
 }
 
-// visit_date is stored as a date-only timestamp; format in UTC so it doesn't
-// render a day early for viewers west of Greenwich.
+// visit_date is stored as a date-only timestamp (UTC midnight); take its UTC
+// calendar day so it doesn't render a day early in the house timezone.
 function formatVisitDate(d: Date | null): string {
-  return d ? new Date(d).toLocaleDateString('en-US', { timeZone: 'UTC' }) : '—';
+  return d ? formatDayOnly(new Date(d).toISOString()) : '—';
 }
 
 export default async function AppraisalsPage({
@@ -100,27 +84,19 @@ export default async function AppraisalsPage({
       <div className="flex flex-wrap gap-2 mb-6">
         <Link
           href={hrefFor(1)}
-          className={cn(
-            'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
-            !status
-              ? 'bg-foreground text-background border-foreground'
-              : 'bg-background text-muted-foreground border-border hover:bg-accent/10',
-          )}
+          aria-current={!status ? 'page' : undefined}
+          className={filterChipClass(!status)}
         >
-          All <span className="opacity-70">{allCount}</span>
+          All <span className={filterChipCountClass}>{allCount}</span>
         </Link>
         {VISIT_STATUSES.map((s) => (
           <Link
             key={s}
             href={status === s ? hrefFor(1) : hrefFor(1, s)}
-            className={cn(
-              'px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
-              status === s
-                ? cn(statusColors[s], 'border-transparent ring-2 ring-offset-1 ring-foreground/30')
-                : 'bg-background text-muted-foreground border-border hover:bg-accent/10',
-            )}
+            aria-current={status === s ? 'page' : undefined}
+            className={filterChipClass(status === s)}
           >
-            {statusLabels[s]} <span className="opacity-70">{byStatus[s] ?? 0}</span>
+            {VISIT_STATUS[s].label} <span className={filterChipCountClass}>{byStatus[s] ?? 0}</span>
           </Link>
         ))}
       </div>
@@ -130,7 +106,7 @@ export default async function AppraisalsPage({
           <CardContent className="py-16 text-center">
             <ClipboardCheck className="h-12 w-12 text-muted-foreground/30 mx-auto mb-4" />
             <h2 className="font-display text-lg mb-2">
-              {status ? `No ${statusLabels[status].toLowerCase()} appraisals` : 'No appraisals yet'}
+              {status ? `No ${VISIT_STATUS[status].label.toLowerCase()} appraisals` : 'No appraisals yet'}
             </h2>
             <p className="text-sm text-muted-foreground mb-6">
               {status ? 'Try another status filter.' : 'Create your first estate appraisal to get started.'}
@@ -179,20 +155,19 @@ export default async function AppraisalsPage({
                     {visit.processedCount}/{visit.itemCount}
                   </TableCell>
                   <TableCell>
-                    {visit.totalEstimateHigh > 0
-                      ? `${formatCurrency(visit.totalEstimateLow)} – ${formatCurrency(visit.totalEstimateHigh)}`
-                      : '—'}
+                    {visit.totalEstimateHigh > 0 ? formatEstimate(visit.totalEstimateLow, visit.totalEstimateHigh) : '—'}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className={statusColors[visit.status] || ''}>
-                        {visit.status}
+                      <Badge variant="outline" className={visitStatus(visit.status).className}>
+                        {visitStatus(visit.status).label}
                       </Badge>
                       {visit.prospectId && (
                         <Link
                           href={`/admin/prospects/${visit.prospectId}`}
                           className="text-muted-foreground hover:text-foreground"
                           title="Open the prospect created from this visit"
+                          aria-label="Open the prospect created from this visit"
                         >
                           <Users2 className="h-3.5 w-3.5" />
                         </Link>
@@ -206,37 +181,12 @@ export default async function AppraisalsPage({
         </div>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 mt-4 text-sm">
-          <p className="text-muted-foreground">
-            {from}–{to} of {total} · page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            {page > 1 ? (
-              <Link href={hrefFor(page - 1, status)}>
-                <Button variant="outline" size="sm" className="gap-1">
-                  <ChevronLeft className="h-3.5 w-3.5" /> Prev
-                </Button>
-              </Link>
-            ) : (
-              <Button variant="outline" size="sm" className="gap-1" disabled>
-                <ChevronLeft className="h-3.5 w-3.5" /> Prev
-              </Button>
-            )}
-            {page < totalPages ? (
-              <Link href={hrefFor(page + 1, status)}>
-                <Button variant="outline" size="sm" className="gap-1">
-                  Next <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
-            ) : (
-              <Button variant="outline" size="sm" className="gap-1" disabled>
-                Next <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      <Pager
+        page={page}
+        totalPages={totalPages}
+        hrefFor={(n) => hrefFor(n, status)}
+        summary={<>{from}–{to} of {total} · page {page} of {totalPages}</>}
+      />
     </div>
   );
 }

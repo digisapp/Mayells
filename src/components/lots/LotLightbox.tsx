@@ -386,13 +386,14 @@ export function LotLightbox({ images, index, onIndexChange, onRequestClose }: Lo
       {count > 1 && (
         <>
           {/* Desktop arrows — touch swipes. Outside the stage so its pointer
-              capture never swallows their clicks. */}
+              capture never swallows their clicks. Solid, so they stay visible
+              over a wide, pale photograph. */}
           <button
             type="button"
             onClick={() => goTo(index - 1)}
             aria-label="Previous image"
             disabled={index === 0 || zoomed}
-            className="absolute left-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition-opacity hover:bg-white/20 disabled:opacity-0 sm:flex"
+            className="absolute left-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-charcoal text-white transition-opacity hover:bg-black disabled:opacity-0 sm:flex"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
@@ -401,7 +402,7 @@ export function LotLightbox({ images, index, onIndexChange, onRequestClose }: Lo
             onClick={() => goTo(index + 1)}
             aria-label="Next image"
             disabled={index === count - 1 || zoomed}
-            className="absolute right-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition-opacity hover:bg-white/20 disabled:opacity-0 sm:flex"
+            className="absolute right-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/15 bg-charcoal text-white transition-opacity hover:bg-black disabled:opacity-0 sm:flex"
           >
             <ChevronRight className="h-6 w-6" />
           </button>

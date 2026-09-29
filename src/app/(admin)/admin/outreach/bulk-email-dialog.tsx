@@ -26,15 +26,15 @@ export function BulkEmailDialog({ contacts, selectedIds, onComplete }: BulkEmail
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const selectedCount = selectedIds.size;
-
-  // Worked out up front so the operator sees who will be skipped BEFORE sending
-  const { recipients, skippedNoEmail, skippedOptOut } = useMemo(() => {
+  // Worked out up front so the operator sees who will be skipped BEFORE sending.
+  // Only contacts on screen count: the parent clears the selection when the
+  // page or filters change, and this keeps the title honest if one slips by.
+  const { selectedCount, recipients, skippedNoEmail, skippedOptOut } = useMemo(() => {
     const chosen = contacts.filter((c) => selectedIds.has(c.id));
     const recipients = chosen.filter((c) => c.email && !OUTREACH_NO_EMAIL_STATUSES.includes(c.status));
     const skippedOptOut = chosen.filter((c) => OUTREACH_NO_EMAIL_STATUSES.includes(c.status)).length;
     const skippedNoEmail = chosen.length - recipients.length - skippedOptOut;
-    return { recipients, skippedNoEmail, skippedOptOut };
+    return { selectedCount: chosen.length, recipients, skippedNoEmail, skippedOptOut };
   }, [contacts, selectedIds]);
   const skipped = skippedNoEmail + skippedOptOut;
 
@@ -134,8 +134,8 @@ export function BulkEmailDialog({ contacts, selectedIds, onComplete }: BulkEmail
             </div>
           )}
           <div>
-            <Label className="text-xs">Template</Label>
-            <div className="flex flex-wrap gap-2 mt-1">
+            <p id="bulkEmailTemplate" className="text-xs font-medium">Template</p>
+            <div className="flex flex-wrap gap-2 mt-1" role="group" aria-labelledby="bulkEmailTemplate">
               {EMAIL_TEMPLATES.map((t, i) => (
                 <Button
                   key={i}
@@ -150,14 +150,14 @@ export function BulkEmailDialog({ contacts, selectedIds, onComplete }: BulkEmail
             </div>
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Subject</Label>
-            <Input value={subject} onChange={(e) => setSubject(e.target.value)} disabled={sending} />
+            <Label htmlFor="bulkEmailSubject" className="text-xs">Subject</Label>
+            <Input id="bulkEmailSubject" value={subject} onChange={(e) => setSubject(e.target.value)} disabled={sending} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">
+            <Label htmlFor="bulkEmailBody" className="text-xs">
               Body <span className="text-muted-foreground">(use {'{contactName}'} and {'{companyName}'} — a missing name becomes &ldquo;Dear Colleague&rdquo;)</span>
             </Label>
-            <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="font-mono text-sm" disabled={sending} />
+            <Textarea id="bulkEmailBody" value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="font-mono text-sm" disabled={sending} />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             {sending && (

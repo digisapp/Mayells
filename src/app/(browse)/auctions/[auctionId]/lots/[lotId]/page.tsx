@@ -6,10 +6,10 @@ export const dynamic = 'force-dynamic';
 
 import { cache } from 'react';
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { db } from '@/db';
 import { lots, lotImages, auctionLots, auctions, bids } from '@/db/schema';
-import { eq, and, desc, or } from 'drizzle-orm';
+import { eq, and, asc, desc, gt, lt, or, inArray } from 'drizzle-orm';
 import { ShareButtons } from '@/components/lots/ShareButtons';
 import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { LiveLotPanel } from '@/components/lots/LiveLotPanel';
@@ -17,19 +17,26 @@ import { WatchButton } from '@/components/lots/WatchButton';
 import { createClient } from '@/lib/supabase/server';
 import { watchlist, users } from '@/db/schema';
 import { isAdminProfile } from '@/lib/auth/admin';
-import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { isPubliclyVisibleLot, PUBLIC_CATALOGUE_LOT_STATUSES } from '@/lib/lots/visibility';
+import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
 import { isLotInPublicAuction } from '@/lib/lots/placement';
 import { Phone, Mail } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { formatCurrency } from '@/types';
+import { formatEstimate } from '@/lib/format/estimate';
+import { formatSaleMoment } from '@/lib/format/dates';
+import { Breadcrumbs, LotPager, type SiblingLot } from '@/components/lots/Breadcrumbs';
 import { formatCondition } from '@/components/lots/condition';
 import { generateLotJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 import { categories } from '@/db/schema';
 import { track } from '@vercel/analytics/server';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
+
+// Bid history shows the latest bids only; the heading carries the full count.
+const BID_HISTORY_LIMIT = 20;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -49,16 +56,43 @@ const getLot = cache(async (lotId: string) => {
   return lot;
 });
 
+// The sale named in the URL (slug, or id for old links), and this lot's
+// placement in it. A lot can be relisted in several sales, so the placement
+// is always looked up for *this* sale — never "any" auction_lots row.
+const getSalePlacement = cache(async (auctionId: string, lotUuid: string) => {
+  const [row] = await db
+    .select({ auction: auctions, auctionLot: auctionLots })
+    .from(auctionLots)
+    .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
+    .where(and(
+      eq(auctionLots.lotId, lotUuid),
+      UUID_RE.test(auctionId)
+        ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId))
+        : eq(auctions.slug, auctionId),
+    ))
+    .limit(1);
+  return row ?? null;
+});
+
+// One URL per lot per sale: slugs, never the ids an old link may carry.
+const lotPath = (saleSlug: string, lot: { slug: string | null; id: string }) =>
+  `/auctions/${saleSlug}/lots/${lot.slug || lot.id}`;
+
 export async function generateMetadata({ params }: { params: Promise<{ auctionId: string; lotId: string }> }): Promise<Metadata> {
   const { auctionId, lotId } = await params;
   const lot = await getLot(lotId);
   if (!lot) return {};
+  // Not in this sale: the page redirects, so there is nothing to describe.
+  const placement = await getSalePlacement(auctionId, lot.id);
+  if (!placement || !isPubliclyVisibleAuction(placement.auction.status)) return {};
 
-  const estimate = lot.estimateLow && lot.estimateHigh
-    ? `Est. ${formatCurrency(lot.estimateLow)} – ${formatCurrency(lot.estimateHigh)}`
-    : undefined;
+  const estimateText = formatEstimate(lot.estimateLow, lot.estimateHigh);
+  // Mid-sentence: "Est. $5,000+", "Est. up to $2,000".
+  const estimate = estimateText ? `Est. ${estimateText.replace(/^Up to/, 'up to')}` : undefined;
   const description = lot.description?.slice(0, 160) || `${lot.title}${estimate ? ` ${estimate}` : ''} at Mayells.`;
-  const canonicalUrl = `${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`;
+  // Canonical to the sale's real slug, so /auctions/<anything>/lots/<lot>
+  // can no longer canonicalize itself.
+  const canonicalUrl = `${BASE_URL}${lotPath(placement.auction.slug, lot)}`;
 
   return {
     title: lot.title,
@@ -91,26 +125,50 @@ export default async function LotDetailPage({
   const lot = await getLot(lotId);
   if (!lot) notFound();
 
+  // The lot must actually be in the sale the URL names. If it isn't (a stale
+  // or hand-edited link), let the /lots resolver send it to its real sale —
+  // or to the gallery, or a 404.
+  const placement = await getSalePlacement(auctionId, lot.id);
+  if (!placement) redirect(`/lots/${lot.slug || lot.id}`);
+  const { auction, auctionLot } = placement;
+  // The number in *this* sale (a relisted lot is renumbered per sale).
+  const lotNumber = auctionLot.lotNumber;
+  const canonicalPath = lotPath(auction.slug, lot);
+
+  // Neighbours in this sale's catalogue order, among the lots the sale page
+  // itself lists (so prev/next never lands on a hidden lot).
+  const siblingQuery = (dir: 'prev' | 'next') =>
+    db
+      .select({ lotNumber: auctionLots.lotNumber, slug: lots.slug, id: lots.id, title: lots.title })
+      .from(auctionLots)
+      .innerJoin(lots, eq(lots.id, auctionLots.lotId))
+      .where(and(
+        eq(auctionLots.auctionId, auction.id),
+        inArray(lots.status, [...PUBLIC_CATALOGUE_LOT_STATUSES]),
+        dir === 'prev'
+          ? lt(auctionLots.lotNumber, auctionLot.lotNumber)
+          : gt(auctionLots.lotNumber, auctionLot.lotNumber),
+      ))
+      .orderBy(dir === 'prev' ? desc(auctionLots.lotNumber) : asc(auctionLots.lotNumber))
+      .limit(1);
+
   // Fetch all lot-dependent data AND the viewer's auth state in parallel —
   // the Supabase Auth round trip is independent of the lot queries.
   const supabase = await createClient();
-  const [images, [auctionLot], bidHistory, categoryResult, { data: { user: viewer } }] = await Promise.all([
+  const [images, bidHistory, categoryResult, [prevRow], [nextRow], { data: { user: viewer } }] = await Promise.all([
     db.select().from(lotImages).where(eq(lotImages.lotId, lot.id)).orderBy(lotImages.sortOrder),
-    db.select().from(auctionLots).where(eq(auctionLots.lotId, lot.id)).limit(1),
-    db.select().from(bids).where(eq(bids.lotId, lot.id)).orderBy(desc(bids.createdAt)).limit(20),
+    db.select().from(bids).where(eq(bids.lotId, lot.id)).orderBy(desc(bids.createdAt)).limit(BID_HISTORY_LIMIT),
     lot.categoryId
       ? db.select().from(categories).where(eq(categories.id, lot.categoryId)).limit(1)
       : Promise.resolve([null]),
+    siblingQuery('prev'),
+    siblingQuery('next'),
     supabase.auth.getUser(),
   ]);
 
   const [category] = categoryResult;
-
-  // Auction record requires auctionLot.auctionId — one additional round-trip
-  let auction = null;
-  if (auctionLot) {
-    [auction] = await db.select().from(auctions).where(eq(auctions.id, auctionLot.auctionId)).limit(1);
-  }
+  const toSibling = (row: typeof prevRow | undefined): SiblingLot | null =>
+    row ? { href: lotPath(auction.slug, row), lotNumber: row.lotNumber, title: row.title } : null;
 
   // Watch state + admin status for the signed-in viewer.
   let isWatching = false;
@@ -140,6 +198,13 @@ export default async function LotDetailPage({
   if (!isPubliclyVisibleLot(lot.status, inPublicAuction) && !viewerIsAdmin) {
     notFound();
   }
+  // The sale named in the URL must itself be public: a public lot can also be
+  // placed in a draft or cancelled sale, whose title and unpublished
+  // neighbours (breadcrumb, prev/next, JSON-LD) must not show. No redirect —
+  // the /lots resolver can pick that same sale and loop.
+  if (!isPubliclyVisibleAuction(auction.status) && !viewerIsAdmin) {
+    notFound();
+  }
 
   void track('lot_viewed', { lotId: lot.id, saleType: lot.saleType, status: lot.status });
 
@@ -151,13 +216,33 @@ export default async function LotDetailPage({
 
   // Whether this lot can be bid on directly on Mayells right now (drives the
   // on-site bid form vs. the external/absentee fallbacks).
-  const lotCloseAt = auctionLot?.closingAt ?? auction?.biddingEndsAt ?? null;
+  const lotCloseAt = auctionLot.closingAt ?? auction.biddingEndsAt ?? null;
   const isBiddableOnSite =
     lot.status === 'in_auction' &&
-    !!auction &&
     ['open', 'live', 'closed'].includes(auction.status) &&
     !!lotCloseAt &&
     lotCloseAt.getTime() > renderNow;
+  // Not biddable because it's over (vs. not open yet): drives "Sold for" /
+  // "Bidding closed" in the panel instead of a stale "Current Bid".
+  // A sale run on LiveAuctioneers often goes on past its scheduled close, so
+  // elapsed time alone doesn't end it while the sale is still in progress —
+  // the external bid button must stay up until the house settles the lot.
+  const saleInProgress =
+    !!auction.liveauctioneersUrl && ['open', 'live', 'closing'].includes(auction.status);
+  const biddingClosed =
+    !isBiddableOnSite &&
+    (lot.status === 'sold' ||
+      lot.status === 'unsold' ||
+      ['completed', 'cancelled'].includes(auction.status) ||
+      (!saleInProgress && !!lotCloseAt && lotCloseAt.getTime() <= renderNow));
+  // Formatted here, not in the client panel: server and browser can't then
+  // disagree on the text (year cut-off, ICU spacing) and trip hydration.
+  const opensAtLabel =
+    !isBiddableOnSite && !biddingClosed && auction.biddingStartsAt && auction.biddingStartsAt.getTime() > renderNow
+      ? formatSaleMoment(auction.biddingStartsAt, new Date(renderNow))
+      : null;
+  // The bids table only holds the latest few here; the lot row has the total.
+  const totalBids = Math.max(lot.bidCount, bidHistory.length);
 
   // Rich JSON-LD for AI agents + search engines
   const lotJsonLd = generateLotJsonLd({
@@ -169,8 +254,8 @@ export default async function LotDetailPage({
   const breadcrumbJsonLd = generateBreadcrumbJsonLd([
     { name: 'Home', url: '/' },
     { name: 'Auctions', url: '/auctions' },
-    ...(auction ? [{ name: auction.title, url: `/auctions/${auction.slug || auction.id}` }] : []),
-    { name: lot.title, url: `/auctions/${auctionId}/lots/${lot.slug || lot.id}` },
+    { name: auction.title, url: `/auctions/${auction.slug}` },
+    { name: lot.title, url: canonicalPath },
   ]);
 
   const galleryImages = images.length
@@ -183,7 +268,20 @@ export default async function LotDetailPage({
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(lotJsonLd) }} />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12 sm:pt-8">
+      <div className="mb-6 sm:mb-8 flex items-center justify-between gap-x-4 sm:gap-x-6">
+        <Breadcrumbs
+          className="flex-1"
+          items={[
+            // Phones drop the root so the sale title, not "…", sits
+            // beside the pager on one line.
+            { label: 'Auctions', href: '/auctions', hideOnPhone: true },
+            { label: auction.title, href: `/auctions/${auction.slug}` },
+            { label: `Lot ${lotNumber}` },
+          ]}
+        />
+        <LotPager prev={toSibling(prevRow)} next={toSibling(nextRow)} />
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-10">
         {/* Images + title — first on mobile so the bid panel lands right after */}
         <div className="lg:col-span-2 space-y-8">
@@ -201,9 +299,7 @@ export default async function LotDetailPage({
           {/* Lot info */}
           <div>
             <div className="flex items-center gap-3 mb-2">
-              {lot.lotNumber && (
-                <Badge variant="outline">Lot {lot.lotNumber}</Badge>
-              )}
+              <Badge variant="outline">Lot {lotNumber}</Badge>
               {lot.condition && (
                 <Badge variant="secondary">{formatCondition(lot.condition)}</Badge>
               )}
@@ -219,7 +315,7 @@ export default async function LotDetailPage({
                 loggedIn={!!viewer}
                 lotRef={lot.slug || lot.id}
               />
-              <ShareButtons title={lot.title} url={`${BASE_URL}/auctions/${auctionId}/lots/${lot.slug || lot.id}`} />
+              <ShareButtons title={lot.title} url={`${BASE_URL}${canonicalPath}`} />
             </div>
           </div>
         </div>
@@ -239,28 +335,27 @@ export default async function LotDetailPage({
               startingBid={lot.startingBid ?? 0}
               estimateLow={lot.estimateLow ?? null}
               estimateHigh={lot.estimateHigh ?? null}
-              closingAt={
-                (auctionLot?.closingAt ?? auction?.biddingEndsAt)?.toISOString() ?? null
-              }
+              closingAt={lotCloseAt?.toISOString() ?? null}
               serverNow={renderNow}
               initialIsBiddable={isBiddableOnSite}
+              lotStatus={lot.status}
+              hammerPrice={lot.hammerPrice ?? null}
+              biddingClosed={biddingClosed}
+              externalSaleInProgress={saleInProgress}
+              opensAtLabel={opensAtLabel}
               initialIsHighBidder={!!viewer && lot.currentBidderId === viewer.id}
               viewerSignedIn={!!viewer}
               lotTitle={lot.title}
-              buyerPremiumPercent={auction?.buyerPremiumPercent ?? null}
+              buyerPremiumPercent={auction.buyerPremiumPercent}
               // The panel owns the call to action (on-site bid form, else
               // LiveAuctioneers, else a note) so the phone bid bar can mirror it.
-              externalBidUrl={auction?.liveauctioneersUrl ?? null}
-              unavailableNote={
-                auction
-                  ? 'This lot is not open for bidding right now.'
-                  : 'This lot is not currently in an active auction.'
-              }
+              externalBidUrl={auction.liveauctioneersUrl ?? null}
+              unavailableNote="This lot is not open for bidding right now."
             />
 
             {/* Alternative bidding */}
             <div className="border-t border-border/30 pt-4">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">Or bid by phone / absentee</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Or bid by phone / absentee</p>
               <a href={BUSINESS.phoneHref} className="flex min-h-11 items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <Phone className="h-4 w-4" />
                 {BUSINESS.phone}
@@ -329,12 +424,17 @@ export default async function LotDetailPage({
             <>
               <Separator />
               <div>
-                <h2 className="font-display text-xl mb-3">Bid History ({bidHistory.length})</h2>
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4">
+                  <h2 className="font-display text-xl">Bid History ({totalBids})</h2>
+                  {totalBids > bidHistory.length && (
+                    <p className="text-sm text-muted-foreground">Showing latest {bidHistory.length}</p>
+                  )}
+                </div>
                 <div className="space-y-2">
                   {bidHistory.map((bid, i) => (
                     <div key={bid.id} className="flex items-center justify-between text-sm py-2 border-b border-border/30 last:border-0">
                       <span className="text-muted-foreground">
-                        {i === 0 ? 'Current bid' : `Bid ${bidHistory.length - i}`}
+                        {i === 0 && !biddingClosed ? 'Current bid' : `Bid ${totalBids - i}`}
                       </span>
                       <span className="font-medium">{formatCurrency(bid.amount)}</span>
                     </div>

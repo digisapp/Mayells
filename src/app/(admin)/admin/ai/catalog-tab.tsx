@@ -46,8 +46,8 @@ export default function CatalogTab() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Image URLs (one per line)</Label>
-            <Textarea rows={4} placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
+            <Label htmlFor="catalog-image-urls">Image URLs (one per line)</Label>
+            <Textarea id="catalog-image-urls" rows={4} placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg" value={imageUrls} onChange={(e) => setImageUrls(e.target.value)} />
             <div className="flex items-center gap-2 pt-1">
               <UploadImagesButton onUploaded={appendUrls} disabled={loading} />
               <span className="text-xs text-muted-foreground">Uploaded photos are added to the list above.</span>

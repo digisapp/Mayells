@@ -1,14 +1,15 @@
 export const dynamic = 'force-dynamic';
 
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { and, desc, eq, gte, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/db';
 import { calls } from '@/db/schema';
 import { requireAdminPage } from '@/lib/auth/require-admin';
-import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageHeader } from '@/components/admin/PageHeader';
 import { CallCard } from '@/components/admin/CallCard';
+import { FilterChips } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 
 const FILTERS = [
   { value: 'all', label: 'All calls' },
@@ -23,23 +24,27 @@ const PAGE_SIZE = 50;
 export default async function AdminCallsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ outcome?: string }>;
+  searchParams: Promise<{ outcome?: string; page?: string }>;
 }) {
   await requireAdminPage();
-  const { outcome: outcomeParam } = await searchParams;
+  const { outcome: outcomeParam, page: pageParam } = await searchParams;
   const filter: Filter = FILTERS.some((f) => f.value === outcomeParam) ? (outcomeParam as Filter) : 'all';
+  const page = Math.min(10_000, Math.max(1, parseInt(pageParam ?? '1', 10) || 1));
 
   const conditions: SQL[] = [];
   if (filter !== 'all') conditions.push(eq(calls.outcome, filter));
+  const where = conditions.length ? and(...conditions) : undefined;
 
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const [rows, [stats]] = await Promise.all([
+  const [rows, [{ matching }], [stats]] = await Promise.all([
     db
       .select()
       .from(calls)
-      .where(conditions.length ? and(...conditions) : undefined)
+      .where(where)
       .orderBy(desc(calls.startedAt))
-      .limit(PAGE_SIZE),
+      .limit(PAGE_SIZE)
+      .offset((page - 1) * PAGE_SIZE),
+    db.select({ matching: sql<number>`count(*)::int` }).from(calls).where(where),
     db
       .select({
         total: sql<number>`count(*)::int`,
@@ -50,6 +55,16 @@ export default async function AdminCallsPage({
       .from(calls)
       .where(gte(calls.startedAt, since)),
   ]);
+
+  const totalPages = Math.ceil(matching / PAGE_SIZE);
+  const hrefFor = (p: number, outcome: Filter = filter) => {
+    const params = new URLSearchParams();
+    if (outcome !== 'all') params.set('outcome', outcome);
+    if (p > 1) params.set('page', String(p));
+    return `/admin/calls${params.size ? `?${params}` : ''}`;
+  };
+  // Past the end (a stale link, or calls deleted since): land on the last page.
+  if (page > 1 && page > totalPages) redirect(hrefFor(Math.max(1, totalPages)));
 
   const tiles = [
     { label: 'Calls', value: stats.total.toLocaleString(), sub: 'Answered by the concierge' },
@@ -87,21 +102,11 @@ export default async function AdminCallsPage({
         </div>
       </PageHeader>
 
-      <div className="inline-flex rounded-md border bg-muted/40 p-0.5" role="group" aria-label="Filter by outcome">
-        {FILTERS.map((f) => (
-          <Link
-            key={f.value}
-            href={f.value === 'all' ? '/admin/calls' : `/admin/calls?outcome=${f.value}`}
-            aria-current={f.value === filter ? 'page' : undefined}
-            className={cn(
-              'px-3 py-1 rounded text-xs font-medium transition-colors',
-              f.value === filter ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {f.label}
-          </Link>
-        ))}
-      </div>
+      <FilterChips
+        label="Filter by outcome"
+        value={filter}
+        options={FILTERS.map((f) => ({ value: f.value, label: f.label, href: hrefFor(1, f.value) }))}
+      />
 
       {rows.length === 0 ? (
         <Card>
@@ -116,9 +121,12 @@ export default async function AdminCallsPage({
           {rows.map((call) => (
             <CallCard key={call.id} call={call} />
           ))}
-          {rows.length === PAGE_SIZE && (
-            <p className="text-xs text-muted-foreground">Showing the {PAGE_SIZE} most recent.</p>
-          )}
+          <Pager
+            page={page}
+            totalPages={totalPages}
+            hrefFor={(p) => hrefFor(p)}
+            summary={<>Page {page} of {totalPages} · {matching.toLocaleString()} calls</>}
+          />
         </div>
       )}
     </div>

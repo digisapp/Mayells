@@ -14,25 +14,13 @@ import {
 import { ExternalLink } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader } from '@/components/admin/PageHeader';
+import { prospectStatus } from '@/lib/admin/status/sales';
 
 const RANGES = [
   { value: '7d', label: 'Last 7 days', days: 7 },
   { value: '30d', label: 'Last 30 days', days: 30 },
   { value: '90d', label: 'Last 90 days', days: 90 },
 ] as const;
-
-const statusLabels: Record<string, string> = {
-  new: 'New lead',
-  contacted: 'Contacted',
-  upload_sent: 'Upload link sent',
-  items_received: 'Items received',
-  under_review: 'Under review',
-  agreement_sent: 'Agreement sent',
-  agreement_signed: 'Agreement signed',
-  accepted: 'Accepted',
-  declined: 'Declined',
-  archived: 'Archived',
-};
 
 const dateTime = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',
@@ -76,7 +64,9 @@ export default async function AdminMicrositesPage({
     { label: 'Visitors', value: total.visitors, sub: `${total.views.toLocaleString()} page views` },
     { label: 'Call taps', value: total.calls, sub: 'Taps on the phone number' },
     { label: 'Form leads', value: total.leads, sub: `${total.formStarts.toLocaleString()} started the form` },
-    { label: 'Lead rate', value: pct(total.leads + total.calls, total.visitors), sub: 'Calls + leads per visitor' },
+    // "Contact rate", not "Lead rate": it counts call taps too, so it is not
+    // comparable with the leads-only Lead rate on Analytics → Traffic.
+    { label: 'Contact rate', value: pct(total.leads + total.calls, total.visitors), sub: 'Call taps + form leads per visitor' },
   ];
 
   return (
@@ -140,7 +130,12 @@ export default async function AdminMicrositesPage({
                 <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Call taps</TableHead>
                 <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Form starts</TableHead>
                 <TableHead className="py-2 px-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Leads</TableHead>
-                <TableHead className="py-2 pl-3 text-xs uppercase tracking-wider text-muted-foreground text-right">Lead rate</TableHead>
+                <TableHead
+                  className="py-2 pl-3 text-xs uppercase tracking-wider text-muted-foreground text-right"
+                  title="Call taps plus form leads, per visitor"
+                >
+                  Contact rate
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -188,7 +183,8 @@ export default async function AdminMicrositesPage({
           </Table>
           <p className="text-xs text-muted-foreground mt-4 max-w-3xl">
             Visitors are counted once per person per day. A call tap means someone tapped the number; whether the call
-            connected is not known. Lead rate counts call taps plus form leads against visitors.
+            connected is not known. Contact rate counts call taps plus form leads against visitors (the Lead rate on
+            Analytics counts leads only, not call taps).
           </p>
         </CardContent>
       </Card>
@@ -243,7 +239,7 @@ export default async function AdminMicrositesPage({
                     <div className="min-w-0">
                       <p className="text-sm font-medium group-hover:underline truncate">{p.fullName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {statusLabels[p.status] ?? p.status}
+                        {prospectStatus(p.status).label}
                         {p.totalItems ? ` · ${p.totalItems} photos` : ''}
                         {p.createdAt ? ` · ${dateTime.format(p.createdAt)}` : ''}
                       </p>

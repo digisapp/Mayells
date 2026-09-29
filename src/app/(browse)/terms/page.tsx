@@ -9,7 +9,9 @@ export const metadata = {
 export default function TermsPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20">
-      <h1 className="font-display text-display-lg mb-6 sm:mb-8">Terms of Service</h1>
+      <h1 className="font-display text-display-lg">Terms of Service</h1>
+      {/* The date of this file's last substantive change — update with the text. */}
+      <p className="mt-3 mb-6 sm:mb-8 text-sm text-muted-foreground">Last updated September 25, 2026</p>
       <div className="space-y-4 text-[15px] sm:text-base leading-relaxed text-muted-foreground break-words [&_h2]:pt-4 [&_h2]:font-display [&_h2]:text-xl [&_h2]:leading-snug [&_h2]:text-foreground [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5">
         <p>
           These Terms of Service govern your use of the Mayells platform. By accessing or using our services,

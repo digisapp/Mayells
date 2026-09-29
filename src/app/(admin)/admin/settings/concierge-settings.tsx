@@ -32,7 +32,7 @@ const EMPTY: ConciergeForm = {
  * API (/api/admin/ai-chat-settings) and its own Save button — it is a separate
  * record from the automation settings the rest of the page edits.
  */
-export function ConciergeSettings() {
+export function ConciergeSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -72,6 +72,12 @@ export function ConciergeSettings() {
   }, [load]);
 
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
+
+  // Lets the Settings page guard navigation while these edits are unsaved.
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   async function handleSave() {
     setSaving(true);
@@ -164,11 +170,13 @@ export function ConciergeSettings() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Personality &amp; tone</CardTitle>
-            <CardDescription>How should the assistant sound?</CardDescription>
+            <CardTitle id="concierge-personality-label" className="text-base">Personality &amp; tone</CardTitle>
+            <CardDescription id="concierge-personality-desc">How should the assistant sound?</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
+              aria-labelledby="concierge-personality-label"
+              aria-describedby="concierge-personality-desc"
               rows={4}
               placeholder="e.g. Warm and professional, like a knowledgeable gallery specialist. Conversational. Mention our Palm Beach showroom when relevant."
               value={form.personality}
@@ -179,11 +187,13 @@ export function ConciergeSettings() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Custom knowledge</CardTitle>
-            <CardDescription>Business facts, hours, policies or current promotions it should reference.</CardDescription>
+            <CardTitle id="concierge-customKnowledge-label" className="text-base">Custom knowledge</CardTitle>
+            <CardDescription id="concierge-customKnowledge-desc">Business facts, hours, policies or current promotions it should reference.</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
+              aria-labelledby="concierge-customKnowledge-label"
+              aria-describedby="concierge-customKnowledge-desc"
               rows={4}
               placeholder="e.g. Showroom open Mon–Fri 10am–6pm. Free shipping on purchases over $5,000. Reduced commission for first-time consignors through March."
               value={form.customKnowledge}
@@ -194,11 +204,13 @@ export function ConciergeSettings() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Upsell &amp; promotions</CardTitle>
-            <CardDescription>Items or services it should bring up when relevant.</CardDescription>
+            <CardTitle id="concierge-upsellItems-label" className="text-base">Upsell &amp; promotions</CardTitle>
+            <CardDescription id="concierge-upsellItems-desc">Items or services it should bring up when relevant.</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
+              aria-labelledby="concierge-upsellItems-label"
+              aria-describedby="concierge-upsellItems-desc"
               rows={4}
               placeholder="e.g. Promote the upcoming Impressionist auction. Mention the free in-home appraisal service in South Florida."
               value={form.upsellItems}
@@ -209,11 +221,13 @@ export function ConciergeSettings() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Restrictions</CardTitle>
-            <CardDescription>Topics to avoid or things it must never say.</CardDescription>
+            <CardTitle id="concierge-disallowedTopics-label" className="text-base">Restrictions</CardTitle>
+            <CardDescription id="concierge-disallowedTopics-desc">Topics to avoid or things it must never say.</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
+              aria-labelledby="concierge-disallowedTopics-label"
+              aria-describedby="concierge-disallowedTopics-desc"
               rows={4}
               placeholder="e.g. Don't name competitors. Never give dollar valuations from photos alone. Don't discuss commission rates."
               value={form.disallowedTopics}
@@ -225,11 +239,13 @@ export function ConciergeSettings() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Welcome message</CardTitle>
-          <CardDescription>Shown when a visitor opens the chat. Leave empty for the default.</CardDescription>
+          <CardTitle id="concierge-greetingMessage-label" className="text-base">Welcome message</CardTitle>
+          <CardDescription id="concierge-greetingMessage-desc">Shown when a visitor opens the chat. Leave empty for the default.</CardDescription>
         </CardHeader>
         <CardContent>
           <Input
+              aria-labelledby="concierge-greetingMessage-label"
+              aria-describedby="concierge-greetingMessage-desc"
             placeholder="Welcome to Mayells! How can we help you today?"
             value={form.greetingMessage}
             onChange={(e) => set('greetingMessage', e.target.value)}
@@ -239,7 +255,7 @@ export function ConciergeSettings() {
 
       <div className="flex items-center gap-3">
         <Button onClick={handleSave} disabled={saving || !dirty} className="bg-champagne text-charcoal hover:bg-champagne/90">
-          {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Saving…</> : <><Save className="h-4 w-4 mr-2" />Save concierge settings</>}
+          {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Saving…</> : <><Save className="h-4 w-4 mr-2" />Save chat concierge</>}
         </Button>
         {dirty && <span className="text-xs text-amber-700">Unsaved concierge changes</span>}
       </div>

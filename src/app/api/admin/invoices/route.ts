@@ -168,7 +168,12 @@ export async function PATCH(req: NextRequest) {
         if (!method) {
           return NextResponse.json({ error: 'Payment method is required to mark an invoice paid' }, { status: 400 });
         }
-        const paidDate = paidAt ? new Date(paidAt) : new Date();
+        // A bare YYYY-MM-DD from a date picker parses as UTC midnight, which the
+        // house-timezone formatter shows as the previous day (and can drop into
+        // last month's "Collected this month"): pin it to midday instead.
+        const paidDate = paidAt
+          ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(paidAt) ? `${paidAt}T12:00:00Z` : paidAt)
+          : new Date();
         const note = `${new Date().toISOString().slice(0, 10)} Marked paid by ${adminLabel} (${method}${reference ? ` ${reference}` : ''})`;
 
         // Compare-and-swap on the status we validated against — two admins

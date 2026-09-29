@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
@@ -15,8 +16,11 @@ import {
   Mail, Package, Image as ImageIcon, DollarSign, CheckCircle, Gavel, Receipt,
   Wallet, StickyNote, EyeOff, ShieldCheck, BadgeCheck, Hash, Loader2, ExternalLink, Users2,
 } from 'lucide-react';
-import { formatCurrency } from '@/types';
+import { formatCurrency, formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
+import { formatShortDate, formatShortDateTime } from '@/lib/format/dates';
+import { INVOICE_STATUS, PAYOUT_STATUS, statusBadge } from '@/lib/admin/status/money';
+import { lotStatus, prospectStatus } from '@/lib/admin/status/sales';
 import {
   verificationLabel, roleColors, accountStatusColors, USER_ROLES, ACCOUNT_STATUSES, readError,
 } from '../user-badges';
@@ -101,37 +105,12 @@ const consignmentStatusBadge: Record<string, string> = {
   returned: 'bg-gray-100 text-gray-800',
 };
 
-const lotStatusBadge: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  pending_review: 'bg-yellow-100 text-yellow-800',
-  approved: 'bg-green-100 text-green-800',
-  for_sale: 'bg-blue-100 text-blue-800',
-  in_auction: 'bg-purple-100 text-purple-800',
-  sold: 'bg-green-100 text-green-800',
-  unsold: 'bg-red-100 text-red-800',
-  withdrawn: 'bg-gray-100 text-gray-800',
-};
-
 const bidStatusBadge: Record<string, string> = {
   active: 'bg-blue-100 text-blue-800',
   winning: 'bg-green-100 text-green-800',
   won: 'bg-emerald-100 text-emerald-800',
   outbid: 'bg-gray-100 text-gray-700',
   retracted: 'bg-red-100 text-red-800',
-};
-
-const invoiceStatusBadge: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  paid: 'bg-green-100 text-green-800',
-  overdue: 'bg-red-100 text-red-800',
-  cancelled: 'bg-gray-100 text-gray-800',
-  refunded: 'bg-purple-100 text-purple-800',
-};
-
-const payoutStatusBadge: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
-  paid: 'bg-green-100 text-green-800',
-  cancelled: 'bg-gray-100 text-gray-800',
 };
 
 const emailStatusBadge: Record<string, string> = {
@@ -145,9 +124,7 @@ const emailStatusBadge: Record<string, string> = {
 
 function fmtDate(d: string | null | undefined, withTime = false): string {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString(undefined, withTime
-    ? { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }
-    : undefined);
+  return withTime ? formatShortDateTime(d) : formatShortDate(d);
 }
 
 function humanize(s: string): string {
@@ -182,7 +159,7 @@ export default function AdminUserDetailPage() {
   const [notes, setNotes] = useState('');
   const [notesDirty, setNotesDirty] = useState(false);
 
-  // Confirmations for privilege-raising / destructive account changes
+  // Confirmations for privilege-changing / destructive account changes
   const [pending, setPending] = useState<{
     updates: Record<string, unknown>; title: string; description: string; confirmLabel: string; destructive: boolean;
   } | null>(null);
@@ -195,7 +172,7 @@ export default function AdminUserDetailPage() {
           setNotFound(true);
           return;
         }
-        if (!r.ok) throw new Error(await readError(r, 'Failed to load user'));
+        if (!r.ok) throw new Error(await readError(r, 'Failed to load client'));
         const d = await r.json();
         setData(d.data ?? null);
         setNotes(d.data?.user?.adminNotes ?? '');
@@ -204,7 +181,7 @@ export default function AdminUserDetailPage() {
       })
       .catch((err: Error) => {
         setLoadError(err.message);
-        toast.error(err.message || 'Failed to load user');
+        toast.error(err.message || 'Failed to load client');
       })
       .finally(() => setLoading(false));
   }, [userId]);
@@ -220,7 +197,7 @@ export default function AdminUserDetailPage() {
         body: JSON.stringify(updates),
       });
       if (!res.ok) {
-        toast.error(await readError(res, 'Failed to update user'));
+        toast.error(await readError(res, 'Failed to update client'));
         return false;
       }
       const { data: updated } = await res.json();
@@ -242,9 +219,24 @@ export default function AdminUserDetailPage() {
       setPending({
         updates,
         title: `Give ${name} admin access?`,
-        description: 'Admins can see and change everything in this panel, including money, users, and other admins.',
+        description: 'Admins can see and change everything in this panel, including money, clients, and other admins.',
         confirmLabel: 'Grant admin',
         destructive: false,
+      });
+      return;
+    }
+    // Admin access is role 'admin' OR the is_admin flag: confirm any change
+    // that leaves neither, i.e. actually locks them out of this panel.
+    const wasAdmin = data.user.role === 'admin' || data.user.isAdmin;
+    const nextRole = updates.role ?? data.user.role;
+    const nextFlag = updates.isAdmin ?? data.user.isAdmin;
+    if (wasAdmin && nextRole !== 'admin' && !nextFlag) {
+      setPending({
+        updates,
+        title: `Remove ${name}'s admin access?`,
+        description: 'They are signed out of this panel on their next page load. You can grant access again later.',
+        confirmLabel: 'Remove admin access',
+        destructive: true,
       });
       return;
     }
@@ -255,7 +247,7 @@ export default function AdminUserDetailPage() {
         description: updates.accountStatus === 'banned'
           ? 'They will be blocked from bidding and buying. Existing invoices and payouts are unaffected.'
           : 'They will be blocked from bidding until reactivated.',
-        confirmLabel: updates.accountStatus === 'banned' ? 'Ban user' : 'Suspend',
+        confirmLabel: updates.accountStatus === 'banned' ? 'Ban client' : 'Suspend',
         destructive: true,
       });
       return;
@@ -305,7 +297,7 @@ export default function AdminUserDetailPage() {
     return (
       <div>
         <p className="text-muted-foreground mt-8 text-center">
-          {notFound ? 'Client not found.' : loadError || 'Failed to load user. Please try again.'}
+          {notFound ? 'Client not found.' : loadError || 'Failed to load client. Please try again.'}
         </p>
         {!notFound && (
           <div className="text-center mt-4">
@@ -343,7 +335,7 @@ export default function AdminUserDetailPage() {
                 <>
                   {' · '}
                   <Link href={`/admin/prospects/${data.prospect.id}`} className="inline-flex items-center gap-1 text-champagne hover:underline">
-                    <Users2 className="h-3 w-3" /> Seller prospect ({humanize(data.prospect.status)})
+                    <Users2 className="h-3 w-3" /> Seller prospect ({prospectStatus(data.prospect.status).label.toLowerCase()})
                   </Link>
                 </>
               )}
@@ -369,17 +361,25 @@ export default function AdminUserDetailPage() {
             <p className="text-xs text-muted-foreground">
               Sends a summary of live and sold lots plus consignments to {user.email}. Replies go to info@mayells.com.
             </p>
-            <Input
-              placeholder="Subject (optional — defaults to 'Your Item Summary — Mayells')"
-              value={emailSubject}
-              onChange={(e) => setEmailSubject(e.target.value)}
-            />
-            <Textarea
-              placeholder="Custom message (optional — appears before the item summary)"
-              value={emailMessage}
-              onChange={(e) => setEmailMessage(e.target.value)}
-              rows={3}
-            />
+            <div className="space-y-1.5">
+              <Label htmlFor="summarySubject">Subject</Label>
+              <Input
+                id="summarySubject"
+                placeholder="Optional — defaults to 'Your Item Summary — Mayells'"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="summaryMessage">Message</Label>
+              <Textarea
+                id="summaryMessage"
+                placeholder="Optional — appears before the item summary"
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                rows={3}
+              />
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button onClick={handleSendEmail} disabled={sending} className="bg-champagne text-charcoal hover:bg-champagne/90">
                 {sending ? 'Sending...' : 'Send Email'}
@@ -395,9 +395,10 @@ export default function AdminUserDetailPage() {
         <CardContent className="pt-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Role</p>
+              <label htmlFor="accountRole" className="block text-xs text-muted-foreground mb-1">Role</label>
               <div className="flex items-center gap-2">
                 <select
+                  id="accountRole"
                   value={user.role}
                   onChange={(e) => requestAccountChange({ role: e.target.value })}
                   disabled={saving === 'account'}
@@ -419,9 +420,10 @@ export default function AdminUserDetailPage() {
               </label>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground mb-1">Account status</p>
+              <label htmlFor="accountStatus" className="block text-xs text-muted-foreground mb-1">Account status</label>
               <div className="flex items-center gap-2">
                 <select
+                  id="accountStatus"
                   value={user.accountStatus}
                   onChange={(e) => requestAccountChange({ accountStatus: e.target.value })}
                   disabled={saving === 'account'}
@@ -502,7 +504,7 @@ export default function AdminUserDetailPage() {
         <TabsList variant="line" className="flex-wrap h-auto">
           <TabsTrigger value="selling"><Package className="h-3.5 w-3.5 mr-1" />Consignments & Lots</TabsTrigger>
           <TabsTrigger value="buying"><Gavel className="h-3.5 w-3.5 mr-1" />Bids & Purchases</TabsTrigger>
-          <TabsTrigger value="payouts"><Wallet className="h-3.5 w-3.5 mr-1" />Payouts{stats.payoutPendingCents > 0 && <Badge className="ml-1 bg-yellow-100 text-yellow-800">{formatCurrency(stats.payoutPendingCents)}</Badge>}</TabsTrigger>
+          <TabsTrigger value="payouts"><Wallet className="h-3.5 w-3.5 mr-1" />Payouts{stats.payoutPendingCents > 0 && <Badge className="ml-1 bg-yellow-100 text-yellow-800">{formatCurrencyWithCents(stats.payoutPendingCents)}</Badge>}</TabsTrigger>
           <TabsTrigger value="emails"><Mail className="h-3.5 w-3.5 mr-1" />Emails ({data.emails.length})</TabsTrigger>
           <TabsTrigger value="notes"><StickyNote className="h-3.5 w-3.5 mr-1" />Notes{user.adminNotes && <span className="ml-1 h-1.5 w-1.5 rounded-full bg-champagne" />}</TabsTrigger>
         </TabsList>
@@ -537,7 +539,7 @@ export default function AdminUserDetailPage() {
                           </Link>
                         </td>
                         <td className="px-4 py-3 capitalize">{lot.saleType}</td>
-                        <td className="px-4 py-3"><Badge className={lotStatusBadge[lot.status] ?? ''} variant="secondary">{humanize(lot.status)}</Badge></td>
+                        <td className="px-4 py-3"><Badge className={lotStatus(lot.status).className} variant="secondary">{lotStatus(lot.status).label}</Badge></td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {lot.estimateLow && lot.estimateHigh ? `${formatCurrency(lot.estimateLow)} – ${formatCurrency(lot.estimateHigh)}` : '—'}
                         </td>
@@ -617,8 +619,8 @@ export default function AdminUserDetailPage() {
                           </Link>
                         </td>
                         <td className="px-4 py-3"><Link href={`/admin/lots/${inv.lotId}`} className="hover:underline">{inv.lotTitle}</Link></td>
-                        <td className="px-4 py-3"><Badge className={invoiceStatusBadge[inv.status] ?? ''} variant="secondary">{inv.status}</Badge></td>
-                        <td className="px-4 py-3 tabular-nums">{formatCurrency(inv.totalAmount)}</td>
+                        <td className="px-4 py-3"><Badge className={statusBadge(INVOICE_STATUS, inv.status).className}>{statusBadge(INVOICE_STATUS, inv.status).label}</Badge></td>
+                        <td className="px-4 py-3 tabular-nums">{formatCurrencyWithCents(inv.totalAmount)}</td>
                         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(inv.dueDate)}</td>
                         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{inv.paidAt ? fmtDate(inv.paidAt) : '—'}</td>
                       </tr>
@@ -690,10 +692,10 @@ export default function AdminUserDetailPage() {
                   {data.payouts.map((p) => (
                     <tr key={p.id} className="border-t">
                       <td className="px-4 py-3"><Link href={`/admin/lots/${p.lotId}`} className="hover:underline">{p.lotTitle}</Link></td>
-                      <td className="px-4 py-3 tabular-nums">{formatCurrency(p.hammerPrice)}</td>
-                      <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatCurrency(p.commissionAmount)} ({p.commissionPercent}%)</td>
-                      <td className="px-4 py-3 tabular-nums font-medium">{formatCurrency(p.netAmount)}</td>
-                      <td className="px-4 py-3"><Badge className={payoutStatusBadge[p.status] ?? ''} variant="secondary">{p.status}</Badge></td>
+                      <td className="px-4 py-3 tabular-nums">{formatCurrencyWithCents(p.hammerPrice)}</td>
+                      <td className="px-4 py-3 tabular-nums text-muted-foreground">{formatCurrencyWithCents(p.commissionAmount)} ({p.commissionPercent}%)</td>
+                      <td className="px-4 py-3 tabular-nums font-medium">{formatCurrencyWithCents(p.netAmount)}</td>
+                      <td className="px-4 py-3"><Badge className={statusBadge(PAYOUT_STATUS, p.status).className}>{statusBadge(PAYOUT_STATUS, p.status).label}</Badge></td>
                       <td className="px-4 py-3 capitalize">{p.method ?? '—'}{p.reference ? <span className="text-xs text-muted-foreground ml-1">{p.reference}</span> : null}</td>
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{p.paidAt ? fmtDate(p.paidAt) : '—'}</td>
                     </tr>
@@ -751,7 +753,9 @@ export default function AdminUserDetailPage() {
           <Card>
             <CardContent className="pt-6 space-y-3">
               <p className="text-xs text-muted-foreground">Internal only — never shown to the client.</p>
+              <Label htmlFor="adminNotes" className="sr-only">Internal notes</Label>
               <Textarea
+                id="adminNotes"
                 value={notes}
                 onChange={(e) => { setNotes(e.target.value); setNotesDirty(true); }}
                 rows={8}
@@ -787,7 +791,10 @@ export default function AdminUserDetailPage() {
         description={pending?.description}
         confirmLabel={pending?.confirmLabel}
         variant={pending?.destructive ? 'destructive' : 'default'}
-        onConfirm={async () => { if (pending) await patchUser(pending.updates, 'account'); }}
+        onConfirm={async () => {
+          // A failed save keeps the dialog open (patchUser already toasted why).
+          if (pending && !(await patchUser(pending.updates, 'account'))) throw new Error('Update failed');
+        }}
       />
     </div>
   );

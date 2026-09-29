@@ -16,11 +16,15 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, ExternalLink, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Package, ExternalLink, Search } from 'lucide-react';
 import { PageHeader } from '@/components/admin/PageHeader';
 import { SHIPMENT_TRANSITIONS, type ShipmentStatus } from '@/lib/shipping/transitions';
 import { formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
+import { formatShortDate } from '@/lib/format/dates';
+import { SHIPMENT_STATUS, statusBadge } from '@/lib/admin/status/money';
+import { FilterChip } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 
 interface AddressForm {
   name: string;
@@ -114,20 +118,6 @@ const FILTER_LABELS: Record<StatusFilter, string> = {
   cancelled: 'Cancelled',
 };
 
-const statusColors: Record<string, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  pending: 'outline',
-  needs_address: 'destructive',
-  label_created: 'secondary',
-  pickup_scheduled: 'secondary',
-  picked_up: 'secondary',
-  in_transit: 'default',
-  out_for_delivery: 'default',
-  delivered: 'default',
-  exception: 'destructive',
-  returned: 'destructive',
-  cancelled: 'secondary',
-};
-
 interface Form {
   status: ShipmentStatus;
   method: string;
@@ -189,7 +179,8 @@ export default function AdminShipmentsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   // Filters can arrive in the URL (the dashboard and settlement pages link
-  // here with ?status= / ?q=). Read them once on mount, then fetch.
+  // here with ?status= / ?q=). Read them once on mount, then fetch; after
+  // that the URL follows the filters.
   const [ready, setReady] = useState(false);
 
   const fetchShipments = useCallback(async (page: number, status: StatusFilter, q: string, silent = false) => {
@@ -228,6 +219,18 @@ export default function AdminShipmentsPage() {
     fetchShipments(pagination.page, statusFilter, search);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, pagination.page, statusFilter, search]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const params = new URLSearchParams();
+    if (statusFilter !== 'all') params.set('status', statusFilter);
+    if (search) params.set('q', search);
+    const qs = params.toString();
+    if (qs === window.location.search.replace(/^\?/, '')) return;
+    // replaceState, not router.replace: the page reads the URL only on mount,
+    // so a server round trip per chip click or keystroke would be wasted.
+    window.history.replaceState(null, '', `/admin/shipments${qs ? `?${qs}` : ''}`);
+  }, [ready, statusFilter, search]);
 
   useEffect(() => {
     if (!ready) return;
@@ -317,19 +320,24 @@ export default function AdminShipmentsPage() {
   const setAddress = (side: 'from' | 'to', key: keyof AddressForm, value: string) =>
     setForm((f) => (f ? { ...f, [side]: { ...f[side], [key]: value } } : f));
 
-  const addressFields = (side: 'from' | 'to', a: AddressForm) => (
-    <div className="grid grid-cols-2 gap-2">
-      <Input placeholder="Name" value={a.name} onChange={(e) => setAddress(side, 'name', e.target.value)} />
-      <Input placeholder="Phone" value={a.phone} onChange={(e) => setAddress(side, 'phone', e.target.value)} />
-      <Input className="col-span-2" placeholder="Email" value={a.email} onChange={(e) => setAddress(side, 'email', e.target.value)} />
-      <Input className="col-span-2" placeholder="Street" value={a.street} onChange={(e) => setAddress(side, 'street', e.target.value)} />
-      <Input className="col-span-2" placeholder="Apt / suite" value={a.street2} onChange={(e) => setAddress(side, 'street2', e.target.value)} />
-      <Input placeholder="City" value={a.city} onChange={(e) => setAddress(side, 'city', e.target.value)} />
-      <Input placeholder="State" value={a.state} onChange={(e) => setAddress(side, 'state', e.target.value)} />
-      <Input placeholder="ZIP" value={a.zip} onChange={(e) => setAddress(side, 'zip', e.target.value)} />
-      <Input placeholder="Country (US)" maxLength={2} value={a.country} onChange={(e) => setAddress(side, 'country', e.target.value.toUpperCase())} />
-    </div>
-  );
+  // Placeholders show the field in a tight grid; aria-labels name it for
+  // screen readers ("Ship to city", …) since a placeholder is not a label.
+  const addressFields = (side: 'from' | 'to', a: AddressForm) => {
+    const who = side === 'from' ? 'Ship from' : 'Ship to';
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <Input aria-label={`${who} name`} placeholder="Name" value={a.name} onChange={(e) => setAddress(side, 'name', e.target.value)} />
+        <Input aria-label={`${who} phone`} placeholder="Phone" value={a.phone} onChange={(e) => setAddress(side, 'phone', e.target.value)} />
+        <Input aria-label={`${who} email`} className="col-span-2" placeholder="Email" value={a.email} onChange={(e) => setAddress(side, 'email', e.target.value)} />
+        <Input aria-label={`${who} street`} className="col-span-2" placeholder="Street" value={a.street} onChange={(e) => setAddress(side, 'street', e.target.value)} />
+        <Input aria-label={`${who} apartment or suite`} className="col-span-2" placeholder="Apt / suite" value={a.street2} onChange={(e) => setAddress(side, 'street2', e.target.value)} />
+        <Input aria-label={`${who} city`} placeholder="City" value={a.city} onChange={(e) => setAddress(side, 'city', e.target.value)} />
+        <Input aria-label={`${who} state`} placeholder="State" value={a.state} onChange={(e) => setAddress(side, 'state', e.target.value)} />
+        <Input aria-label={`${who} ZIP`} placeholder="ZIP" value={a.zip} onChange={(e) => setAddress(side, 'zip', e.target.value)} />
+        <Input aria-label={`${who} country code`} placeholder="Country (US)" maxLength={2} value={a.country} onChange={(e) => setAddress(side, 'country', e.target.value.toUpperCase())} />
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -346,18 +354,13 @@ export default function AdminShipmentsPage() {
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         {STATUS_FILTERS.map((s) => (
-          <button
+          <FilterChip
             key={s}
-            type="button"
+            active={statusFilter === s}
             onClick={() => { setStatusFilter(s); setPagination((p) => ({ ...p, page: 1 })); }}
-            className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
-              statusFilter === s
-                ? 'bg-foreground text-background border-foreground'
-                : 'border-border/50 hover:bg-accent/10'
-            }`}
           >
             {FILTER_LABELS[s]}
-          </button>
+          </FilterChip>
         ))}
         <div className="relative min-w-[220px]">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -365,6 +368,7 @@ export default function AdminShipmentsPage() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="Tracking #, buyer, lot, invoice #"
+            aria-label="Search shipments"
             className="h-8 pl-8 text-xs"
           />
         </div>
@@ -397,7 +401,7 @@ export default function AdminShipmentsPage() {
         </div>
       )}
 
-      {!loading && shipments.length > 0 && (
+      {!loading && !loadError && shipments.length > 0 && (
         <div className="border border-border/50 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -420,9 +424,11 @@ export default function AdminShipmentsPage() {
                 return (
                   <tr key={shipment.id} className="border-b border-border/30 hover:bg-muted/10 align-top">
                     <td className="px-4 py-3">
-                      <Badge variant={statusColors[shipment.status] || 'outline'}>{label(shipment.status)}</Badge>
+                      <Badge className={statusBadge(SHIPMENT_STATUS, shipment.status).className}>
+                        {statusBadge(SHIPMENT_STATUS, shipment.status).label}
+                      </Badge>
                       {shipment.deliveredAt && (
-                        <div className="text-[11px] text-muted-foreground mt-1">{new Date(shipment.deliveredAt).toLocaleDateString()}</div>
+                        <div className="text-[11px] text-muted-foreground mt-1">{formatShortDate(shipment.deliveredAt)}</div>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -479,7 +485,7 @@ export default function AdminShipmentsPage() {
                       {formatCurrencyWithCents(shipment.shippingCost + shipment.insuranceCost)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {new Date(shipment.createdAt).toLocaleDateString()}
+                      {formatShortDate(shipment.createdAt)}
                     </td>
                     <td className="px-4 py-3">
                       <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => openEdit(row)}>
@@ -494,22 +500,12 @@ export default function AdminShipmentsPage() {
         </div>
       )}
 
-      {pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4 text-sm">
-          <p className="text-muted-foreground">
-            Page {pagination.page} of {pagination.totalPages}
-          </p>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={pagination.page <= 1}
-              onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))} className="gap-1">
-              <ChevronLeft className="h-3.5 w-3.5" /> Prev
-            </Button>
-            <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages}
-              onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))} className="gap-1">
-              Next <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+      {!loading && !loadError && (
+        <Pager
+          page={pagination.page}
+          totalPages={pagination.totalPages}
+          onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+        />
       )}
 
       <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
@@ -526,9 +522,9 @@ export default function AdminShipmentsPage() {
             <div className="space-y-5 py-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Status</Label>
+                  <Label htmlFor="shipmentStatus">Status</Label>
                   <Select value={form.status} onValueChange={(v) => setForm((f) => (f ? { ...f, status: v as ShipmentStatus } : f))}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="shipmentStatus" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {allowedStatuses.map((s) => (
                         <SelectItem key={s} value={s}>{label(s)}{s === editing.shipment.status ? ' (current)' : ''}</SelectItem>
@@ -540,18 +536,18 @@ export default function AdminShipmentsPage() {
                   )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Method</Label>
+                  <Label htmlFor="shipmentMethod">Method</Label>
                   <Select value={form.method} onValueChange={(v) => setForm((f) => (f ? { ...f, method: v } : f))}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectTrigger id="shipmentMethod" className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {METHODS.map((m) => <SelectItem key={m} value={m}>{label(m)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Carrier</Label>
+                  <Label htmlFor="shipmentCarrier">Carrier</Label>
                   <Select value={form.carrier || 'none'} onValueChange={(v) => setForm((f) => (f ? { ...f, carrier: v === 'none' ? '' : v } : f))}>
-                    <SelectTrigger className="w-full"><SelectValue placeholder="Select carrier" /></SelectTrigger>
+                    <SelectTrigger id="shipmentCarrier" className="w-full"><SelectValue placeholder="Select carrier" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">—</SelectItem>
                       {CARRIERS.map((c) => <SelectItem key={c} value={c}>{c.toUpperCase()}</SelectItem>)}
@@ -579,23 +575,23 @@ export default function AdminShipmentsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label>Parcel (in / lb / oz)</Label>
-                <div className="grid grid-cols-5 gap-2">
-                  <Input placeholder="L" inputMode="numeric" value={form.lengthIn} onChange={(e) => setForm((f) => (f ? { ...f, lengthIn: e.target.value } : f))} />
-                  <Input placeholder="W" inputMode="numeric" value={form.widthIn} onChange={(e) => setForm((f) => (f ? { ...f, widthIn: e.target.value } : f))} />
-                  <Input placeholder="H" inputMode="numeric" value={form.heightIn} onChange={(e) => setForm((f) => (f ? { ...f, heightIn: e.target.value } : f))} />
-                  <Input placeholder="lb" inputMode="numeric" value={form.weightLbs} onChange={(e) => setForm((f) => (f ? { ...f, weightLbs: e.target.value } : f))} />
-                  <Input placeholder="oz" inputMode="numeric" value={form.weightOz} onChange={(e) => setForm((f) => (f ? { ...f, weightOz: e.target.value } : f))} />
+                <Label id="parcelLabel">Parcel (in / lb / oz)</Label>
+                <div className="grid grid-cols-5 gap-2" role="group" aria-labelledby="parcelLabel">
+                  <Input aria-label="Length (inches)" placeholder="L" inputMode="numeric" value={form.lengthIn} onChange={(e) => setForm((f) => (f ? { ...f, lengthIn: e.target.value } : f))} />
+                  <Input aria-label="Width (inches)" placeholder="W" inputMode="numeric" value={form.widthIn} onChange={(e) => setForm((f) => (f ? { ...f, widthIn: e.target.value } : f))} />
+                  <Input aria-label="Height (inches)" placeholder="H" inputMode="numeric" value={form.heightIn} onChange={(e) => setForm((f) => (f ? { ...f, heightIn: e.target.value } : f))} />
+                  <Input aria-label="Weight (pounds)" placeholder="lb" inputMode="numeric" value={form.weightLbs} onChange={(e) => setForm((f) => (f ? { ...f, weightLbs: e.target.value } : f))} />
+                  <Input aria-label="Weight (ounces)" placeholder="oz" inputMode="numeric" value={form.weightOz} onChange={(e) => setForm((f) => (f ? { ...f, weightOz: e.target.value } : f))} />
                 </div>
               </div>
 
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <Label>Ship from (seller)</Label>
+                  <p className="text-sm font-medium">Ship from (seller)</p>
                   {addressFields('from', form.from)}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Ship to (buyer)</Label>
+                  <p className="text-sm font-medium">Ship to (buyer)</p>
                   {addressFields('to', form.to)}
                 </div>
               </div>

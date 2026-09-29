@@ -27,14 +27,16 @@ const listQuerySchema = z.object({
 const PAGE_SIZE = 50;
 
 // Correlated subqueries: cheap per row at admin-page volumes and they keep the
-// list a single round trip.
+// list a single round trip. The outer reference is written literally as
+// "users"."id": an interpolated ${users.id} renders as a bare "id", which
+// inside the subquery resolves to the inner table's own id (every count 0).
 const activityColumns = {
-  lotCount: sql<number>`(select count(*) from ${lots} l where l.seller_id = ${users.id})::int`,
-  soldCount: sql<number>`(select count(*) from ${lots} l where l.seller_id = ${users.id} and l.status = 'sold')::int`,
-  consignmentCount: sql<number>`(select count(*) from ${consignments} c where c.seller_id = ${users.id})::int`,
-  bidCount: sql<number>`(select count(*) from ${bids} b where b.bidder_id = ${users.id})::int`,
+  lotCount: sql<number>`(select count(*) from ${lots} l where l.seller_id = "users"."id")::int`,
+  soldCount: sql<number>`(select count(*) from ${lots} l where l.seller_id = "users"."id" and l.status = 'sold')::int`,
+  consignmentCount: sql<number>`(select count(*) from ${consignments} c where c.seller_id = "users"."id")::int`,
+  bidCount: sql<number>`(select count(*) from ${bids} b where b.bidder_id = "users"."id")::int`,
   // bigint comes back from pg as a string — normalised below
-  salesTotalCents: sql<string>`coalesce((select sum(l.hammer_price) from ${lots} l where l.seller_id = ${users.id} and l.status = 'sold'), 0)::bigint`,
+  salesTotalCents: sql<string>`coalesce((select sum(l.hammer_price) from ${lots} l where l.seller_id = "users"."id" and l.status = 'sold'), 0)::bigint`,
 };
 
 // GET /api/admin/users?search=...&filter=consignors|bidders|admins|suspended|shadow&page=1

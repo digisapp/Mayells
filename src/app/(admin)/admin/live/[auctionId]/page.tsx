@@ -13,6 +13,10 @@ import { formatCurrency } from '@/types';
 import { toast } from 'sonner';
 import { Play, Square, ChevronLeft, ChevronRight, Gavel, Clock } from 'lucide-react';
 import { PageHeader } from '@/components/admin/PageHeader';
+import { auctionStatus, lotStatus } from '@/lib/admin/status/sales';
+import { formatShortDateTime } from '@/lib/format/dates';
+import { formatEstimate } from '@/lib/format/estimate';
+import LiveConsoleLoading from './loading';
 
 interface AuctionLot {
   lotNumber: number;
@@ -54,7 +58,7 @@ function formatRemaining(ms: number) {
 }
 
 function formatWhen(iso: string) {
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
+  return formatShortDateTime(iso);
 }
 
 function highBidderLabel(lot: AuctionLot['lot']) {
@@ -208,37 +212,30 @@ export default function AuctioneerDashboardPage() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="w-8 h-8 border-2 border-champagne border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <LiveConsoleLoading />;
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-120px)]">
+    // The fixed viewport height only applies side by side (lg+): stacked on a
+    // phone, the lot list and chat each take their natural/own height.
+    <div className="flex flex-col lg:flex-row gap-6 lg:h-[calc(100vh-120px)]">
       {/* Main panel */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Auction header */}
-        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <h1 className="font-display text-xl truncate">{auction?.title}</h1>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              {isLive ? (
-                <Badge className="bg-red-600 text-white animate-pulse">● LIVE</Badge>
-              ) : finished ? (
-                <Badge variant="secondary" className="capitalize">{auction?.status}</Badge>
-              ) : (
-                <Badge variant="secondary">Not live</Badge>
-              )}
-              <span className="text-sm text-muted-foreground">
-                {lots.length} lots{isLive ? ` · ${openLots} open` : ''}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {finished ? (
+        <PageHeader
+          className="mb-4"
+          title={auction?.title ?? 'Live console'}
+          badges={
+            isLive ? (
+              <Badge className="bg-red-600 text-white animate-pulse">● LIVE</Badge>
+            ) : finished ? (
+              <Badge className={auctionStatus(auction?.status ?? '').className}>{auctionStatus(auction?.status ?? '').label}</Badge>
+            ) : (
+              <Badge variant="secondary">Not live</Badge>
+            )
+          }
+          description={`${lots.length} lots${isLive ? ` · ${openLots} open` : ''}`}
+          actions={
+            finished ? (
               <Button asChild variant="outline" size="sm">
                 <Link href={auction?.status === 'cancelled' ? `/admin/auctions/${auctionId}` : `/admin/auctions/${auctionId}/settlement`}>
                   {auction?.status === 'cancelled' ? 'View auction' : 'View settlement'}
@@ -256,9 +253,9 @@ export default function AuctioneerDashboardPage() {
               <Button onClick={() => setPending('end')} variant="destructive" className="gap-2">
                 <Square className="h-4 w-4" /> End live
               </Button>
-            )}
-          </div>
-        </div>
+            )
+          }
+        />
         {isLiveFormat && !isLive && !finished && lots.length === 0 && (
           <p className="text-xs text-muted-foreground -mt-2 mb-4">
             Add lots on the <Link href={`/admin/auctions/${auctionId}?tab=lots`} className="underline">auction page</Link> before going live.
@@ -284,6 +281,7 @@ export default function AuctioneerDashboardPage() {
                       onClick={() => setActiveLotIndex(Math.max(0, activeLotIndex - 1))}
                       disabled={activeLotIndex === 0}
                       className="h-8 w-8"
+                      aria-label="Previous lot"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
@@ -293,6 +291,7 @@ export default function AuctioneerDashboardPage() {
                       onClick={() => setActiveLotIndex(Math.min(lots.length - 1, activeLotIndex + 1))}
                       disabled={activeLotIndex >= lots.length - 1}
                       className="h-8 w-8"
+                      aria-label="Next lot"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
@@ -309,14 +308,14 @@ export default function AuctioneerDashboardPage() {
                   )}
                   <div className="flex-1 min-w-0">
                     <h2 className="font-display text-lg">{lot.title}</h2>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mt-1">
-                      {lot.estimateLow != null && (
-                        <span>Estimate: {formatCurrency(lot.estimateLow)} – {formatCurrency(lot.estimateHigh ?? lot.estimateLow)}</span>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground mt-1">
+                      {formatEstimate(lot.estimateLow, lot.estimateHigh) && (
+                        <span>Estimate: {formatEstimate(lot.estimateLow, lot.estimateHigh)}</span>
                       )}
                       <span>
                         Reserve: {lot.reservePrice != null ? formatCurrency(lot.reservePrice) : 'none'}
                       </span>
-                      <span className="capitalize">{lot.status.replace('_', ' ')}</span>
+                      <Badge className={lotStatus(lot.status).className}>{lotStatus(lot.status).label}</Badge>
                     </div>
                     <div className="mt-4 flex flex-wrap items-end gap-6">
                       <div>
@@ -351,7 +350,7 @@ export default function AuctioneerDashboardPage() {
                           <p className="text-base font-medium mt-1 flex items-center gap-1.5 tabular-nums" title={formatWhen(activeLot.closingAt)}>
                             <Clock className="h-4 w-4 text-muted-foreground" />
                             {lot.status === 'sold' || lot.status === 'unsold'
-                              ? lot.status === 'sold' ? 'Sold' : 'Unsold'
+                              ? lotStatus(lot.status).label
                               : closeMs !== null ? formatRemaining(closeMs) : '—'}
                           </p>
                         </div>
@@ -372,6 +371,8 @@ export default function AuctioneerDashboardPage() {
               return (
                 <button
                   key={aLot.lot.id}
+                  type="button"
+                  aria-current={i === activeLotIndex ? 'true' : undefined}
                   onClick={() => setActiveLotIndex(i)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded text-left text-sm transition-colors ${
                     i === activeLotIndex ? 'bg-champagne/10 border border-champagne/30' : 'hover:bg-muted'
@@ -383,7 +384,7 @@ export default function AuctioneerDashboardPage() {
                     <span className="text-muted-foreground text-xs tabular-nums hidden sm:inline">{formatRemaining(closeMs)}</span>
                   )}
                   {(aLot.lot.status === 'sold' || aLot.lot.status === 'unsold') && (
-                    <span className="text-xs capitalize text-muted-foreground">{aLot.lot.status}</span>
+                    <span className="text-xs text-muted-foreground">{lotStatus(aLot.lot.status).label}</span>
                   )}
                   <span className="text-muted-foreground tabular-nums">
                     {aLot.lot.currentBidAmount > 0 ? formatCurrency(aLot.lot.currentBidAmount) : '—'}
@@ -401,7 +402,7 @@ export default function AuctioneerDashboardPage() {
       </div>
 
       {/* Chat sidebar */}
-      <div className="w-full lg:w-80 xl:w-96 flex-shrink-0">
+      <div className="w-full lg:w-80 xl:w-96 flex-shrink-0 h-[28rem] lg:h-auto">
         <LiveChat auctionId={auctionId} className="h-full" />
       </div>
 

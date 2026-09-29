@@ -9,9 +9,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { PageHeader } from '@/components/admin/PageHeader';
-import { Search, ChevronLeft, ChevronRight, Shield, Ban, ShieldCheck, EyeOff, AlertTriangle } from 'lucide-react';
+import { Search, Shield, Ban, ShieldCheck, EyeOff, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/types';
+import { formatShortDate } from '@/lib/format/dates';
+import { FilterChips } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 import { isSentinelEmail } from '@/lib/sellers/sentinel';
 import {
   verificationLabel, roleColors, accountStatusColors as statusColors, USER_ROLES, ACCOUNT_STATUSES, readError,
@@ -88,7 +91,9 @@ function AdminUsersPageInner() {
   const [searchQuery, setSearchQuery] = useState(urlQuery);
   const [filter, setFilter] = useState<Filter>(isFilter(urlFilter) ? urlFilter : 'all');
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [pending, setPending] = useState<{ user: UserRow; updates: { role?: string; accountStatus?: string }; title: string; description: string } | null>(null);
+  const [pending, setPending] = useState<{
+    user: UserRow; updates: { role?: string; accountStatus?: string }; title: string; description: string; confirmLabel: string; destructive: boolean;
+  } | null>(null);
 
   // Keep the chip in sync when the URL changes (sidebar link, back button)
   useEffect(() => {
@@ -158,7 +163,8 @@ function AdminUsersPageInner() {
     router.replace(`/admin/users${params.size ? `?${params}` : ''}`);
   }
 
-  async function updateUser(id: string, updates: { role?: string; accountStatus?: string }) {
+  /** Resolves false on failure (after toasting) so a confirm dialog can stay open. */
+  async function updateUser(id: string, updates: { role?: string; accountStatus?: string }): Promise<boolean> {
     try {
       const res = await fetch('/api/admin/users', {
         method: 'PATCH',
@@ -168,24 +174,40 @@ function AdminUsersPageInner() {
       if (res.ok) {
         const { data } = await res.json();
         setUserList((prev) => prev.map((u) => (u.id === id ? { ...u, ...data } : u)));
-        toast.success('User updated');
+        toast.success('Client updated');
         setEditingId(null);
-      } else {
-        toast.error(await readError(res, 'Failed to update user'));
+        return true;
       }
+      toast.error(await readError(res, 'Failed to update client'));
+      return false;
     } catch {
       toast.error('Network error');
+      return false;
     }
   }
 
-  /** Destructive or privilege-raising changes go through the confirm dialog. */
+  /** Destructive or privilege-changing changes go through the confirm dialog. */
   function requestUpdate(user: UserRow, updates: { role?: string; accountStatus?: string }) {
     const name = displayName(user);
     if (updates.role === 'admin' && user.role !== 'admin') {
       setPending({
         user, updates,
         title: `Make ${name} an admin?`,
-        description: 'Admins can see and change everything in this panel, including money, users, and other admins.',
+        description: 'Admins can see and change everything in this panel, including money, clients, and other admins.',
+        confirmLabel: 'Make admin',
+        destructive: false,
+      });
+      return;
+    }
+    // Admin access is role 'admin' OR the is_admin flag; only moving off the
+    // admin role with no flag behind it actually locks them out.
+    if (updates.role && updates.role !== 'admin' && user.role === 'admin' && !user.isAdmin) {
+      setPending({
+        user, updates,
+        title: `Remove ${name}'s admin access?`,
+        description: `They become a ${updates.role} and are signed out of this panel on their next page load. You can grant access again later.`,
+        confirmLabel: 'Remove admin access',
+        destructive: true,
       });
       return;
     }
@@ -196,30 +218,15 @@ function AdminUsersPageInner() {
         description: updates.accountStatus === 'banned'
           ? 'They will be blocked from bidding and buying. Existing invoices and payouts are unaffected.'
           : 'They will be blocked from bidding until reactivated.',
+        confirmLabel: updates.accountStatus === 'banned' ? 'Ban client' : 'Suspend',
+        destructive: true,
       });
       return;
     }
     void updateUser(user.id, updates);
   }
 
-  const chips = (
-    <div className="flex flex-wrap items-center gap-2">
-      {FILTERS.map((f) => (
-        <button
-          key={f.value}
-          type="button"
-          onClick={() => switchFilter(f.value)}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            filter === f.value
-              ? 'border-champagne bg-champagne/15 text-foreground'
-              : 'border-border text-muted-foreground hover:text-foreground hover:border-champagne/50'
-          }`}
-        >
-          {f.label}
-        </button>
-      ))}
-    </div>
-  );
+  const chips = <FilterChips label="Filter clients" options={FILTERS} value={filter} onChange={switchFilter} />;
 
   return (
     <div>
@@ -233,6 +240,7 @@ function AdminUsersPageInner() {
               <input
                 type="text"
                 placeholder="Search name, email, company, paddle..."
+                aria-label="Search clients"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 className="pl-8 pr-3 py-1.5 border rounded-md text-sm bg-background w-64 max-w-full"
@@ -293,7 +301,7 @@ function AdminUsersPageInner() {
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span>Consigned {user.lotCount + user.consignmentCount} · Sold {user.soldCount}{user.salesTotalCents > 0 ? ` (${formatCurrency(user.salesTotalCents)})` : ''}</span>
                         <span>Bids {user.bidCount}</span>
-                        <span>Joined {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}</span>
+                        <span>Joined {user.createdAt ? formatShortDate(user.createdAt) : '—'}</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -350,6 +358,7 @@ function AdminUsersPageInner() {
                           <select
                             value={user.role}
                             onChange={(e) => requestUpdate(user, { role: e.target.value })}
+                            aria-label={`Role for ${displayName(user)}`}
                             className="text-xs border rounded px-2 py-1 bg-background"
                           >
                             {USER_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
@@ -368,6 +377,7 @@ function AdminUsersPageInner() {
                           <select
                             value={user.accountStatus}
                             onChange={(e) => requestUpdate(user, { accountStatus: e.target.value })}
+                            aria-label={`Account status for ${displayName(user)}`}
                             className="text-xs border rounded px-2 py-1 bg-background"
                           >
                             {ACCOUNT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -392,7 +402,7 @@ function AdminUsersPageInner() {
                       </TableCell>
                       <TableCell className="tabular-nums">{user.bidCount > 0 ? user.bidCount : '—'}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '—'}
+                        {user.createdAt ? formatShortDate(user.createdAt) : '—'}
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Button
@@ -418,23 +428,11 @@ function AdminUsersPageInner() {
             </Table>
           </div>
 
-          {pagination.totalPages > 1 && (
-            <div className="flex flex-wrap items-center justify-between gap-3 mt-6">
-              <p className="text-sm text-muted-foreground">
-                Page {pagination.page} of {pagination.totalPages}
-              </p>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={pagination.page <= 1}
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}>
-                  <ChevronLeft className="h-4 w-4 mr-1" /> Previous
-                </Button>
-                <Button size="sm" variant="outline" disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}>
-                  Next <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pager
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            onPageChange={(page) => setPagination((p) => ({ ...p, page }))}
+          />
         </>
       )}
 
@@ -443,9 +441,11 @@ function AdminUsersPageInner() {
         onOpenChange={(open) => { if (!open) setPending(null); }}
         title={pending?.title ?? ''}
         description={pending?.description}
-        confirmLabel={pending?.updates.accountStatus === 'banned' ? 'Ban user' : pending?.updates.accountStatus === 'suspended' ? 'Suspend' : 'Make admin'}
-        variant={pending?.updates.accountStatus ? 'destructive' : 'default'}
-        onConfirm={async () => { if (pending) await updateUser(pending.user.id, pending.updates); }}
+        confirmLabel={pending?.confirmLabel}
+        variant={pending?.destructive ? 'destructive' : 'default'}
+        onConfirm={async () => {
+          if (pending && !(await updateUser(pending.user.id, pending.updates))) throw new Error('Update failed');
+        }}
       />
     </div>
   );

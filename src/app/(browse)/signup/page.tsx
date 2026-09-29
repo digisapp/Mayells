@@ -5,7 +5,7 @@ import { redirectIfSignedIn } from '@/lib/auth/redirect-if-signed-in';
 import { safeNext } from '@/lib/auth/safe-next';
 
 export const metadata: Metadata = {
-  title: 'Create Account | Mayells',
+  title: 'Create Account',
   robots: { index: false, follow: false },
 };
 

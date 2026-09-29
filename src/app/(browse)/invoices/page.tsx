@@ -7,20 +7,17 @@ import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { invoices, lots } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
+import { Receipt } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { AccountShell } from '@/components/account/AccountShell';
+import { invoiceStatusBadge } from '@/components/account/invoice-status';
+import { formatShortDate } from '@/lib/format/dates';
 import { formatCurrencyWithCents } from '@/types';
 
 export const metadata: Metadata = {
-  title: 'My Invoices | Mayells',
+  title: 'My Invoices',
   robots: { index: false, follow: false },
-};
-
-const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-  paid: { label: 'Paid', className: 'bg-green-600 text-white' },
-  pending: { label: 'Payment Due', className: 'bg-amber-500 text-white' },
-  overdue: { label: 'Overdue', className: 'bg-red-600 text-white' },
-  refunded: { label: 'Refunded', className: 'bg-zinc-500 text-white' },
-  cancelled: { label: 'Cancelled', className: 'bg-zinc-500 text-white' },
 };
 
 export default async function MyInvoicesPage() {
@@ -41,15 +38,20 @@ export default async function MyInvoicesPage() {
     .orderBy(desc(invoices.createdAt));
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-10 sm:py-16">
-      <h1 className="font-display text-3xl mb-6">My Invoices</h1>
-
+    <AccountShell active="invoices" title="My Invoices" icon={<Receipt className="h-6 w-6 text-champagne" />}>
       {rows.length === 0 ? (
-        <p className="text-muted-foreground">You don&apos;t have any invoices yet.</p>
+        <div className="text-center py-20">
+          <p className="text-muted-foreground mb-5">
+            You don&apos;t have any invoices yet. Lots you win will appear here.
+          </p>
+          <Button asChild size="lg" variant="champagne">
+            <Link href="/auctions">Browse auctions</Link>
+          </Button>
+        </div>
       ) : (
         <div className="space-y-3">
           {rows.map(({ invoice, lotTitle }) => {
-            const badge = STATUS_BADGE[invoice.status] ?? { label: invoice.status, className: '' };
+            const badge = invoiceStatusBadge(invoice.status);
             return (
               <Link
                 key={invoice.id}
@@ -59,7 +61,7 @@ export default async function MyInvoicesPage() {
                 <div className="min-w-0">
                   <p className="font-medium truncate">{lotTitle || invoice.invoiceNumber}</p>
                   <p className="text-sm text-muted-foreground">
-                    {invoice.invoiceNumber} · Due {invoice.dueDate.toLocaleDateString()}
+                    {invoice.invoiceNumber} · Due {formatShortDate(invoice.dueDate)}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
@@ -73,6 +75,6 @@ export default async function MyInvoicesPage() {
           })}
         </div>
       )}
-    </div>
+    </AccountShell>
   );
 }

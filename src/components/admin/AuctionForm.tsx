@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,6 +38,8 @@ interface AuctionFormProps {
   isLoading: boolean;
   submitLabel: string;
   cancelHref: string;
+  /** Told whenever the form gains or loses unsaved edits. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export const defaultAuctionFormData: AuctionFormData = {
@@ -78,10 +81,34 @@ function parseIntField(raw: string): number | '' {
   return Number.isNaN(n) ? '' : n;
 }
 
-export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, submitLabel, cancelHref }: AuctionFormProps) {
+export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, submitLabel, cancelHref, onDirtyChange }: AuctionFormProps) {
   const [form, setForm] = useState<AuctionFormData>(initialData || defaultAuctionFormData);
+  // What the server last had; edits are "unsaved" until a save succeeds.
+  const [saved, setSaved] = useState<AuctionFormData>(initialData || defaultAuctionFormData);
   const [error, setError] = useState('');
+  const errorRef = useRef<HTMLDivElement>(null);
   const timeZone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
+
+  const dirty = JSON.stringify(form) !== JSON.stringify(saved);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  // Reload / close tab with unsaved edits asks first. (In-app link clicks
+  // aren't covered — the App Router has no navigation-block API.)
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
+  function showError(message: string) {
+    setError(message);
+    toast.error(message);
+    // The banner sits above the first card; the Save button is at the bottom.
+    requestAnimationFrame(() => errorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }
 
   function update<K extends keyof AuctionFormData>(field: K, value: AuctionFormData[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -92,11 +119,11 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
     setError('');
 
     if (form.type === 'timed' && form.biddingStartsAt && form.biddingEndsAt && new Date(form.biddingEndsAt) <= new Date(form.biddingStartsAt)) {
-      setError('Bidding must close after it opens.');
+      showError('Bidding must close after it opens.');
       return;
     }
     if (form.previewStartsAt && form.biddingStartsAt && new Date(form.previewStartsAt) > new Date(form.biddingStartsAt)) {
-      setError('Preview must open before bidding opens.');
+      showError('Preview must open before bidding opens.');
       return;
     }
 
@@ -120,15 +147,16 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
         lotClosingIntervalSeconds: intOrUndefined(form.lotClosingIntervalSeconds),
         isFeatured: form.isFeatured,
       });
+      setSaved(form);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      showError(err instanceof Error && err.message ? err.message : 'Something went wrong');
     }
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
+        <div ref={errorRef} role="alert" className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">{error}</div>
       )}
 
       <Card>
@@ -173,9 +201,9 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Format</Label>
+              <Label htmlFor="auction-format">Format</Label>
               <Select value={form.type} onValueChange={(v) => update('type', v as 'timed' | 'live')} disabled={locked}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="auction-format"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="timed">Timed online (staggered close)</SelectItem>
                   <SelectItem value="live">Live (auctioneer-led, video)</SelectItem>

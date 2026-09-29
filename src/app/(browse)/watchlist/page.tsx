@@ -9,9 +9,13 @@ import { watchlist, lots, auctionLots } from '@/db/schema';
 import { eq, desc, sql } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { formatCurrency } from '@/types';
+import { formatEstimate } from '@/lib/format/estimate';
+import { publicLotPath } from '@/lib/lots/urls';
 import { Badge } from '@/components/ui/badge';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
 import { SavedSearchList } from '@/components/search/SavedSearchList';
+import { Button } from '@/components/ui/button';
+import { AccountShell } from '@/components/account/AccountShell';
 import { Heart } from 'lucide-react';
 
 export const metadata: Metadata = {
@@ -29,16 +33,18 @@ export default async function WatchlistPage() {
       lotId: lots.id,
       title: lots.title,
       slug: lots.slug,
+      saleType: lots.saleType,
       primaryImageUrl: lots.primaryImageUrl,
       currentBidAmount: lots.currentBidAmount,
       bidCount: lots.bidCount,
       estimateLow: lots.estimateLow,
       estimateHigh: lots.estimateHigh,
       status: lots.status,
-      closingAt: sql<string | null>`(
+      // UTC timestamp without zone → ISO with "Z", so it parses as UTC anywhere.
+      closingAt: sql<string | null>`to_char((
         SELECT MIN(${auctionLots.closingAt}) FROM ${auctionLots}
         WHERE ${auctionLots.lotId} = ${lots.id} AND ${auctionLots.closingAt} > now()
-      )`,
+      ), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
     })
     .from(watchlist)
     .innerJoin(lots, eq(lots.id, watchlist.lotId))
@@ -49,24 +55,22 @@ export default async function WatchlistPage() {
   const serverNow = Date.now();
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      <div className="flex items-center gap-3 mb-8">
-        <Heart className="h-6 w-6 text-red-500 fill-current" />
-        <h1 className="font-display text-display-lg">My Watchlist</h1>
-      </div>
-
+    <AccountShell active="watchlist" title="My Watchlist" icon={<Heart className="h-6 w-6 text-champagne fill-current" />}>
       <SavedSearchList />
 
       {rows.length === 0 ? (
         <div className="text-center py-20">
-          <p className="text-muted-foreground mb-4">You&apos;re not watching any lots yet.</p>
-          <Link href="/auctions" className="text-champagne hover:underline">Browse auctions →</Link>
+          <p className="text-muted-foreground mb-5">You&apos;re not watching any lots yet.</p>
+          <Button asChild size="lg" variant="champagne">
+            <Link href="/auctions">Browse auctions</Link>
+          </Button>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {rows.map((lot) => {
-            const href = `/lots/${lot.slug || lot.lotId}`;
+            const href = publicLotPath({ id: lot.lotId, slug: lot.slug, saleType: lot.saleType });
             const isLive = lot.status === 'in_auction' && !!lot.closingAt;
+            const estimate = formatEstimate(lot.estimateLow, lot.estimateHigh);
             return (
               <Link
                 key={lot.lotId}
@@ -89,13 +93,13 @@ export default async function WatchlistPage() {
                     <div>
                       {lot.currentBidAmount > 0 ? (
                         <>
-                          <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Current Bid</p>
+                          <p className="text-xs uppercase tracking-wider text-muted-foreground">Current Bid</p>
                           <p className="font-display text-xl">{formatCurrency(lot.currentBidAmount)}</p>
                         </>
-                      ) : lot.estimateLow && lot.estimateHigh ? (
+                      ) : estimate ? (
                         <>
-                          <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Estimate</p>
-                          <p className="font-display text-base">{formatCurrency(lot.estimateLow)} — {formatCurrency(lot.estimateHigh)}</p>
+                          <p className="text-xs uppercase tracking-wider text-muted-foreground">Estimate</p>
+                          <p className="font-display text-base">{estimate}</p>
                         </>
                       ) : null}
                     </div>
@@ -109,6 +113,6 @@ export default async function WatchlistPage() {
           })}
         </div>
       )}
-    </div>
+    </AccountShell>
   );
 }

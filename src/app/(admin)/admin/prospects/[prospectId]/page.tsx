@@ -26,6 +26,9 @@ import { MICROSITE_LABELS } from '@/lib/microsites/labels';
 import { LensButton } from '@/components/admin/LensButton';
 import { CallCard, type CallView } from '@/components/admin/CallCard';
 import { formatCurrency } from '@/types';
+import { PROSPECT_STATUS, PROSPECT_STATUS_ORDER, prospectStatus } from '@/lib/admin/status/sales';
+import { formatShortDate } from '@/lib/format/dates';
+import ProspectDetailLoading from './loading';
 import { toast } from 'sonner';
 import {
   Brain,
@@ -207,31 +210,10 @@ const itemStatusColors: Record<string, string> = {
   lot_created: 'bg-emerald-100 text-emerald-800',
 };
 
-const prospectStatusColors: Record<string, string> = {
-  new: 'bg-gray-100 text-gray-800',
-  contacted: 'bg-blue-100 text-blue-800',
-  upload_sent: 'bg-indigo-100 text-indigo-800',
-  items_received: 'bg-purple-100 text-purple-800',
-  under_review: 'bg-yellow-100 text-yellow-800',
-  agreement_sent: 'bg-orange-100 text-orange-800',
-  agreement_signed: 'bg-green-100 text-green-800',
-  accepted: 'bg-green-100 text-green-800',
-  declined: 'bg-red-100 text-red-800',
-  archived: 'bg-gray-100 text-gray-500',
-};
-
-const PROSPECT_STATUSES: { value: ProspectStatus; label: string }[] = [
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'upload_sent', label: 'Upload sent' },
-  { value: 'items_received', label: 'Items received' },
-  { value: 'under_review', label: 'Under review' },
-  { value: 'agreement_sent', label: 'Agreement sent' },
-  { value: 'agreement_signed', label: 'Agreement signed' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'declined', label: 'Declined' },
-  { value: 'archived', label: 'Archived' },
-];
+const PROSPECT_STATUSES: { value: ProspectStatus; label: string }[] = PROSPECT_STATUS_ORDER.map((value) => ({
+  value,
+  label: PROSPECT_STATUS[value].label,
+}));
 
 const PROSPECT_SOURCES: { value: ProspectSource; label: string }[] = [
   { value: 'phone', label: 'Phone' },
@@ -277,7 +259,7 @@ const isVideoUrl = (url: string) => VIDEO_URL_RE.test(url);
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return formatShortDate(iso);
 }
 
 function confidenceBadge(confidence: string | null) {
@@ -339,26 +321,12 @@ function isProspectTab(value: string | null): value is ProspectTab {
   return !!value && (PROSPECT_TABS as readonly string[]).includes(value);
 }
 
-function DetailSkeleton() {
-  return (
-    <div className="space-y-4">
-      <div className="h-8 w-48 bg-muted animate-pulse rounded" />
-      <div className="h-24 bg-muted animate-pulse rounded-lg" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-64 bg-muted animate-pulse rounded-lg" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Main Component ──
 
 export default function AdminProspectDetailPage() {
   // useSearchParams needs a Suspense boundary for the static shell.
   return (
-    <Suspense fallback={<DetailSkeleton />}>
+    <Suspense fallback={<ProspectDetailLoading />}>
       <ProspectDetail />
     </Suspense>
   );
@@ -386,6 +354,8 @@ function ProspectDetail() {
   const [calls, setCalls] = useState<CallView[]>([]);
   const [items, setItems] = useState<UploadItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Why the prospect couldn't be shown: a real 404, or a failure worth retrying.
+  const [loadError, setLoadError] = useState<'missing' | 'failed' | null>(null);
   const [itemsLoading, setItemsLoading] = useState(true);
   const [auctions, setAuctions] = useState<AuctionOption[]>([]);
   const [auctionsLoading, setAuctionsLoading] = useState(true);
@@ -422,6 +392,7 @@ function ProspectDetail() {
       if (res.ok && json.data) {
         const data: Prospect = json.data;
         setProspect(data);
+        setLoadError(null);
         setCalls(Array.isArray(json.calls) ? json.calls : []);
         // Seed the commission input from the rate on file exactly once so an
         // admin mid-edit isn't overwritten by a background refetch.
@@ -430,9 +401,11 @@ function ProspectDetail() {
           commissionSeeded.current = true;
         }
       } else {
-        toast.error(json.error || 'Failed to load prospect');
+        setLoadError(res.status === 404 ? 'missing' : 'failed');
+        if (res.status !== 404) toast.error(json.error || 'Failed to load prospect');
       }
     } catch {
+      setLoadError('failed');
       toast.error('Network error loading prospect');
     } finally {
       setLoading(false);
@@ -890,12 +863,22 @@ function ProspectDetail() {
     }
   }
 
+  /** Confirm-dialog handlers: a network rejection toasts, then rethrows so the dialog stays open. */
+  async function fetchOrToast(input: string, init: RequestInit | undefined, failure: string) {
+    try {
+      return await fetch(input, init);
+    } catch (err) {
+      toast.error(`Network error — ${failure}`);
+      throw err;
+    }
+  }
+
   async function setProspectStatus(status: ProspectStatus, successMessage: string) {
-    const res = await fetch('/api/admin/prospects', {
+    const res = await fetchOrToast('/api/admin/prospects', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: prospectId, status }),
-    });
+    }, 'the status was not changed');
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       toast.error(json.error || 'Failed to update status');
@@ -927,7 +910,7 @@ function ProspectDetail() {
   }
 
   async function doDelete() {
-    const res = await fetch(`/api/admin/prospects/${prospectId}`, { method: 'DELETE' });
+    const res = await fetchOrToast(`/api/admin/prospects/${prospectId}`, { method: 'DELETE' }, 'the prospect was not deleted');
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
       toast.error(json.error || 'Failed to delete prospect');
@@ -1047,28 +1030,33 @@ function ProspectDetail() {
 
   // ── Loading Skeleton ──
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="h-8 w-48 bg-muted animate-pulse rounded" />
-        <div className="h-24 bg-muted animate-pulse rounded-lg" />
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-24 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-64 bg-muted animate-pulse rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <ProspectDetailLoading />;
 
   if (!prospect) {
+    const missing = loadError !== 'failed';
     return (
-      <p className="text-muted-foreground mt-8 text-center">Prospect not found.</p>
+      <div className="max-w-3xl">
+        <PageHeader
+          title={missing ? 'Prospect not found' : 'Prospect'}
+          description={missing ? 'This prospect does not exist or was deleted.' : "Couldn't load this prospect. Check your connection and try again."}
+          actions={
+            !missing && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLoading(true);
+                  fetchProspect();
+                }}
+              >
+                Retry
+              </Button>
+            )
+          }
+        />
+        <Link href="/admin/prospects" className="text-sm underline underline-offset-2 text-muted-foreground hover:text-foreground">
+          All prospects
+        </Link>
+      </div>
     );
   }
 
@@ -1186,7 +1174,7 @@ function ProspectDetail() {
 
     if (hasAcceptedItems) {
       if (prospect.email) {
-        return banner('orange', 'Next step: Send consignment agreement', `${acceptedCount} item${acceptedCount !== 1 ? 's' : ''} accepted (${formatCurrency(acceptedEstLow)} — ${formatCurrency(acceptedEstHigh)}). Send the agreement at ${commissionPercent}% commission.`, (
+        return banner('orange', 'Next step: Send consignment agreement', `${acceptedCount} item${acceptedCount !== 1 ? 's' : ''} accepted (${formatCurrency(acceptedEstLow)}–${formatCurrency(acceptedEstHigh)}). Send the agreement at ${commissionPercent}% commission.`, (
           <Button size="sm" onClick={requestSendAgreement} disabled={sendingAgreement} className={bannerButton.orange}>
             {sendingAgreement ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileSignature className="h-4 w-4 mr-2" />}
             Send Agreement
@@ -1245,10 +1233,10 @@ function ProspectDetail() {
         title={prospect.fullName}
         badges={
           <Badge
-            className={prospectStatusColors[prospect.status] ?? 'bg-gray-100 text-gray-800'}
+            className={prospectStatus(prospect.status).className}
             variant="secondary"
           >
-            {prospect.status.replace(/_/g, ' ')}
+            {prospectStatus(prospect.status).label}
           </Badge>
         }
         description={
@@ -1462,8 +1450,7 @@ function ProspectDetail() {
 
                         {(item.finalEstimateLow ?? item.aiEstimateLow) != null && (
                           <p className="text-sm text-muted-foreground">
-                            Est: {formatCurrency(item.finalEstimateLow ?? item.aiEstimateLow ?? 0)} -{' '}
-                            {formatCurrency(item.finalEstimateHigh ?? item.aiEstimateHigh ?? 0)}
+                            Est: {formatCurrency(item.finalEstimateLow ?? item.aiEstimateLow ?? 0)}–{formatCurrency(item.finalEstimateHigh ?? item.aiEstimateHigh ?? 0)}
                           </p>
                         )}
 
@@ -1560,8 +1547,9 @@ function ProspectDetail() {
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
-                            <label className="text-xs text-muted-foreground">Title</label>
+                            <label htmlFor={`ov-${item.id}-finalTitle`} className="text-xs text-muted-foreground">Title</label>
                             <Input
+                              id={`ov-${item.id}-finalTitle`}
                               className="h-8 text-sm"
                               value={itemOv.finalTitle}
                               onChange={(e) => updateOverride(item.id, 'finalTitle', e.target.value)}
@@ -1569,8 +1557,9 @@ function ProspectDetail() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-muted-foreground">Category</label>
+                            <label htmlFor={`ov-${item.id}-finalCategory`} className="text-xs text-muted-foreground">Category</label>
                             <Input
+                              id={`ov-${item.id}-finalCategory`}
                               className="h-8 text-sm"
                               value={itemOv.finalCategory}
                               onChange={(e) => updateOverride(item.id, 'finalCategory', e.target.value)}
@@ -1578,8 +1567,9 @@ function ProspectDetail() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-muted-foreground">Estimate Low ($)</label>
+                            <label htmlFor={`ov-${item.id}-finalEstimateLow`} className="text-xs text-muted-foreground">Estimate Low ($)</label>
                             <Input
+                              id={`ov-${item.id}-finalEstimateLow`}
                               className="h-8 text-sm"
                               type="number"
                               min={0}
@@ -1590,8 +1580,9 @@ function ProspectDetail() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-muted-foreground">Estimate High ($)</label>
+                            <label htmlFor={`ov-${item.id}-finalEstimateHigh`} className="text-xs text-muted-foreground">Estimate High ($)</label>
                             <Input
+                              id={`ov-${item.id}-finalEstimateHigh`}
                               className="h-8 text-sm"
                               type="number"
                               min={0}
@@ -1602,8 +1593,9 @@ function ProspectDetail() {
                             />
                           </div>
                           <div>
-                            <label className="text-xs text-muted-foreground">Reserve ($)</label>
+                            <label htmlFor={`ov-${item.id}-finalReserve`} className="text-xs text-muted-foreground">Reserve ($)</label>
                             <Input
+                              id={`ov-${item.id}-finalReserve`}
                               className="h-8 text-sm"
                               type="number"
                               min={0}
@@ -1614,8 +1606,9 @@ function ProspectDetail() {
                             />
                           </div>
                           <div className="sm:col-span-2">
-                            <label className="text-xs text-muted-foreground">Description</label>
+                            <label htmlFor={`ov-${item.id}-finalDescription`} className="text-xs text-muted-foreground">Description</label>
                             <Textarea
+                              id={`ov-${item.id}-finalDescription`}
                               className="text-sm"
                               rows={4}
                               value={itemOv.finalDescription}
@@ -1627,10 +1620,11 @@ function ProspectDetail() {
                             </p>
                           </div>
                           <div className="sm:col-span-2">
-                            <label className="text-xs text-muted-foreground">
+                            <label htmlFor={`ov-${item.id}-adminNotes`} className="text-xs text-muted-foreground">
                               Verification Notes (internal)
                             </label>
                             <Textarea
+                              id={`ov-${item.id}-adminNotes`}
                               className="text-sm"
                               rows={2}
                               value={itemOv.adminNotes}
@@ -1887,7 +1881,7 @@ function ProspectDetail() {
                 </div>
                 <p className="text-lg font-semibold">
                   {estLow > 0 || estHigh > 0
-                    ? `${formatCurrency(estLow)} - ${formatCurrency(estHigh)}`
+                    ? `${formatCurrency(estLow)}–${formatCurrency(estHigh)}`
                     : '--'}
                 </p>
               </CardContent>
@@ -2135,7 +2129,7 @@ function ProspectDetail() {
                 <div className="flex flex-col justify-end">
                   <p className="text-sm text-muted-foreground mb-2">
                     {acceptedCount} accepted item{acceptedCount !== 1 ? 's' : ''} ready for lot creation
-                    {acceptedEstLow > 0 && ` (${formatCurrency(acceptedEstLow)} - ${formatCurrency(acceptedEstHigh)} est. value)`}
+                    {acceptedEstLow > 0 && ` (${formatCurrency(acceptedEstLow)}–${formatCurrency(acceptedEstHigh)} est. value)`}
                   </p>
                 </div>
               </div>

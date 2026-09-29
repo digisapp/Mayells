@@ -716,7 +716,7 @@ export async function sendUploadLinkNotification(params: {
         <li>Capture any damage or wear</li>
         <li>Use natural lighting when possible</li>
       </ul>
-      <p>Our team will review your items and follow up within 1-2 business days.</p>
+      <p>Our team will review your items and follow up within one business day.</p>
       <p style="margin-top: 30px;">Warm regards,<br /><strong>The ${BUSINESS.name} Team</strong><br /><span style="color: #888; font-size: 13px;">${BUSINESS.phone} &bull; ${BUSINESS.email}</span></p>
     `, 'Upload Your Items'),
   });

@@ -13,39 +13,12 @@ import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { formatCurrency, formatCurrencyWithCents } from '@/types';
 import { getMicrositeRows } from '@/lib/admin/microsite-stats';
 import { micrositeCity } from '@/lib/microsites/labels';
+import { auctionStatus, prospectStatus, PROSPECT_AWAITING_STATUSES } from '@/lib/admin/status/sales';
+import { formatShortDate, formatShortDateTime } from '@/lib/format/dates';
 import {
   Plus, Inbox, Image as ImageIcon, UserPlus, ClipboardCheck, FileText, Banknote, Truck,
   Webhook, Mail, AlertTriangle, CheckCircle2, Gavel, ArrowRight, type LucideIcon,
 } from 'lucide-react';
-
-const auctionStatusColors: Record<string, string> = {
-  scheduled: 'bg-blue-100 text-blue-800',
-  preview: 'bg-indigo-100 text-indigo-800',
-  open: 'bg-green-100 text-green-800',
-  live: 'bg-red-100 text-red-800',
-  closing: 'bg-orange-100 text-orange-800',
-  closed: 'bg-orange-100 text-orange-800',
-};
-
-const prospectStatusLabels: Record<string, string> = {
-  new: 'New lead',
-  contacted: 'Contacted',
-  upload_sent: 'Upload link sent',
-  items_received: 'Items received',
-  under_review: 'Under review',
-  agreement_sent: 'Agreement sent',
-  agreement_signed: 'Agreement signed',
-  accepted: 'Accepted',
-  declined: 'Declined',
-  archived: 'Archived',
-};
-
-const dateTime = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'America/New_York',
-});
-const dateOnly = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeZone: 'America/New_York' });
 
 function relative(d: Date | null) {
   if (!d) return '';
@@ -56,7 +29,7 @@ function relative(d: Date | null) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return dateOnly.format(d);
+  return formatShortDate(d);
 }
 
 interface QueueItem {
@@ -78,7 +51,7 @@ function buildQueue(b: AdminBadges): QueueItem[] {
     { key: 'settling', icon: Gavel, count: b.auctions.settling, label: 'sales settling', detail: 'Invoices are being generated', href: '/admin/auctions?status=settling', tone: 'info' },
     { key: 'review', icon: ImageIcon, count: b.lots.pendingReview, label: 'lots awaiting review', href: '/admin/lots?status=pending_review', tone: 'attention' },
     { key: 'signed', icon: UserPlus, count: b.prospects.signed, label: 'signed agreements — create lots', href: '/admin/prospects?status=agreement_signed', tone: 'attention' },
-    { key: 'prospects', icon: UserPlus, count: b.prospects.awaiting, label: 'prospects awaiting action', detail: 'New leads and items to review', href: '/admin/prospects?status=items_received', tone: 'attention' },
+    { key: 'prospects', icon: UserPlus, count: b.prospects.awaiting, label: 'prospects awaiting action', detail: 'New leads and items to review', href: `/admin/prospects?status=${PROSPECT_AWAITING_STATUSES.join(',')}`, tone: 'attention' },
     { key: 'appraisals', icon: ClipboardCheck, count: b.appraisals.review, label: 'appraisals to review', href: '/admin/appraisals?status=review', tone: 'attention' },
     { key: 'payouts', icon: Banknote, count: b.payouts.pending, label: 'consignor payouts due', detail: b.payouts.pendingCents ? `${formatCurrency(b.payouts.pendingCents)} owed` : undefined, href: '/admin/payouts?status=pending', tone: 'attention' },
     { key: 'ship', icon: Truck, count: b.shipments.toShip, label: 'shipments to send', href: '/admin/shipments?status=pending', tone: 'attention' },
@@ -102,7 +75,9 @@ export default async function AdminDashboardPage() {
         lotCount: auctions.lotCount,
         biddingStartsAt: auctions.biddingStartsAt,
         biddingEndsAt: auctions.biddingEndsAt,
-        bidCount: sql<number>`(select count(*) from bids b where b.auction_id = ${auctions.id})::int`,
+        // Literal "auctions"."id": an interpolated column renders as a bare "id",
+        // which inside the subquery would mean b.id (every count 0).
+        bidCount: sql<number>`(select count(*) from bids b where b.auction_id = "auctions"."id")::int`,
       })
       .from(auctions)
       .where(inArray(auctions.status, ['scheduled', 'preview', 'open', 'live', 'closing', 'closed']))
@@ -163,7 +138,7 @@ export default async function AdminDashboardPage() {
       <PageHeader
         className="mb-0"
         title="Dashboard"
-        description={`${dateOnly.format(new Date())} · what needs you today`}
+        description={`${formatShortDate(new Date())} · what needs you today`}
         actions={
           <>
             <Button asChild size="sm" className="gap-2">
@@ -227,6 +202,7 @@ export default async function AdminDashboardPage() {
               <div className="divide-y">
                 {salesInMotion.map((a) => {
                   const settling = a.status === 'closing' || a.status === 'closed';
+                  const badge = auctionStatus(a.status);
                   return (
                     <div key={a.id} className="py-3 flex flex-wrap items-center gap-x-4 gap-y-1">
                       <div className="min-w-0 flex-1">
@@ -234,13 +210,13 @@ export default async function AdminDashboardPage() {
                         <p className="text-xs text-muted-foreground">
                           {a.lotCount} lots · {a.bidCount} bids ·{' '}
                           {a.status === 'scheduled' || a.status === 'preview'
-                            ? `opens ${a.biddingStartsAt ? dateTime.format(a.biddingStartsAt) : 'TBD'}`
+                            ? `opens ${a.biddingStartsAt ? formatShortDateTime(a.biddingStartsAt) : 'TBD'}`
                             : a.biddingEndsAt
-                              ? `closes ${dateTime.format(a.biddingEndsAt)}`
+                              ? `closes ${formatShortDateTime(a.biddingEndsAt)}`
                               : a.type === 'live' ? 'auctioneer-led' : 'no close time'}
                         </p>
                       </div>
-                      <Badge className={auctionStatusColors[a.status] ?? ''}>{settling ? 'settling' : a.status}</Badge>
+                      <Badge className={badge.className}>{badge.label}</Badge>
                       {settling ? (
                         <Link href={`/admin/auctions/${a.id}/settlement`} className="text-xs underline text-muted-foreground hover:text-foreground">Settlement</Link>
                       ) : a.status === 'live' ? (
@@ -298,7 +274,7 @@ export default async function AdminDashboardPage() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium group-hover:underline truncate">{p.fullName}</p>
                       <p className="text-xs text-muted-foreground">
-                        {prospectStatusLabels[p.status] ?? p.status}{p.totalItems ? ` · ${p.totalItems} items` : ''} · {relative(p.createdAt)}
+                        {prospectStatus(p.status).label}{p.totalItems ? ` · ${p.totalItems} items` : ''} · {relative(p.createdAt)}
                       </p>
                     </div>
                     <span className="text-[11px] uppercase tracking-wide text-muted-foreground shrink-0">{p.site ? `${micrositeCity(p.site)} site` : p.source.replace('_', ' ')}</span>

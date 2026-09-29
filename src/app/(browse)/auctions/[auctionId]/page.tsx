@@ -10,10 +10,14 @@ import { auctions, auctionLots, lots } from '@/db/schema';
 import type { Lot } from '@/db/schema/lots';
 import { eq, asc, or, and, inArray } from 'drizzle-orm';
 import { PUBLIC_CATALOGUE_LOT_STATUSES, publicLotColumns } from '@/lib/lots/visibility';
+import { auctionWithVisibleLotCount } from '@/components/auctions/visible-lot-count';
 import { Badge } from '@/components/ui/badge';
 import { LotGrid } from '@/components/lots/LotGrid';
 import { AuctionCountdown } from '@/components/auctions/AuctionCountdown';
-import { Calendar, Clock, Gavel, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, Gavel, ExternalLink, Eye } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { BackLink } from '@/components/lots/Breadcrumbs';
+import { formatLongDate, formatSaleMoment } from '@/lib/format/dates';
 import { generateAuctionJsonLd, generateBreadcrumbJsonLd, serializeJsonLd } from '@/lib/seo/structured-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
@@ -31,13 +35,18 @@ const STATUS_LABELS: Record<string, string> = {
   completed: 'Closed',
 };
 
+// Sale states before bidding opens, and after it has finished.
+const NOT_YET_OPEN = ['draft', 'scheduled', 'preview'];
+const FINISHED = ['closed', 'completed', 'cancelled'];
+
 // cache(): generateMetadata and the page body share one lookup per request.
 // Single query instead of a slug-then-id serial fallback (the id comparison is
 // only attempted for UUID-shaped params — a non-UUID string would make the
-// uuid-column cast throw).
+// uuid-column cast throw). visibleLotCount is the grid's own filter, so the
+// meta description, JSON-LD and the /auctions cards all quote the same number.
 const getAuction = cache(async (auctionId: string) => {
   const [auction] = await db
-    .select()
+    .select(auctionWithVisibleLotCount)
     .from(auctions)
     .where(
       UUID_RE.test(auctionId)
@@ -54,7 +63,11 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   if (!auction) return {};
 
   const title = `${auction.title} | Mayells`;
-  const description = auction.description?.slice(0, 160) || `${auction.title} — ${auction.lotCount} lots. Browse and bid at Mayells.`;
+  const count = auction.visibleLotCount;
+  const description = auction.description?.slice(0, 160)
+    || (count > 0
+      ? `${auction.title} — ${count} ${count === 1 ? 'lot' : 'lots'}. Browse and bid at Mayells.`
+      : `${auction.title}. Browse and bid at Mayells.`);
 
   const canonicalUrl = `${BASE_URL}/auctions/${auction.slug || auction.id}`;
 
@@ -106,11 +119,16 @@ export default async function AuctionDetailPage({
     .orderBy(asc(auctionLots.lotNumber));
 
   // LotGrid is typed on the full Lot row but LotCard only reads public
-  // fields; the projection above is the public subset of that row.
+  // fields; the projection above is the public subset of that row. It
+  // carries status and hammerPrice, so sold lots read "Sold · $X".
   const lotsData = auctionLotsResult.map(({ lot, auctionLot }) => ({
     ...lot,
     lotNumber: auctionLot.lotNumber,
   })) as Lot[];
+
+  // What the visitor can see in the grid, not the denormalized lotCount
+  // (which also counts unpublished placements).
+  const visibleLotCount = lotsData.length;
 
   // Rich JSON-LD for AI agents + search engines
   const jsonLd = generateAuctionJsonLd({
@@ -123,8 +141,12 @@ export default async function AuctionDetailPage({
     biddingStartsAt: auction.biddingStartsAt ? new Date(auction.biddingStartsAt) : null,
     biddingEndsAt: auction.biddingEndsAt ? new Date(auction.biddingEndsAt) : null,
     coverImageUrl: auction.coverImageUrl,
-    lotCount: auction.lotCount,
+    lotCount: visibleLotCount,
   });
+
+  const notYetOpen = NOT_YET_OPEN.includes(auction.status);
+  const finished = FINISHED.includes(auction.status);
+  const endedAt = auction.actualEndedAt ?? auction.biddingEndsAt;
 
   const breadcrumbJsonLd = generateBreadcrumbJsonLd([
     { name: 'Home', url: '/' },
@@ -136,9 +158,11 @@ export default async function AuctionDetailPage({
     <>
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }} />
     <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbJsonLd) }} />
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12 sm:pt-8">
+      <BackLink href="/auctions" label="All auctions" />
+
       {/* Header */}
-      <div className="mb-8 sm:mb-10">
+      <div className="mt-6 sm:mt-8 mb-8 sm:mb-10">
         <div className="flex items-center gap-3 mb-4">
           <Badge variant={auction.status === 'open' || auction.status === 'live' ? 'default' : 'secondary'}>
             {STATUS_LABELS[auction.status] ?? auction.status}
@@ -155,47 +179,79 @@ export default async function AuctionDetailPage({
           <p className="text-muted-foreground mt-4 max-w-2xl">{auction.description}</p>
         )}
 
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-6 text-sm text-muted-foreground">
-          {auction.biddingStartsAt && (
-            <span className="flex items-center gap-1.5">
-              <Calendar className="h-4 w-4" />
-              {new Intl.DateTimeFormat('en-US', { dateStyle: 'long' }).format(new Date(auction.biddingStartsAt))}
-            </span>
+        {/* Sale timing, all in the house timezone (the server renders in UTC,
+            which would put an evening close on the wrong day). */}
+        <dl className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-6 text-sm text-muted-foreground">
+          {auction.previewStartsAt && notYetOpen && (
+            <div className="flex items-center gap-1.5">
+              <Eye className="h-4 w-4" aria-hidden />
+              <dt>Preview from</dt>
+              <dd className="text-foreground">{formatLongDate(auction.previewStartsAt)}</dd>
+            </div>
           )}
-          <span className="flex items-center gap-1.5">
-            <Gavel className="h-4 w-4" />
-            {auction.lotCount} lots
-          </span>
-          {auction.biddingEndsAt && auction.status === 'open' && (
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-4 w-4" />
-              {/* No serverNow: this page is ISR-cached, so a render timestamp
-                  would inject stale skew; the client clock is the reference. */}
-              Closes in: <AuctionCountdown
-                endsAt={new Date(auction.biddingEndsAt)}
-                className="font-medium text-foreground"
-              />
-            </span>
+          {auction.biddingStartsAt && !finished && (
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-4 w-4" aria-hidden />
+              <dt>{notYetOpen ? 'Opens' : 'Opened'}</dt>
+              <dd className="text-foreground">{formatSaleMoment(auction.biddingStartsAt)}</dd>
+            </div>
           )}
-        </div>
+          {auction.biddingEndsAt && !finished && (
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4" aria-hidden />
+              <dt>Closes</dt>
+              <dd className="text-foreground">
+                {formatSaleMoment(auction.biddingEndsAt)}
+                {(auction.status === 'open' || auction.status === 'live') && (
+                  <>
+                    {' '}
+                    {/* No serverNow: this page is ISR-cached, so a render timestamp
+                        would inject stale skew; the client clock is the reference.
+                        Compact and icon-free so it runs on in the sentence. */}
+                    <AuctionCountdown
+                      endsAt={new Date(auction.biddingEndsAt)}
+                      variant="compact"
+                      showIcon={false}
+                      prefix="(in "
+                      suffix=")"
+                      expiredLabel="(closing now)"
+                    />
+                  </>
+                )}
+              </dd>
+            </div>
+          )}
+          {finished && endedAt && (
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-4 w-4" aria-hidden />
+              <dt>Closed</dt>
+              <dd className="text-foreground">{formatLongDate(endedAt)}</dd>
+            </div>
+          )}
+          {visibleLotCount > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Gavel className="h-4 w-4" aria-hidden />
+              <dt className="sr-only">Lots</dt>
+              <dd>{visibleLotCount} {visibleLotCount === 1 ? 'lot' : 'lots'}</dd>
+            </div>
+          )}
+        </dl>
 
         {/* Bid CTA */}
         {auction.liveauctioneersUrl && (
           <div className="mt-6">
-            <a
-              href={auction.liveauctioneersUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 bg-champagne text-charcoal hover:bg-champagne/90 rounded-lg px-6 py-3 text-sm font-medium transition-colors"
-            >
-              Bid on LiveAuctioneers
-              <ExternalLink className="h-4 w-4" />
-            </a>
+            <Button asChild variant="champagne" size="lg">
+              <a href={auction.liveauctioneersUrl} target="_blank" rel="noopener noreferrer">
+                Bid on LiveAuctioneers
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
           </div>
         )}
       </div>
 
-      {/* Lots grid */}
+      {/* Lots grid — h2 keeps the outline h1 → h2 → (card) headings */}
+      <h2 className="font-display text-display-sm mb-4 sm:mb-6">Lots</h2>
       {lotsData.length > 0 ? (
         <LotGrid lots={lotsData} auctionSlug={auction.slug} />
       ) : (

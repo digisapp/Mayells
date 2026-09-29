@@ -1,13 +1,21 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { db } from '@/db';
 import { estateVisits, estateVisitItems } from '@/db/schema';
 import { eq, asc } from 'drizzle-orm';
-import { formatCurrency } from '@/types';
 import { BUSINESS } from '@/lib/config';
+import { formatDayOnly } from '@/lib/format/dates';
+import { formatEstimate } from '@/lib/format/estimate';
 
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  title: 'Estate Appraisal Report',
+  // Private, tokenized report: never in search results.
+  robots: { index: false, follow: false },
+};
 
 export default async function AppraisalReportPage({
   params,
@@ -42,8 +50,9 @@ export default async function AppraisalReportPage({
         <h1 className="font-display text-display-md mb-2">{visit.clientName}</h1>
         <p className="text-muted-foreground">
           {[visit.clientCity, visit.clientState].filter(Boolean).join(', ')}
-          {/* visit_date is date-only; format in UTC so it never shows a day early. */}
-          {visit.visitDate && ` · ${new Date(visit.visitDate).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'long', day: 'numeric' })}`}
+          {/* visit_date holds a calendar day at UTC midnight; format the day
+              itself so it never shows a day early. */}
+          {visit.visitDate && ` · ${formatDayOnly(visit.visitDate.toISOString(), 'long')}`}
         </p>
       </div>
 
@@ -56,7 +65,7 @@ export default async function AppraisalReportPage({
         <div className="text-center border rounded-xl p-6">
           <p className="text-xl font-display">
             {visit.totalEstimateHigh > 0
-              ? `${formatCurrency(visit.totalEstimateLow)} – ${formatCurrency(visit.totalEstimateHigh)}`
+              ? formatEstimate(visit.totalEstimateLow, visit.totalEstimateHigh)
               : '—'}
           </p>
           <p className="text-sm text-muted-foreground mt-1">Combined Estimate</p>
@@ -65,61 +74,63 @@ export default async function AppraisalReportPage({
 
       {/* Items */}
       <div className="space-y-8 mb-16">
-        {completedItems.map((item, i) => (
-          <div key={item.id} className="border rounded-xl overflow-hidden">
-            <div className="grid sm:grid-cols-[280px_1fr]">
-              <div className="relative aspect-square sm:aspect-auto sm:h-full">
-                <Image
-                  src={item.imageUrl}
-                  alt={item.title || `Item ${i + 1}`}
-                  fill
-                  sizes="(max-width: 640px) 100vw, 280px"
-                  className="object-cover"
-                />
-              </div>
-              <div className="p-6">
-                <div className="flex items-start justify-between gap-4 mb-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-1">Item {i + 1}</p>
-                    <h3 className="font-display text-lg">{item.title || 'Untitled'}</h3>
-                    {item.artist && (
-                      <p className="text-sm text-muted-foreground">{item.artist}</p>
+        {completedItems.map((item, i) => {
+          const estimate = formatEstimate(item.estimateLow, item.estimateHigh);
+          return (
+            <div key={item.id} className="border rounded-xl overflow-hidden">
+              <div className="grid sm:grid-cols-[280px_1fr]">
+                <div className="relative aspect-square sm:aspect-auto sm:h-full">
+                  <Image
+                    src={item.imageUrl}
+                    alt={item.title || `Item ${i + 1}`}
+                    fill
+                    sizes="(max-width: 640px) 100vw, 280px"
+                    className="object-cover"
+                  />
+                </div>
+                <div className="p-5 sm:p-6">
+                  {/* Stacked on phones so the estimate doesn't squeeze the title. */}
+                  <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
+                      <p className="text-xs text-muted-foreground mb-1">Item {i + 1}</p>
+                      <h3 className="font-display text-lg">{item.title || 'Untitled'}</h3>
+                      {item.artist && (
+                        <p className="text-sm text-muted-foreground">{item.artist}</p>
+                      )}
+                    </div>
+                    {estimate ? (
+                      <div className="shrink-0 sm:text-right">
+                        <p className="text-xs text-muted-foreground mb-0.5">Estimate</p>
+                        <p className="font-display text-champagne">{estimate}</p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {item.description && (
+                    <p className="text-sm text-muted-foreground mb-3">{item.description}</p>
+                  )}
+
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    {item.period && <span>Period: {item.period}</span>}
+                    {item.medium && <span>Medium: {item.medium}</span>}
+                    {item.dimensions && <span>Dimensions: {item.dimensions}</span>}
+                    {item.condition && (
+                      <span className="capitalize">
+                        Condition: {item.condition.replace('_', ' ')}
+                      </span>
                     )}
                   </div>
-                  {item.estimateLow && item.estimateHigh ? (
-                    <div className="text-right shrink-0">
-                      <p className="text-xs text-muted-foreground mb-0.5">Estimate</p>
-                      <p className="font-display text-champagne">
-                        {formatCurrency(item.estimateLow)} – {formatCurrency(item.estimateHigh)}
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
 
-                {item.description && (
-                  <p className="text-sm text-muted-foreground mb-3">{item.description}</p>
-                )}
-
-                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  {item.period && <span>Period: {item.period}</span>}
-                  {item.medium && <span>Medium: {item.medium}</span>}
-                  {item.dimensions && <span>Dimensions: {item.dimensions}</span>}
-                  {item.condition && (
-                    <span className="capitalize">
-                      Condition: {item.condition.replace('_', ' ')}
-                    </span>
+                  {item.conditionNotes && (
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      {item.conditionNotes}
+                    </p>
                   )}
                 </div>
-
-                {item.conditionNotes && (
-                  <p className="text-xs text-muted-foreground mt-2 italic">
-                    {item.conditionNotes}
-                  </p>
-                )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* CTA */}

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
+import { useHideChatLauncher } from '@/components/chat/use-hide-chat-launcher';
 
 interface PayButtonProps {
   token: string;
@@ -12,10 +13,15 @@ interface PayButtonProps {
 export function PayButton({ token, amountLabel }: PayButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const rootRef = useRef<HTMLDivElement>(null);
+  // On a phone the chat bubble sits right on the full-width pay button.
+  useHideChatLauncher(rootRef);
 
   async function handlePay() {
     setLoading(true);
     setError('');
+    setNotice('');
     try {
       const res = await fetch(`/api/invoices/${token}/checkout`, { method: 'POST' });
       const data = await res.json();
@@ -23,7 +29,7 @@ export function PayButton({ token, amountLabel }: PayButtonProps) {
       // offer to pay again (that would double-charge). Reload shortly to pick up
       // the paid state once the webhook lands.
       if (res.status === 202 || data.processing) {
-        setError(data.message || 'Your payment is being processed. This page will update shortly.');
+        setNotice(data.message || 'Your payment is being processed. This page will update shortly.');
         setLoading(false);
         setTimeout(() => window.location.reload(), 4000);
         return;
@@ -42,8 +48,8 @@ export function PayButton({ token, amountLabel }: PayButtonProps) {
   }
 
   return (
-    <div className="space-y-2">
-      <Button onClick={handlePay} disabled={loading} className="w-full" size="lg">
+    <div ref={rootRef} className="space-y-2">
+      <Button onClick={handlePay} disabled={loading || !!notice} className="w-full" size="lg">
         {loading ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" /> Redirecting to secure checkout…
@@ -52,8 +58,17 @@ export function PayButton({ token, amountLabel }: PayButtonProps) {
           `Pay ${amountLabel}`
         )}
       </Button>
-      {error && <p className="text-sm text-red-500 text-center">{error}</p>}
-      <p className="text-[11px] text-muted-foreground text-center">
+      {notice && (
+        <p role="status" className="text-sm text-muted-foreground text-center">
+          {notice}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="text-sm text-red-700 text-center">
+          {error}
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground text-center">
         Payments are processed securely by Stripe.
       </p>
     </div>

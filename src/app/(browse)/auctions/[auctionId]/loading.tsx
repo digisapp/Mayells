@@ -2,23 +2,29 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export default function AuctionDetailLoading() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Header */}
-      <div className="mb-10 space-y-3">
-        <Skeleton className="h-4 w-24 rounded-full" />
-        <Skeleton className="h-10 w-2/3" />
-        <div className="flex gap-3">
-          <Skeleton className="h-5 w-20 rounded-full" />
-          <Skeleton className="h-5 w-32" />
-        </div>
-        <Skeleton className="h-4 w-full max-w-xl" />
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-12 sm:pt-8">
+      {/* Back link */}
+      <div className="flex h-6 items-center">
+        <Skeleton className="h-3.5 w-24" />
       </div>
 
-      {/* Countdown bar */}
-      <Skeleton className="h-16 w-full rounded-lg mb-10" />
+      {/* Header */}
+      <div className="mt-6 sm:mt-8 mb-8 sm:mb-10 space-y-3">
+        <div className="flex gap-3">
+          <Skeleton className="h-5 w-20 rounded-full" />
+          <Skeleton className="h-5 w-16" />
+        </div>
+        <Skeleton className="h-10 w-2/3" />
+        <Skeleton className="h-4 w-full max-w-xl" />
+        <div className="flex flex-wrap gap-x-6 gap-y-3 pt-3">
+          <Skeleton className="h-5 w-56" />
+          <Skeleton className="h-5 w-56" />
+          <Skeleton className="h-5 w-16" />
+        </div>
+      </div>
 
       {/* Lot grid */}
-      <Skeleton className="h-6 w-32 mb-6" />
+      <Skeleton className="h-7 w-20 mb-4 sm:mb-6" />
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
         {Array.from({ length: 12 }).map((_, i) => (
           <div key={i} className="space-y-3">

@@ -111,6 +111,8 @@ export async function SalesView({ rangeParam }: { rangeParam?: string }) {
     db.select({
       total: sql<number>`count(*)::int`,
       pending: sql<number>`count(*) filter (where ${payouts.status} = 'pending')::int`,
+      // Consignors, not payouts: one seller with three sold lots is one person owed.
+      pendingSellers: sql<number>`count(distinct ${payouts.sellerId}) filter (where ${payouts.status} = 'pending')::int`,
       paid: sql<number>`count(*) filter (where ${payouts.status} = 'paid')::int`,
       cancelled: sql<number>`count(*) filter (where ${payouts.status} = 'cancelled')::int`,
       pendingAmount: sql<number>`coalesce(sum(${payouts.netAmount}) filter (where ${payouts.status} = 'pending'), 0)`,
@@ -284,7 +286,7 @@ export async function SalesView({ rangeParam }: { rangeParam?: string }) {
     {
       label: 'Payouts pending',
       value: fmt(n(payoutStats.pendingAmount)),
-      sub: `${n(payoutStats.pending).toLocaleString()} sellers owed`,
+      sub: `${n(payoutStats.pendingSellers).toLocaleString()} ${n(payoutStats.pendingSellers) === 1 ? 'seller' : 'sellers'} owed · ${n(payoutStats.pending).toLocaleString()} ${n(payoutStats.pending) === 1 ? 'payout' : 'payouts'}`,
       hint: 'Net amounts owed to consignors on paid lots that have not been paid out. Current state, not range-dependent.',
     },
     {

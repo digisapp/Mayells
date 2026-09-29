@@ -7,7 +7,7 @@ import { MICROSITES } from '@/lib/microsites/config';
 // 28px desktop rhythm.
 const linkClass =
   'flex min-h-10 items-center lg:inline-block lg:min-h-0 lg:py-1 hover:text-champagne transition-colors duration-300';
-const headingClass = 'text-[11px] uppercase tracking-[0.15em] font-semibold text-white/50 mb-1.5';
+const headingClass = 'text-xs uppercase tracking-[0.15em] font-semibold text-white/50 mb-1.5';
 
 const auctionLinks = [
   { label: 'Current Sales', href: '/auctions' },
@@ -58,7 +58,8 @@ export function PublicFooter() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-x-6 gap-y-8 sm:gap-x-10 lg:gap-10">
           {/* Brand column */}
           <div className="col-span-2 lg:col-span-2">
-            <h3 className="font-logo text-2xl tracking-[0.15em] mb-2">MAYELLS</h3>
+            {/* The wordmark, not a heading: the column headings below are the footer's h2s. */}
+            <p className="font-logo text-2xl tracking-[0.15em] mb-2">MAYELLS</p>
             <p className="hidden sm:block text-eyebrow text-white/60 font-normal mb-4">Fine Art &middot; Antiques &middot; Jewelry &middot; Collectibles</p>
             <p className="text-sm text-white/60 leading-relaxed text-pretty mb-2 lg:mb-6 max-w-md lg:max-w-xs">
               Luxury auctions and private sales sourced from estates and private collections. Palm Beach and New York.
@@ -71,14 +72,14 @@ export function PublicFooter() {
           </div>
 
           <div>
-            <h4 className={`${headingClass} lg:mb-5`}>Auctions</h4>
+            <h2 className={`${headingClass} lg:mb-5`}>Auctions</h2>
             <ul className="text-sm text-white/70 lg:space-y-1">
               <LinkList links={auctionLinks} />
             </ul>
           </div>
 
           <div>
-            <h4 className={`${headingClass} lg:mb-5`}>Selling</h4>
+            <h2 className={`${headingClass} lg:mb-5`}>Selling</h2>
             <ul className="text-sm text-white/70 lg:space-y-1">
               <LinkList links={sellingLinks} />
             </ul>
@@ -86,7 +87,7 @@ export function PublicFooter() {
 
           {/* Last on phones, as one row above the copyright; a column from lg. */}
           <div className="col-span-2 order-last -mt-4 lg:col-span-1 lg:order-none lg:mt-0">
-            <h4 className={`${headingClass} sr-only lg:not-sr-only lg:mb-5`}>Company</h4>
+            <h2 className={`${headingClass} sr-only lg:not-sr-only lg:mb-5`}>Company</h2>
             <ul className="flex flex-wrap gap-x-6 text-sm text-white/70 lg:block lg:space-y-1">
               <LinkList links={companyLinks} />
             </ul>
@@ -98,7 +99,7 @@ export function PublicFooter() {
             with one page has nothing pointing at it and may never be indexed.
           */}
           <div className="col-span-2 lg:col-span-5 lg:border-t lg:border-white/10 lg:pt-8 lg:mt-4">
-            <h4 className={`${headingClass} lg:mb-3`}>Estate appraisals by area</h4>
+            <h2 className={`${headingClass} lg:mb-3`}>Estate appraisals by area</h2>
             <ul className="grid grid-cols-2 gap-x-6 text-sm text-white/70 lg:flex lg:flex-wrap lg:gap-x-6 lg:gap-y-1">
               {MICROSITES.map((m) => (
                 <li key={m.slug}>

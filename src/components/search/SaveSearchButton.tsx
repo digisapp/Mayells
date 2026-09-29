@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { savedSearchHref } from '@/lib/search/saved-search-href';
 import { BellPlus, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,7 +29,7 @@ export function SaveSearchButton({ query, categoryId }: SaveSearchButtonProps) {
         body: JSON.stringify({ query: trimmed, categoryId: categoryId || null }),
       });
       if (res.status === 401) {
-        const next = `/search?q=${encodeURIComponent(trimmed)}`;
+        const next = savedSearchHref(trimmed, categoryId);
         router.push(`/login?next=${encodeURIComponent(next)}`);
         return;
       }
@@ -53,12 +54,12 @@ export function SaveSearchButton({ query, categoryId }: SaveSearchButtonProps) {
       size="sm"
       onClick={save}
       disabled={busy || saved}
-      className="gap-1.5 h-10 sm:h-8"
+      className="gap-1.5 h-11 lg:h-8"
     >
       {busy ? (
         <Loader2 className="h-3.5 w-3.5 animate-spin" />
       ) : saved ? (
-        <Check className="h-3.5 w-3.5 text-champagne" />
+        <Check className="h-3.5 w-3.5 text-champagne-deep" />
       ) : (
         <BellPlus className="h-3.5 w-3.5" />
       )}

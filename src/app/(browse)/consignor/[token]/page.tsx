@@ -1,23 +1,25 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
+import { Camera } from 'lucide-react';
 import { db } from '@/db';
 import { users, lots, auctionLots, auctions, payouts, invoices } from '@/db/schema';
 import { eq, desc, inArray, notInArray, and } from 'drizzle-orm';
 import { formatCurrency, formatCurrencyWithCents } from '@/types';
 import { BUSINESS } from '@/lib/config';
+import { formatLongDate } from '@/lib/format/dates';
+import { formatEstimate } from '@/lib/format/estimate';
 import { isValidPortalToken, consignorStatusLabel, summarizeConsignor } from '@/lib/sellers/portal';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Your Consignments | Mayells',
+  title: 'Your Consignments',
   robots: { index: false, follow: false },
 };
 
 function formatDate(d: Date | null): string | null {
-  if (!d) return null;
-  return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  return d ? formatLongDate(d) : null;
 }
 
 interface LotSettlement {
@@ -176,11 +178,14 @@ export default async function ConsignorPortalPage({
         {sellerLots.map((lot) => {
           const settlement = settlementByLot.get(lot.id) ?? { invoiceStatus: null, payoutStatus: null, payoutPaidAt: null };
           const relisted = lot.status === 'for_sale' && lot.saleType === 'gallery' && !!lot.buyNowPrice;
+          const estimate = formatEstimate(lot.estimateLow, lot.estimateHigh);
           return (
             <div key={lot.id} className="border rounded-xl overflow-hidden">
-              <div className="grid sm:grid-cols-[200px_1fr]">
-                <div className="relative aspect-square sm:aspect-auto sm:h-full bg-muted">
-                  {lot.primaryImageUrl && (
+              {/* No photo yet: no image column at all, rather than a full-width
+                  grey square above the details on a phone. */}
+              <div className={lot.primaryImageUrl ? 'grid sm:grid-cols-[200px_1fr]' : undefined}>
+                {lot.primaryImageUrl && (
+                  <div className="relative aspect-square sm:aspect-auto sm:h-full bg-muted">
                     <Image
                       src={lot.primaryImageUrl}
                       alt={lot.title}
@@ -188,25 +193,30 @@ export default async function ConsignorPortalPage({
                       sizes="(max-width: 640px) 100vw, 200px"
                       className="object-cover"
                     />
-                  )}
-                </div>
-                <div className="p-6">
-                  <div className="flex items-start justify-between gap-4 mb-2">
-                    <div>
+                  </div>
+                )}
+                <div className="p-5 sm:p-6">
+                  {/* Stacked on phones: beside a long status chip the title
+                      was squeezed to a word per line. */}
+                  <div className="flex flex-col gap-2 mb-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
                       <h3 className="font-display text-lg">{lot.title}</h3>
                       {lot.artist && <p className="text-sm text-muted-foreground">{lot.artist}</p>}
                     </div>
-                    <span className="shrink-0 text-xs uppercase tracking-wider border rounded-full px-3 py-1 text-muted-foreground text-right">
+                    <span className="self-start shrink-0 text-xs uppercase tracking-wider border rounded-full px-3 py-1 text-muted-foreground sm:max-w-[45%] sm:text-right">
                       {settlementLabel(lot, settlement)}
                     </span>
                   </div>
 
                   <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground mt-3">
-                    {lot.estimateLow != null && lot.estimateHigh != null && (
-                      <span>
-                        Estimate: {formatCurrency(lot.estimateLow)} – {formatCurrency(lot.estimateHigh)}
+                    {/* Only while the lot is still on its way to sale: a sold,
+                        unsold or withdrawn lot won't be photographed now. */}
+                    {!lot.primaryImageUrl && !['sold', 'unsold', 'withdrawn'].includes(lot.status) && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Camera className="h-3.5 w-3.5" aria-hidden /> Photography pending
                       </span>
                     )}
+                    {estimate && <span>Estimate: {estimate}</span>}
                     {lot.auctionTitle && lot.status !== 'sold' && !relisted && (
                       <span>
                         {lot.auctionTitle}

@@ -2,29 +2,20 @@ export const dynamic = 'force-dynamic';
 
 import Link from 'next/link';
 import { db } from '@/db';
-import { auctions, bids } from '@/db/schema';
+import { auctions } from '@/db/schema';
 import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { requireAdminPage } from '@/lib/auth/require-admin';
 import { isPubliclyVisibleAuction, type AuctionStatus } from '@/lib/auctions/visibility';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, ChevronLeft, ChevronRight, ExternalLink, Radio, Gavel } from 'lucide-react';
-import { PageHeader } from '@/components/admin/PageHeader';
+import { Plus, Pencil, ExternalLink, Radio, Gavel } from 'lucide-react';
+import { PageHeader, filterChipClass, filterChipCountClass } from '@/components/admin/PageHeader';
+import { auctionStatus } from '@/lib/admin/status/sales';
+import { formatShortDateTime } from '@/lib/format/dates';
+import { Pager } from '../_components/Pager';
 
 const PAGE_SIZE = 50;
-
-const statusColors: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-800',
-  scheduled: 'bg-blue-100 text-blue-800',
-  preview: 'bg-indigo-100 text-indigo-800',
-  open: 'bg-green-100 text-green-800',
-  live: 'bg-red-100 text-red-800',
-  closing: 'bg-orange-100 text-orange-800',
-  closed: 'bg-gray-100 text-gray-600',
-  completed: 'bg-emerald-100 text-emerald-800',
-  cancelled: 'bg-red-100 text-red-600',
-};
 
 /** Filter chips. `null` statuses = no status constraint. */
 const STATUS_FILTERS: Record<string, { label: string; statuses: AuctionStatus[] | null }> = {
@@ -46,8 +37,7 @@ const TYPE_FILTERS: Record<string, { label: string; type: 'timed' | 'live' | nul
 const FINISHED: readonly string[] = ['closing', 'closed', 'completed', 'cancelled'];
 
 function formatWhen(d: Date | null) {
-  if (!d) return '—';
-  return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+  return d ? formatShortDateTime(d) : '—';
 }
 
 function buildHref(params: { status: string; type: string; page: number }) {
@@ -94,9 +84,12 @@ export default async function AdminAuctionsPage({
 
   // auctions.totalBids is a denormalized counter nothing writes to; count the
   // real rows. Retracted bids (withdrawn lots) are not activity.
-  const bidCount = sql<number>`(select count(*) from ${bids} where ${bids.auctionId} = ${auctions.id} and ${bids.status} <> 'retracted')::int`;
+  // Identifiers written literally: interpolated Drizzle columns render
+  // unqualified inside the subquery, so "id" would resolve to bids.id and
+  // every count would be 0.
+  const bidCount = sql<number>`(select count(*) from bids b where b.auction_id = "auctions"."id" and b.bid_status <> 'retracted')::int`;
 
-  const [rows, [{ total }]] = await Promise.all([
+  const [rows, [{ total }], statusCounts] = await Promise.all([
     db
       .select({ auction: auctions, bidCount })
       .from(auctions)
@@ -105,7 +98,19 @@ export default async function AdminAuctionsPage({
       .limit(PAGE_SIZE)
       .offset(offset),
     db.select({ total: sql<number>`count(*)::int` }).from(auctions).where(where),
+    // Chip counts respect the format filter but not the status filter, so
+    // each chip shows what clicking it would yield.
+    db
+      .select({ status: auctions.status, count: sql<number>`count(*)::int` })
+      .from(auctions)
+      .where(typeFilter ? eq(auctions.type, typeFilter) : undefined)
+      .groupBy(auctions.status),
   ]);
+  const countByStatus = new Map(statusCounts.map((r) => [r.status as string, r.count]));
+  const chipCount = (statuses: AuctionStatus[] | null) =>
+    statuses
+      ? statuses.reduce((sum, s) => sum + (countByStatus.get(s) ?? 0), 0)
+      : statusCounts.reduce((sum, r) => sum + r.count, 0);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filtered = statusKey !== 'all' || typeKey !== 'all';
@@ -129,15 +134,15 @@ export default async function AdminAuctionsPage({
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {Object.entries(STATUS_FILTERS).map(([key, f]) => (
-          <Button
+          <Link
             key={key}
-            asChild
-            size="sm"
-            variant={key === statusKey ? 'default' : 'outline'}
-            className="h-8"
+            href={buildHref({ status: key, type: typeKey, page: 1 })}
+            aria-current={key === statusKey ? 'page' : undefined}
+            className={filterChipClass(key === statusKey)}
           >
-            <Link href={buildHref({ status: key, type: typeKey, page: 1 })}>{f.label}</Link>
-          </Button>
+            {f.label}
+            <span className={filterChipCountClass}>{chipCount(f.statuses)}</span>
+          </Link>
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-2 mb-6">
@@ -189,8 +194,8 @@ export default async function AdminAuctionsPage({
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge className={statusColors[auction.status] || ''}>
-                      {auction.status}
+                    <Badge className={auctionStatus(auction.status).className}>
+                      {auctionStatus(auction.status).label}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{auction.lotCount}</TableCell>
@@ -206,20 +211,20 @@ export default async function AdminAuctionsPage({
                     <div className="flex items-center gap-1 justify-end">
                       {showConsole && (
                         <Button asChild variant="ghost" size="sm" title="Live console">
-                          <Link href={`/admin/live/${auction.id}`}>
+                          <Link href={`/admin/live/${auction.id}`} aria-label={`Live console — ${auction.title}`}>
                             <Radio className={`h-3.5 w-3.5 ${auction.status === 'live' ? 'text-red-600' : ''}`} />
                           </Link>
                         </Button>
                       )}
                       {isPublic && (
                         <Button asChild variant="ghost" size="sm" title="View on site">
-                          <a href={`/auctions/${auction.slug}`} target="_blank" rel="noreferrer">
+                          <a href={`/auctions/${auction.slug}`} target="_blank" rel="noreferrer" aria-label={`View ${auction.title} on site`}>
                             <ExternalLink className="h-3.5 w-3.5" />
                           </a>
                         </Button>
                       )}
                       <Button asChild variant="ghost" size="sm" title="Edit">
-                        <Link href={`/admin/auctions/${auction.id}`}><Pencil className="h-3.5 w-3.5" /></Link>
+                        <Link href={`/admin/auctions/${auction.id}`} aria-label={`Edit ${auction.title}`}><Pencil className="h-3.5 w-3.5" /></Link>
                       </Button>
                     </div>
                   </TableCell>
@@ -254,37 +259,11 @@ export default async function AdminAuctionsPage({
         </Table>
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 mt-4 text-sm">
-          <p className="text-muted-foreground">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex gap-2">
-            {page > 1 ? (
-              <Button asChild variant="outline" size="sm" className="gap-1">
-                <Link href={buildHref({ status: statusKey, type: typeKey, page: page - 1 })}>
-                  <ChevronLeft className="h-3.5 w-3.5" /> Prev
-                </Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled className="gap-1">
-                <ChevronLeft className="h-3.5 w-3.5" /> Prev
-              </Button>
-            )}
-            {page < totalPages ? (
-              <Button asChild variant="outline" size="sm" className="gap-1">
-                <Link href={buildHref({ status: statusKey, type: typeKey, page: page + 1 })}>
-                  Next <ChevronRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" disabled className="gap-1">
-                Next <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      <Pager
+        page={page}
+        totalPages={totalPages}
+        hrefFor={(n) => buildHref({ status: statusKey, type: typeKey, page: n })}
+      />
     </div>
   );
 }

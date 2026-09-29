@@ -33,10 +33,12 @@ export async function GET() {
         estimateHigh: lots.estimateHigh,
         status: lots.status,
         bidCount: lots.bidCount,
-        closingAt: sql<string | null>`(
+        // UTC timestamp without zone → ISO with "Z", so browsers parse it as
+        // UTC rather than as their own local time.
+        closingAt: sql<string | null>`to_char((
           SELECT MIN(${auctionLots.closingAt}) FROM ${auctionLots}
           WHERE ${auctionLots.lotId} = ${lots.id} AND ${auctionLots.closingAt} > now()
-        )`,
+        ), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`,
       })
       .from(watchlist)
       .innerJoin(lots, eq(lots.id, watchlist.lotId))

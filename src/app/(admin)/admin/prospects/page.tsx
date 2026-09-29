@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { PageHeader } from '@/components/admin/PageHeader';
+import { PageHeader, filterChipCountClass } from '@/components/admin/PageHeader';
+import { FilterChip } from '../_components/FilterChips';
+import { Pager } from '../_components/Pager';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Search,
@@ -20,12 +23,9 @@ import {
   Link2,
   Trash2,
   Eye,
-  X,
   Copy,
   Check,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
   QrCode,
   Download,
   AlertCircle,
@@ -34,6 +34,9 @@ import { cn } from '@/lib/utils';
 import { MICROSITE_LABELS, micrositeCity } from '@/lib/microsites/labels';
 import { toast } from 'sonner';
 import { BUSINESS } from '@/lib/config';
+import { PROSPECT_STATUS, PROSPECT_STATUS_ORDER } from '@/lib/admin/status/sales';
+import { formatShortDate } from '@/lib/format/dates';
+import { formatEstimate } from '@/lib/format/estimate';
 
 // Generic terms page — same base URL config the agreement API uses.
 const TERMS_URL = `${BUSINESS.url}/consignment-agreement`;
@@ -93,33 +96,6 @@ interface ProspectStats {
   byStatus: Partial<Record<ProspectStatus, number>>;
 }
 
-const statusColors: Record<ProspectStatus, string> = {
-  new: 'bg-gray-100 text-gray-700',
-  contacted: 'bg-blue-100 text-blue-700',
-  upload_sent: 'bg-yellow-100 text-yellow-700',
-  items_received: 'bg-orange-100 text-orange-700',
-  under_review: 'bg-purple-100 text-purple-700',
-  agreement_sent: 'bg-indigo-100 text-indigo-700',
-  agreement_signed: 'bg-green-100 text-green-700',
-  accepted: 'bg-emerald-100 text-emerald-700',
-  declined: 'bg-red-100 text-red-700',
-  archived: 'bg-gray-100 text-gray-500',
-};
-
-// Funnel order — the chips read left to right as the prospect progresses.
-const STATUS_CHIPS: { value: ProspectStatus; label: string }[] = [
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'upload_sent', label: 'Upload sent' },
-  { value: 'items_received', label: 'Items received' },
-  { value: 'under_review', label: 'Under review' },
-  { value: 'agreement_sent', label: 'Agreement sent' },
-  { value: 'agreement_signed', label: 'Signed' },
-  { value: 'accepted', label: 'Accepted' },
-  { value: 'declined', label: 'Declined' },
-  { value: 'archived', label: 'Archived' },
-];
-
 const sourceLabels: Record<ProspectSource, string> = {
   phone: 'Phone',
   email: 'Email',
@@ -172,10 +148,14 @@ function ProspectsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const statusParam = searchParams.get('status') ?? '';
-  const statusFilter: ProspectStatus | '' = STATUS_CHIPS.some((c) => c.value === statusParam)
-    ? (statusParam as ProspectStatus)
-    : '';
+  // ?status= takes one status or a comma-separated set (the dashboard's
+  // "awaiting action" link is new,items_received,under_review). The API
+  // accepts the same list, so the joined string is passed through as-is.
+  const statusFilter = (searchParams.get('status') ?? '')
+    .split(',')
+    .filter((s): s is ProspectStatus => (PROSPECT_STATUS_ORDER as string[]).includes(s))
+    .join(',');
+  const activeStatuses = statusFilter ? statusFilter.split(',') : [];
 
   // Lead origin filter: '' (all), 'any' (every city microsite) or a city slug.
   const siteParam = searchParams.get('site') ?? '';
@@ -202,7 +182,7 @@ function ProspectsPageInner() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingConfirm | null>(null);
 
-  const fetchProspects = useCallback(async (pageOffset = 0, searchTerm = '', status: ProspectStatus | '' = '', site = '') => {
+  const fetchProspects = useCallback(async (pageOffset = 0, searchTerm = '', status = '', site = '') => {
     setLoading(true);
     setFetchError(false);
     try {
@@ -268,7 +248,7 @@ function ProspectsPageInner() {
     router.replace(`/admin/prospects${qs ? `?${qs}` : ''}`, { scroll: false });
   }
 
-  function setStatusFilter(next: ProspectStatus | '') {
+  function setStatusFilter(next: string) {
     const params = new URLSearchParams(searchParams.toString());
     if (next) params.set('status', next);
     else params.delete('status');
@@ -496,37 +476,25 @@ function ProspectsPageInner() {
       </div>
 
       {/* Status filter chips */}
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button
-          type="button"
-          onClick={() => setStatusFilter('')}
-          className={cn(
-            'px-3 py-1 rounded-full text-xs font-medium border transition-colors',
-            statusFilter === ''
-              ? 'bg-foreground text-background border-foreground'
-              : 'bg-background text-muted-foreground border-border hover:bg-accent/10',
-          )}
-        >
-          All{stats ? ` (${stats.total})` : ''}
-        </button>
-        {STATUS_CHIPS.map((chip) => {
-          const count = stats?.byStatus?.[chip.value] ?? 0;
-          const active = statusFilter === chip.value;
+      <div role="group" aria-label="Filter by status" className="flex flex-wrap gap-2 mb-6">
+        <FilterChip active={statusFilter === ''} onClick={() => setStatusFilter('')}>
+          All
+          {stats ? <span className={filterChipCountClass}>{stats.total}</span> : null}
+        </FilterChip>
+        {PROSPECT_STATUS_ORDER.map((value) => {
+          const count = stats?.byStatus?.[value] ?? 0;
+          const active = activeStatuses.includes(value);
           return (
-            <button
-              key={chip.value}
-              type="button"
-              onClick={() => setStatusFilter(active ? '' : chip.value)}
-              className={cn(
-                'px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap',
-                active
-                  ? cn(statusColors[chip.value], 'border-transparent ring-2 ring-offset-1 ring-foreground/30')
-                  : 'bg-background text-muted-foreground border-border hover:bg-accent/10',
-              )}
+            <FilterChip
+              key={value}
+              active={active}
+              // Clicking an active chip that is the only filter clears it;
+              // otherwise the chip becomes the single filter.
+              onClick={() => setStatusFilter(active && activeStatuses.length === 1 ? '' : value)}
             >
-              {chip.label}
-              {stats ? <span className="ml-1 opacity-70">{count}</span> : null}
-            </button>
+              {PROSPECT_STATUS[value].label}
+              {stats ? <span className={filterChipCountClass}>{count}</span> : null}
+            </FilterChip>
           );
         })}
       </div>
@@ -637,22 +605,20 @@ function ProspectsPageInner() {
                       <span
                         className={cn(
                           'px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap',
-                          statusColors[p.status]
+                          PROSPECT_STATUS[p.status]?.className
                         )}
                       >
-                        {p.status.replace(/_/g, ' ')}
+                        {PROSPECT_STATUS[p.status]?.label ?? p.status}
                       </span>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {uploadItemCount > 0 ? uploadItemCount : p.estimatedItemCount ?? '--'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums whitespace-nowrap">
-                      {hasEstimate
-                        ? `$${(estLow / 100).toLocaleString()} - $${(estHigh / 100).toLocaleString()}`
-                        : '--'}
+                      {hasEstimate ? formatEstimate(estLow, estHigh) : '--'}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground text-xs">
-                      {new Date(p.createdAt).toLocaleDateString()}
+                      {formatShortDate(p.createdAt)}
                     </TableCell>
                     <TableCell>
                       {/* Action buttons must not trigger the row navigation. */}
@@ -665,6 +631,7 @@ function ProspectsPageInner() {
                           size="icon"
                           className="h-8 w-8"
                           title="View details"
+                          aria-label={`View details — ${p.fullName}`}
                           onClick={() => router.push(href)}
                         >
                           <Eye className="h-4 w-4" />
@@ -674,6 +641,7 @@ function ProspectsPageInner() {
                           size="icon"
                           className="h-8 w-8"
                           title="Send upload link"
+                          aria-label={`Send upload link — ${p.fullName}`}
                           disabled={sendingLinkId === p.id}
                           onClick={() => confirmSendUploadLink(p)}
                         >
@@ -690,6 +658,7 @@ function ProspectsPageInner() {
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
                           title="Delete prospect"
+                          aria-label={`Delete prospect — ${p.fullName}`}
                           disabled={deletingId === p.id}
                           onClick={() => confirmDelete(p)}
                         >
@@ -709,40 +678,17 @@ function ProspectsPageInner() {
         </div>
       )}
 
-      {totalCount > PAGE_SIZE && !fetchError && (
-        <div className="flex flex-wrap items-center justify-between gap-2 mt-4 text-sm">
-          <p className="text-muted-foreground">
-            {offset + 1}–{Math.min(offset + PAGE_SIZE, totalCount)} of {totalCount}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={offset === 0}
-              onClick={() => {
-                const next = Math.max(0, offset - PAGE_SIZE);
-                setOffset(next);
-                fetchProspects(next, debouncedSearch, statusFilter, siteFilter);
-              }}
-              className="gap-1"
-            >
-              <ChevronLeft className="h-3.5 w-3.5" /> Prev
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={offset + PAGE_SIZE >= totalCount}
-              onClick={() => {
-                const next = offset + PAGE_SIZE;
-                setOffset(next);
-                fetchProspects(next, debouncedSearch, statusFilter, siteFilter);
-              }}
-              className="gap-1"
-            >
-              Next <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+      {!fetchError && (
+        <Pager
+          page={Math.floor(offset / PAGE_SIZE) + 1}
+          totalPages={Math.ceil(totalCount / PAGE_SIZE)}
+          onPageChange={(nextPage) => {
+            const next = Math.max(0, (nextPage - 1) * PAGE_SIZE);
+            setOffset(next);
+            fetchProspects(next, debouncedSearch, statusFilter, siteFilter);
+          }}
+          summary={<>{offset + 1}–{Math.min(offset + PAGE_SIZE, totalCount)} of {totalCount}</>}
+        />
       )}
 
       {/* Confirm (send link / delete) */}
@@ -759,209 +705,181 @@ function ProspectsPageInner() {
       )}
 
       {/* Terms Link / QR Dialog (replaces the retired /admin/agreements page) */}
-      {showTermsDialog && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowTermsDialog(false);
-          }}
-        >
-          <div className="bg-background rounded-lg w-full max-w-sm border shadow-lg">
-            <div className="flex items-center justify-between p-6 pb-4 border-b">
-              <h2 className="text-lg font-semibold">Consignment terms</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setShowTermsDialog(false)}
-              >
-                <X className="h-4 w-4" />
+      <Dialog open={showTermsDialog} onOpenChange={setShowTermsDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Consignment terms</DialogTitle>
+            <DialogDescription>
+              Share the public consignment terms page. Print or display the QR
+              code — clients can scan it to read the agreement on their phone.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl p-6 flex flex-col items-center border">
+              <QRCodeSVG
+                id="terms-qr"
+                value={TERMS_URL}
+                size={180}
+                level="H"
+                bgColor="#FFFFFF"
+                fgColor="#272D35"
+              />
+              <p className="text-xs text-muted-foreground mt-3">Scan to view terms</p>
+            </div>
+
+            <div className="flex gap-2">
+              <Input readOnly value={TERMS_URL} aria-label="Terms page link" className="text-xs bg-muted" />
+              <Button variant="outline" size="icon" onClick={copyTermsLink} title="Copy link" aria-label="Copy terms link">
+                {termsCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
               </Button>
             </div>
 
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Share the public consignment terms page. Print or display the QR
-                code — clients can scan it to read the agreement on their phone.
-              </p>
-
-              <div className="bg-white rounded-xl p-6 flex flex-col items-center border">
-                <QRCodeSVG
-                  id="terms-qr"
-                  value={TERMS_URL}
-                  size={180}
-                  level="H"
-                  bgColor="#FFFFFF"
-                  fgColor="#272D35"
-                />
-                <p className="text-xs text-muted-foreground mt-3">Scan to view terms</p>
-              </div>
-
-              <div className="flex gap-2">
-                <Input readOnly value={TERMS_URL} className="text-xs bg-muted" />
-                <Button variant="outline" size="icon" onClick={copyTermsLink} title="Copy link">
-                  {termsCopied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                </Button>
-              </div>
-
-              <Button variant="outline" className="w-full gap-2" onClick={downloadTermsQR}>
-                <Download className="h-4 w-4" />
-                Download QR Code (PNG)
-              </Button>
-            </div>
+            <Button variant="outline" className="w-full gap-2" onClick={downloadTermsQR}>
+              <Download className="h-4 w-4" />
+              Download QR Code (PNG)
+            </Button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Add Prospect Dialog */}
-      {showDialog && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowDialog(false);
-          }}
-        >
-          <div className="bg-background rounded-lg w-full max-w-md border shadow-lg max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 pb-4 border-b">
-              <h2 className="text-lg font-semibold">Add prospect</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setShowDialog(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+      {/* Add Prospect Dialog. The form state lives on this page, so closing
+          the dialog (Esc, backdrop, X) keeps whatever was typed until the
+          prospect is created. */}
+      <Dialog open={showDialog} onOpenChange={(o) => !submitting && setShowDialog(o)}>
+        <DialogContent className="sm:max-w-md" showCloseButton={!submitting}>
+          <DialogHeader>
+            <DialogTitle>Add prospect</DialogTitle>
+            <DialogDescription>A consignment lead. You can send them an upload link afterwards.</DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="fullName">
+                Full Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="fullName"
+                required
+                value={form.fullName}
+                onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+                placeholder="Jane Doe"
+              />
             </div>
 
-            <form onSubmit={handleCreate} className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="fullName">
-                  Full Name <span className="text-destructive">*</span>
-                </Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="fullName"
-                  required
-                  value={form.fullName}
-                  onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                  placeholder="Jane Doe"
+                  id="email"
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="jane@example.com"
                 />
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="jane@example.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    type="tel"
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                    placeholder="(555) 123-4567"
-                  />
-                </div>
-              </div>
-
               <div className="space-y-2">
-                <Label htmlFor="company">Company</Label>
+                <Label htmlFor="phone">Phone</Label>
                 <Input
-                  id="company"
-                  value={form.company}
-                  onChange={(e) => setForm({ ...form, company: e.target.value })}
-                  placeholder="Optional"
+                  id="phone"
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  placeholder="(555) 123-4567"
                 />
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="source">Source</Label>
-                  <select
-                    id="source"
-                    value={form.source}
-                    onChange={(e) =>
-                      setForm({ ...form, source: e.target.value as ProspectSource })
-                    }
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    {Object.entries(sourceLabels).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="estimatedItemCount">Est. Item Count</Label>
-                  <Input
-                    id="estimatedItemCount"
-                    type="number"
-                    min="0"
-                    value={form.estimatedItemCount}
-                    onChange={(e) =>
-                      setForm({ ...form, estimatedItemCount: e.target.value })
-                    }
-                    placeholder="0"
-                  />
-                </div>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="company">Company</Label>
+              <Input
+                id="company"
+                value={form.company}
+                onChange={(e) => setForm({ ...form, company: e.target.value })}
+                placeholder="Optional"
+              />
+            </div>
 
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="itemSummary">Item summary</Label>
-                <textarea
-                  id="itemSummary"
-                  rows={2}
-                  value={form.itemSummary}
-                  onChange={(e) => setForm({ ...form, itemSummary: e.target.value })}
-                  placeholder="Brief description of items..."
-                  className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes</Label>
-                <textarea
-                  id="notes"
-                  rows={2}
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  placeholder="Internal notes..."
-                  className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowDialog(false)}
-                  disabled={submitting}
+                <Label htmlFor="source">Source</Label>
+                <select
+                  id="source"
+                  value={form.source}
+                  onChange={(e) =>
+                    setForm({ ...form, source: e.target.value as ProspectSource })
+                  }
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={submitting || !form.fullName.trim()}>
-                  {submitting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    'Create Prospect'
-                  )}
-                </Button>
+                  {Object.entries(sourceLabels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+              <div className="space-y-2">
+                <Label htmlFor="estimatedItemCount">Est. Item Count</Label>
+                <Input
+                  id="estimatedItemCount"
+                  type="number"
+                  min="0"
+                  value={form.estimatedItemCount}
+                  onChange={(e) =>
+                    setForm({ ...form, estimatedItemCount: e.target.value })
+                  }
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="itemSummary">Item summary</Label>
+              <textarea
+                id="itemSummary"
+                rows={2}
+                value={form.itemSummary}
+                onChange={(e) => setForm({ ...form, itemSummary: e.target.value })}
+                placeholder="Brief description of items..."
+                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <textarea
+                id="notes"
+                rows={2}
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                placeholder="Internal notes..."
+                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+              />
+            </div>
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowDialog(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting || !form.fullName.trim()}>
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Prospect'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

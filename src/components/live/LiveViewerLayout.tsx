@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { PanelRightClose, PanelRightOpen, X } from 'lucide-react';
+import { ArrowLeft, PanelRightClose, PanelRightOpen, X } from 'lucide-react';
 import { formatCurrency } from '@/types';
 import { cn } from '@/lib/utils';
 import { ChatReactions, LiveChatPanel, type LiveChatState } from './LiveChat';
@@ -47,6 +47,8 @@ export function LiveViewerLayout({ auction, lots, viewer, chat, signInHref, vide
   const currentLot = pickCurrentLot(lots);
   const activeLot = (selectedLotId && lots.find((l) => l.id === selectedLotId)) || currentLot;
   const sideHidden = !sidePanelOpen && 'max-lg:landscape:hidden';
+  // Browsing another lot: one tap back to following the sale.
+  const browsingAway = !!currentLot && activeLot?.id !== currentLot.id;
 
   return (
     <div
@@ -64,7 +66,7 @@ export function LiveViewerLayout({ auction, lots, viewer, chat, signInHref, vide
     >
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-white/10 pl-4 pr-2 max-lg:landscape:h-11">
         <span className="shrink-0 font-logo text-base text-champagne">MAYELLS</span>
-        <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
+        <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.15em] text-white">
           <span aria-hidden className="size-1.5 rounded-full bg-white motion-safe:animate-pulse" />
           Live
         </span>
@@ -110,10 +112,24 @@ export function LiveViewerLayout({ auction, lots, viewer, chat, signInHref, vide
             {sidePanelOpen ? <PanelRightClose aria-hidden className="size-5" /> : <PanelRightOpen aria-hidden className="size-5" />}
           </button>
 
+          {/* Below the video's own Live badge (top-left), which a centred pill
+              would collide with on a 320–375px phone. */}
+          {browsingAway && currentLot && (
+            <button
+              type="button"
+              onClick={() => setSelectedLotId(null)}
+              className="absolute left-1/2 top-14 z-20 flex h-11 -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-black/75 px-4 text-sm font-medium text-white shadow-lg ring-1 ring-champagne/60 backdrop-blur-sm transition-colors hover:bg-black/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-champagne"
+            >
+              <ArrowLeft aria-hidden className="size-4 text-champagne" />
+              {currentLot.phase === 'open' ? 'Back to live lot' : 'Back to current lot'}
+              <span className="hidden text-white/60 sm:inline">· Lot {currentLot.lotNumber}</span>
+            </button>
+          )}
+
           {/* With the panel hidden, keep the essentials on the picture. */}
           {!sidePanelOpen && activeLot && (
             <div className="pointer-events-none absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 z-10 hidden max-w-[40%] rounded-lg bg-black/60 px-3 py-2 text-white backdrop-blur-sm max-lg:landscape:block">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/70">Lot {activeLot.lotNumber}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-white/70">Lot {activeLot.lotNumber}</p>
               <p className="truncate font-display text-base text-champagne">
                 {activeLot.currentBidAmount > 0 ? formatCurrency(activeLot.currentBidAmount) : 'No bids yet'}
               </p>

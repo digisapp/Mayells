@@ -17,6 +17,7 @@ import Link from 'next/link';
 import type { OutreachContact } from '@/db/schema/outreach';
 import { categoryOptions, statusOptions, statusColors, statusLabels } from '@/lib/config/outreach';
 import { FieldError, readFailure, type FieldErrors, formatDay } from './../form-utils';
+import { formatShortDate, formatShortDateTime } from '@/lib/format/dates';
 
 interface SentEmail {
   id: string;
@@ -95,6 +96,9 @@ export default function EditOutreachContactPage() {
     });
   }, []);
 
+  // Bumped by the Retry button to re-run the load effect.
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/admin/outreach?id=${contactId}`)
@@ -115,7 +119,7 @@ export default function EditOutreachContactPage() {
         if (!cancelled) setLoadState('error');
       });
     return () => { cancelled = true; };
-  }, [contactId]);
+  }, [contactId, loadAttempt]);
 
   // Emails we've sent to this contact (newest first)
   const email = contact?.email;
@@ -215,18 +219,20 @@ export default function EditOutreachContactPage() {
     }
   }
 
+  /** Throws on failure so the confirm dialog stays open with the error toasted. */
   async function handleDelete() {
     const res = await fetch('/api/admin/outreach', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: contactId }),
     }).catch(() => null);
-    if (res?.ok) {
-      toast.success('Contact deleted');
-      router.push('/admin/outreach');
-    } else {
-      toast.error(res ? (await readFailure(res, 'Failed to delete')).error : 'Network error');
+    if (!res?.ok) {
+      const message = res ? (await readFailure(res, 'Failed to delete')).error : 'Network error';
+      toast.error(message);
+      throw new Error(message);
     }
+    toast.success('Contact deleted');
+    router.push('/admin/outreach');
   }
 
   if (loadState !== 'loaded' || !contact || !form) {
@@ -235,9 +241,22 @@ export default function EditOutreachContactPage() {
         {loadState === 'not_found' ? (
           <p className="text-muted-foreground">Contact not found. It may have been deleted.</p>
         ) : loadState === 'error' ? (
-          <p className="text-destructive">Failed to load contact. Please try again.</p>
+          <div className="py-12 text-center">
+            <p className="text-muted-foreground mb-4">Failed to load this contact.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setLoadState('loading'); setLoadAttempt((n) => n + 1); }}
+            >
+              Retry
+            </Button>
+          </div>
         ) : (
-          <div className="text-muted-foreground">Loading...</div>
+          <div className="space-y-6" aria-busy="true" aria-label="Loading contact">
+            <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+            <div className="h-28 bg-muted animate-pulse rounded-xl" />
+            {[1, 2, 3].map((i) => <div key={i} className="h-44 bg-muted animate-pulse rounded-xl" />)}
+          </div>
         )}
       </div>
     );
@@ -271,7 +290,7 @@ export default function EditOutreachContactPage() {
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span>
-              Last contacted: <strong className="text-foreground">{contact.lastContactedAt ? new Date(contact.lastContactedAt).toLocaleString() : 'never'}</strong>
+              Last contacted: <strong className="text-foreground">{contact.lastContactedAt ? formatShortDateTime(contact.lastContactedAt) : 'never'}</strong>
             </span>
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={logContact} disabled={!!statusBusy}>
               <PhoneCall className="h-3.5 w-3.5 mr-1" /> Log contact now
@@ -289,20 +308,20 @@ export default function EditOutreachContactPage() {
           <CardHeader><CardTitle>Company</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Company name *</Label>
-              <Input value={form.companyName} onChange={(e) => update('companyName', e.target.value)} required aria-invalid={!!errors.companyName} />
+              <Label htmlFor="edit-companyName">Company name *</Label>
+              <Input id="edit-companyName" value={form.companyName} onChange={(e) => update('companyName', e.target.value)} required aria-invalid={!!errors.companyName} />
               <FieldError errors={errors} name="companyName" />
             </div>
             <div className="space-y-2">
-              <Label>Website</Label>
-              <Input value={form.website} onChange={(e) => update('website', e.target.value)} placeholder="example.com" aria-invalid={!!errors.website} />
+              <Label htmlFor="edit-website">Website</Label>
+              <Input id="edit-website" value={form.website} onChange={(e) => update('website', e.target.value)} placeholder="example.com" aria-invalid={!!errors.website} />
               <FieldError errors={errors} name="website" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Category</Label>
+                <Label htmlFor="edit-category">Category</Label>
                 <Select value={form.category} onValueChange={(v) => update('category', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="edit-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {categoryOptions.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
@@ -312,8 +331,8 @@ export default function EditOutreachContactPage() {
                 <FieldError errors={errors} name="category" />
               </div>
               <div className="space-y-2">
-                <Label>Source</Label>
-                <Input value={form.source} onChange={(e) => update('source', e.target.value)} />
+                <Label htmlFor="edit-source">Source</Label>
+                <Input id="edit-source" value={form.source} onChange={(e) => update('source', e.target.value)} />
                 <FieldError errors={errors} name="source" />
               </div>
             </div>
@@ -323,20 +342,20 @@ export default function EditOutreachContactPage() {
         <Card>
           <CardHeader><CardTitle>Contact person</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Contact name</Label><Input value={form.contactName} onChange={(e) => update('contactName', e.target.value)} /><FieldError errors={errors} name="contactName" /></div>
-            <div className="space-y-2"><Label>Title</Label><Input value={form.title} onChange={(e) => update('title', e.target.value)} /><FieldError errors={errors} name="title" /></div>
-            <div className="space-y-2"><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} aria-invalid={!!errors.email} /><FieldError errors={errors} name="email" /></div>
-            <div className="space-y-2"><Label>Phone</Label><Input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} /><FieldError errors={errors} name="phone" /></div>
+            <div className="space-y-2"><Label htmlFor="edit-contactName">Contact name</Label><Input id="edit-contactName" value={form.contactName} onChange={(e) => update('contactName', e.target.value)} /><FieldError errors={errors} name="contactName" /></div>
+            <div className="space-y-2"><Label htmlFor="edit-title">Title</Label><Input id="edit-title" value={form.title} onChange={(e) => update('title', e.target.value)} /><FieldError errors={errors} name="title" /></div>
+            <div className="space-y-2"><Label htmlFor="edit-email">Email</Label><Input id="edit-email" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} aria-invalid={!!errors.email} /><FieldError errors={errors} name="email" /></div>
+            <div className="space-y-2"><Label htmlFor="edit-phone">Phone</Label><Input id="edit-phone" type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} /><FieldError errors={errors} name="phone" /></div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader><CardTitle>Location</CardTitle></CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2"><Label>Address</Label><Input value={form.address} onChange={(e) => update('address', e.target.value)} /><FieldError errors={errors} name="address" /></div>
+            <div className="space-y-2"><Label htmlFor="edit-address">Address</Label><Input id="edit-address" value={form.address} onChange={(e) => update('address', e.target.value)} /><FieldError errors={errors} name="address" /></div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>City</Label><Input value={form.city} onChange={(e) => update('city', e.target.value)} /><FieldError errors={errors} name="city" /></div>
-              <div className="space-y-2"><Label>State</Label><Input value={form.state} onChange={(e) => update('state', e.target.value)} /><FieldError errors={errors} name="state" /></div>
+              <div className="space-y-2"><Label htmlFor="edit-city">City</Label><Input id="edit-city" value={form.city} onChange={(e) => update('city', e.target.value)} /><FieldError errors={errors} name="city" /></div>
+              <div className="space-y-2"><Label htmlFor="edit-state">State</Label><Input id="edit-state" value={form.state} onChange={(e) => update('state', e.target.value)} /><FieldError errors={errors} name="state" /></div>
             </div>
           </CardContent>
         </Card>
@@ -345,19 +364,19 @@ export default function EditOutreachContactPage() {
           <CardHeader><CardTitle>Notes & Dates</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea value={form.notes} onChange={(e) => update('notes', e.target.value)} rows={4} />
+              <Label htmlFor="edit-notes">Notes</Label>
+              <Textarea id="edit-notes" value={form.notes} onChange={(e) => update('notes', e.target.value)} rows={4} />
               <FieldError errors={errors} name="notes" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Last contacted</Label>
-                <Input type="date" value={form.lastContactedAt} onChange={(e) => update('lastContactedAt', e.target.value)} />
+                <Label htmlFor="edit-lastContactedAt">Last contacted</Label>
+                <Input id="edit-lastContactedAt" type="date" value={form.lastContactedAt} onChange={(e) => update('lastContactedAt', e.target.value)} />
                 <FieldError errors={errors} name="lastContactedAt" />
               </div>
               <div className="space-y-2">
-                <Label>Next Follow-Up</Label>
-                <Input type="date" value={form.nextFollowUpAt} onChange={(e) => update('nextFollowUpAt', e.target.value)} />
+                <Label htmlFor="edit-nextFollowUpAt">Next Follow-Up</Label>
+                <Input id="edit-nextFollowUpAt" type="date" value={form.nextFollowUpAt} onChange={(e) => update('nextFollowUpAt', e.target.value)} />
                 <FieldError errors={errors} name="nextFollowUpAt" />
               </div>
             </div>
@@ -365,9 +384,9 @@ export default function EditOutreachContactPage() {
         </Card>
 
         <div className="flex flex-wrap justify-end gap-3">
-          <Link href="/admin/outreach">
-            <Button variant="outline" type="button">Cancel</Button>
-          </Link>
+          <Button asChild variant="outline">
+            <Link href="/admin/outreach">Cancel</Link>
+          </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? 'Saving...' : 'Update Contact'}
           </Button>
@@ -396,7 +415,7 @@ export default function EditOutreachContactPage() {
                   </span>
                   <span className="flex items-center gap-3 text-xs text-muted-foreground whitespace-nowrap">
                     <Badge variant="outline">{m.status}</Badge>
-                    {new Date(m.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {formatShortDate(m.createdAt)}
                     <Link href={`/admin/emails?thread=${m.threadId || m.id}`} className="inline-flex items-center gap-1 text-champagne hover:underline">
                       Open <ExternalLink className="h-3 w-3" />
                     </Link>

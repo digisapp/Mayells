@@ -76,20 +76,20 @@ export default function NewOutreachContactPage() {
           <CardHeader><CardTitle>Company</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Company name *</Label>
-              <Input value={form.companyName} onChange={(e) => update('companyName', e.target.value)} required placeholder="e.g., Smith & Associates Law Firm" aria-invalid={!!errors.companyName} />
+              <Label htmlFor="new-companyName">Company name *</Label>
+              <Input id="new-companyName" value={form.companyName} onChange={(e) => update('companyName', e.target.value)} required placeholder="e.g., Smith & Associates Law Firm" aria-invalid={!!errors.companyName} />
               <FieldError errors={errors} name="companyName" />
             </div>
             <div className="space-y-2">
-              <Label>Website</Label>
-              <Input value={form.website} onChange={(e) => update('website', e.target.value)} placeholder="example.com" aria-invalid={!!errors.website} />
+              <Label htmlFor="new-website">Website</Label>
+              <Input id="new-website" value={form.website} onChange={(e) => update('website', e.target.value)} placeholder="example.com" aria-invalid={!!errors.website} />
               <FieldError errors={errors} name="website" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Category *</Label>
+                <Label htmlFor="new-category">Category *</Label>
                 <Select value={form.category} onValueChange={(v) => update('category', v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger id="new-category"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {categoryOptions.map((opt) => (
                       <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
@@ -99,8 +99,8 @@ export default function NewOutreachContactPage() {
                 <FieldError errors={errors} name="category" />
               </div>
               <div className="space-y-2">
-                <Label>Source</Label>
-                <Input value={form.source} onChange={(e) => update('source', e.target.value)} placeholder="e.g., Google, referral, LinkedIn" />
+                <Label htmlFor="new-source">Source</Label>
+                <Input id="new-source" value={form.source} onChange={(e) => update('source', e.target.value)} placeholder="e.g., Google, referral, LinkedIn" />
                 <FieldError errors={errors} name="source" />
               </div>
             </div>
@@ -111,23 +111,23 @@ export default function NewOutreachContactPage() {
           <CardHeader><CardTitle>Contact person</CardTitle></CardHeader>
           <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Contact name</Label>
-              <Input value={form.contactName} onChange={(e) => update('contactName', e.target.value)} placeholder="Full name" />
+              <Label htmlFor="new-contactName">Contact name</Label>
+              <Input id="new-contactName" value={form.contactName} onChange={(e) => update('contactName', e.target.value)} placeholder="Full name" />
               <FieldError errors={errors} name="contactName" />
             </div>
             <div className="space-y-2">
-              <Label>Title</Label>
-              <Input value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="e.g., Managing Partner" />
+              <Label htmlFor="new-title">Title</Label>
+              <Input id="new-title" value={form.title} onChange={(e) => update('title', e.target.value)} placeholder="e.g., Managing Partner" />
               <FieldError errors={errors} name="title" />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} aria-invalid={!!errors.email} />
+              <Label htmlFor="new-email">Email</Label>
+              <Input id="new-email" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} aria-invalid={!!errors.email} />
               <FieldError errors={errors} name="email" />
             </div>
             <div className="space-y-2">
-              <Label>Phone</Label>
-              <Input type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
+              <Label htmlFor="new-phone">Phone</Label>
+              <Input id="new-phone" type="tel" value={form.phone} onChange={(e) => update('phone', e.target.value)} />
               <FieldError errors={errors} name="phone" />
             </div>
           </CardContent>
@@ -137,19 +137,19 @@ export default function NewOutreachContactPage() {
           <CardHeader><CardTitle>Location</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Address</Label>
-              <Input value={form.address} onChange={(e) => update('address', e.target.value)} />
+              <Label htmlFor="new-address">Address</Label>
+              <Input id="new-address" value={form.address} onChange={(e) => update('address', e.target.value)} />
               <FieldError errors={errors} name="address" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>City</Label>
-                <Input value={form.city} onChange={(e) => update('city', e.target.value)} />
+                <Label htmlFor="new-city">City</Label>
+                <Input id="new-city" value={form.city} onChange={(e) => update('city', e.target.value)} />
                 <FieldError errors={errors} name="city" />
               </div>
               <div className="space-y-2">
-                <Label>State</Label>
-                <Input value={form.state} onChange={(e) => update('state', e.target.value)} placeholder="e.g., FL" />
+                <Label htmlFor="new-state">State</Label>
+                <Input id="new-state" value={form.state} onChange={(e) => update('state', e.target.value)} placeholder="e.g., FL" />
                 <FieldError errors={errors} name="state" />
               </div>
             </div>
@@ -160,22 +160,22 @@ export default function NewOutreachContactPage() {
           <CardHeader><CardTitle>Notes & Follow-Up</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Notes</Label>
-              <Textarea value={form.notes} onChange={(e) => update('notes', e.target.value)} rows={4} placeholder="Any relevant details about this lead..." />
+              <Label htmlFor="new-notes">Notes</Label>
+              <Textarea id="new-notes" value={form.notes} onChange={(e) => update('notes', e.target.value)} rows={4} placeholder="Any relevant details about this lead..." />
               <FieldError errors={errors} name="notes" />
             </div>
             <div className="space-y-2">
-              <Label>Next Follow-Up</Label>
-              <Input type="date" value={form.nextFollowUpAt} onChange={(e) => update('nextFollowUpAt', e.target.value)} />
+              <Label htmlFor="new-nextFollowUpAt">Next Follow-Up</Label>
+              <Input id="new-nextFollowUpAt" type="date" value={form.nextFollowUpAt} onChange={(e) => update('nextFollowUpAt', e.target.value)} />
               <FieldError errors={errors} name="nextFollowUpAt" />
             </div>
           </CardContent>
         </Card>
 
         <div className="flex flex-wrap justify-end gap-3">
-          <Link href="/admin/outreach">
-            <Button variant="outline" type="button">Cancel</Button>
-          </Link>
+          <Button asChild variant="outline">
+            <Link href="/admin/outreach">Cancel</Link>
+          </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? 'Saving...' : 'Add Contact'}
           </Button>
