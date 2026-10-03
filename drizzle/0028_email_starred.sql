@@ -1,0 +1,2 @@
+ALTER TABLE "emails" ADD COLUMN "is_starred" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE INDEX "emails_starred_idx" ON "emails" USING btree ("created_at" DESC NULLS LAST) WHERE is_starred = true;

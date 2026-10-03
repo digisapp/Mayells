@@ -12,17 +12,25 @@ import {
   type ForwardableAttachment,
 } from '@/lib/email/notifications';
 import { handleResendEvent } from '@/lib/email/resend-events';
+import {
+  isOwnAddress,
+  ownRecipient,
+  parseEmailAddress,
+  parseThreadIdFromAddresses,
+  recipientsOf,
+  senderDisplayName,
+} from '@/lib/email/addresses';
 import { claimWebhookEvent, finalizeWebhookLog } from '@/lib/webhooks/log';
 
-// Mail that originates from our own sending identities is a platform
-// notification looping back (info@ is both a notify target and the inbound
-// address). It is stored for the record but never forwarded, never fed to the
-// AI, and never counted as unread.
-const OWN_DOMAINS = ['@mayells.com', '@mayellauctions.com'];
-
-function isOwnAddress(email: string): boolean {
-  const lower = email.toLowerCase();
-  return OWN_DOMAINS.some((d) => lower.endsWith(d));
+/**
+ * The Resend account is shared with other businesses and its webhooks are
+ * account-wide, so this endpoint receives every domain's events. Only mail
+ * delivered to one of our addresses, and delivery events for mail we sent,
+ * belong to Mayells.
+ */
+function isMayellsEvent(type: string, data: Record<string, unknown>): boolean {
+  if (type === 'email.received') return ownRecipient(data) !== null;
+  return typeof data.from === 'string' && isOwnAddress(data.from);
 }
 
 // ─── Spam Filtering ───────────────────────────────────────────────────────────
@@ -58,16 +66,6 @@ function isSpamEmail(fromEmail: string, subject: string): boolean {
   return false;
 }
 
-// ─── Parse "Name <email>" format ──────────────────────────────────────────────
-
-function parseEmailAddress(raw: string): { email: string; name: string | null } {
-  const match = raw.match(/^(.+?)\s*<(.+?)>$/);
-  if (match) {
-    return { name: match[1].trim().replace(/^["']|["']$/g, ''), email: match[2].trim() };
-  }
-  return { email: raw.trim(), name: null };
-}
-
 // ─── User Linking ─────────────────────────────────────────────────────────────
 
 async function findUserByEmail(email: string): Promise<string | null> {
@@ -87,10 +85,28 @@ function stripReplyPrefixes(subject: string): string {
 }
 
 async function findThread(params: {
+  /** Thread id parsed from our plus-addressed Reply-To (info+<id>@…). */
+  threadIdHint: string | null;
   inReplyToHeader: string | null;
   fromEmail: string;
   subject: string;
 }): Promise<{ inReplyToId: string | null; threadId: string | null }> {
+  // 1. Plus-address tag — we set it on every outbound Reply-To, so this is
+  //    exact. Verify the thread exists so a guessed or forged tag can't
+  //    attach mail to nothing; the newest message in it is the parent.
+  if (params.threadIdHint) {
+    const [latest] = await db
+      .select({ id: emails.id })
+      .from(emails)
+      .where(or(eq(emails.id, params.threadIdHint), eq(emails.threadId, params.threadIdHint)))
+      .orderBy(desc(emails.createdAt))
+      .limit(1);
+    if (latest) {
+      return { inReplyToId: latest.id, threadId: params.threadIdHint };
+    }
+  }
+
+  // 2. In-Reply-To header → a message we have stored
   if (params.inReplyToHeader) {
     // Resend does not return the RFC Message-ID of mail we send, only its own
     // id — which it uses as the local part of the Message-ID it generates. So
@@ -113,6 +129,7 @@ async function findThread(params: {
     }
   }
 
+  // 3. Last resort: subject (Re: prefix stripped) + counterpart address
   const cleanSubject = stripReplyPrefixes(params.subject).toLowerCase();
   if (cleanSubject) {
     const fromLower = params.fromEmail.toLowerCase();
@@ -157,6 +174,8 @@ async function postProcessInbound(params: {
   bodyHtml: string | null;
   bodyText: string | null;
   attachmentMeta: Array<{ id: string; filename: string; size: number; contentType: string }>;
+  /** Raw headers of the received message, for the auto-reply loop guards. */
+  headers: Record<string, string> | null;
 }) {
   const { savedId, resendEmailId, attachmentMeta } = params;
 
@@ -201,35 +220,10 @@ async function postProcessInbound(params: {
   }
 
   try {
-    await processInboundEmail(savedId);
+    await processInboundEmail(savedId, { headers: params.headers });
   } catch (err) {
     logger.error('AI email processing failed', err, { emailId: savedId });
   }
-}
-
-// ─── Whose mail is this? ──────────────────────────────────────────────────────
-
-/**
- * The Resend account is shared with other businesses (Staycio, Digis, EXA,
- * Boca Banker, ...) and its webhooks are account-wide, so this endpoint is
- * called for every domain's inbound mail. Without this check a renter's
- * message to another business was stored here and forwarded from a Mayells
- * address.
- */
-const OWN_EMAIL_DOMAINS = ['mayells.com', 'mayellauctions.com'];
-
-/** True when any envelope or header recipient is on one of our domains. */
-function isAddressedToMayells(data: Record<string, unknown>): boolean {
-  const recipients = [data.received_for, data.to, data.cc, data.bcc].flatMap((v) =>
-    Array.isArray(v) ? v : typeof v === 'string' ? [v] : [],
-  );
-  return recipients.some((raw) => {
-    const text = String(raw);
-    const bracketed = text.match(/<([^<>]+)>\s*$/);
-    const address = (bracketed ? bracketed[1] : text).trim().toLowerCase();
-    const domain = address.slice(address.lastIndexOf('@') + 1);
-    return OWN_EMAIL_DOMAINS.some((own) => domain === own || domain.endsWith(`.${own}`));
-  });
 }
 
 // ─── Webhook Handler ──────────────────────────────────────────────────────────
@@ -286,7 +280,7 @@ export async function POST(req: NextRequest) {
 
     // Another business's mail: acknowledge it so Resend stops retrying, but
     // never log, store, forward or draft a reply to it.
-    if (type === 'email.received' && !isAddressedToMayells(data)) {
+    if (!isMayellsEvent(type, data)) {
       return NextResponse.json({ received: true, ignored: true });
     }
 
@@ -308,12 +302,18 @@ export async function POST(req: NextRequest) {
 
     // ── Inbound email ──────────────────────────────────────────────────────
     if (type === 'email.received') {
-      const { email: fromEmail, name: fromName } = parseEmailAddress(String(data.from ?? ''));
-      const toList = Array.isArray(data.to) ? (data.to as unknown[]) : [];
-      const { email: toEmail } = parseEmailAddress(String(toList[0] ?? ''));
+      const { email: fromEmail } = parseEmailAddress(String(data.from ?? ''));
+      // The address of ours they wrote to (isMayellsEvent guarantees one) —
+      // not simply To[0], which is someone else when we were only Cc'd.
+      const toEmail = ownRecipient(data)!;
       const subject = String(data.subject || '(no subject)');
       const resendEmailId = (data.email_id as string | undefined) || (data.id as string | undefined) || null;
-      const messageId = (data.message_id as string | undefined) || null;
+      let messageId = (data.message_id as string | undefined) || null;
+      // Resend's `from` is often the bare address; the display name survives
+      // in the raw From header, fetched below.
+      let fromName = senderDisplayName(undefined, String(data.from ?? ''));
+      let recipients = recipientsOf(data);
+      let headers: Record<string, string> | null = null;
 
       let bodyHtml: string | null = null;
       let bodyText: string | null = null;
@@ -321,28 +321,40 @@ export async function POST(req: NextRequest) {
       let attachmentMeta: Array<{ id: string; filename: string; size: number; contentType: string }> = [];
 
       if (resendEmailId) {
-        try {
-          const resend = getResend();
-          const { data: fullEmail } = await resend.emails.receiving.get(resendEmailId);
-          if (fullEmail) {
-            bodyHtml = fullEmail.html || null;
-            bodyText = fullEmail.text || null;
-            inReplyToHeader = fullEmail.headers?.['in-reply-to'] || fullEmail.headers?.['In-Reply-To'] || null;
-            attachmentMeta = (fullEmail.attachments ?? []).map((a) => ({
-              id: a.id,
-              filename: a.filename || 'attachment',
-              size: a.size,
-              contentType: a.content_type,
-            }));
-          }
-        } catch (fetchErr) {
-          logger.error('Failed to fetch inbound email content from Resend', fetchErr);
+        const { data: fullEmail, error: fetchError } = await getResend().emails.receiving.get(resendEmailId);
+        // The event carries metadata only. Without the body there is no
+        // inquiry to file, so fail: Resend redelivers, the failed claim is
+        // reclaimed, and the retry stores the whole message instead of an
+        // empty row (and an empty forward) that nothing would ever refill.
+        if (fetchError || !fullEmail) {
+          throw new Error(`Could not fetch inbound email ${resendEmailId} from Resend: ${fetchError?.message ?? 'empty response'}`);
         }
+        bodyHtml = fullEmail.html || null;
+        bodyText = fullEmail.text || null;
+        headers = fullEmail.headers ?? null;
+        inReplyToHeader = fullEmail.headers?.['in-reply-to'] || fullEmail.headers?.['In-Reply-To'] || null;
+        messageId = messageId || fullEmail.headers?.['message-id'] || fullEmail.headers?.['Message-ID'] || fullEmail.message_id || null;
+        fromName = senderDisplayName(fullEmail.headers?.['from'] ?? fullEmail.headers?.['From'], fullEmail.from) ?? fromName;
+        recipients = [
+          ...recipients,
+          ...recipientsOf({ received_for: fullEmail.received_for, to: fullEmail.to, cc: fullEmail.cc, bcc: fullEmail.bcc }),
+        ];
+        attachmentMeta = (fullEmail.attachments ?? []).map((a) => ({
+          id: a.id,
+          filename: a.filename || 'attachment',
+          size: a.size,
+          contentType: a.content_type,
+        }));
       }
 
+      // Mail from our own sending identities is a platform notification
+      // looping back (info@ is both a notify target and the inbound address).
+      // It is stored for the record but never forwarded, never fed to the AI,
+      // and never counted as unread.
       const ownAddress = isOwnAddress(fromEmail);
       const spam = isSpamEmail(fromEmail, subject);
-      const { inReplyToId, threadId } = await findThread({ inReplyToHeader, fromEmail, subject });
+      const threadIdHint = parseThreadIdFromAddresses(recipients);
+      const { inReplyToId, threadId } = await findThread({ threadIdHint, inReplyToHeader, fromEmail, subject });
       const userId = await findUserByEmail(fromEmail);
 
       // NB: a customer reply never rewrites the parent OUTBOUND row's status —
@@ -383,6 +395,7 @@ export async function POST(req: NextRequest) {
           bodyHtml,
           bodyText,
           attachmentMeta,
+          headers,
         };
         after(() => postProcessInbound(job));
       }

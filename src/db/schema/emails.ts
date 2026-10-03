@@ -43,6 +43,8 @@ export const emails = pgTable('emails', {
   aiSummary: text('ai_summary'),
   // Spam filtering
   isSpam: boolean('is_spam').default(false).notNull(),
+  // Operator star — "keep this handy"; its own folder in the inbox.
+  isStarred: boolean('is_starred').default(false).notNull(),
   // Inbound attachment metadata (files themselves stay on Resend; the admin
   // UI fetches short-lived signed download URLs on demand)
   attachments: jsonb('attachments').$type<Array<{
@@ -76,6 +78,8 @@ export const emails = pgTable('emails', {
   // so a plain index on archived_at never helped them.
   index('emails_live_created_idx').on(table.createdAt.desc()).where(sql`archived_at is null`),
   index('emails_archived_at_idx').on(table.archivedAt).where(sql`archived_at is not null`),
+  // The Starred folder: almost every row is unstarred.
+  index('emails_starred_idx').on(table.createdAt.desc()).where(sql`is_starred = true`),
   // Inbound matching compares lower-cased addresses.
   index('emails_from_email_lower_idx').on(sql`lower(${table.fromEmail})`),
   index('emails_to_email_lower_idx').on(sql`lower(${table.toEmail})`),

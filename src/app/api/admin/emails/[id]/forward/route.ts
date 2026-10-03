@@ -8,13 +8,10 @@ import { requireAdminApi } from '@/lib/auth/require-admin';
 import { isSentinelEmail } from '@/lib/sellers/shadow';
 import { escapeHtml } from '@/lib/email/escape';
 import { listForwardableAttachments, type ForwardableAttachment } from '@/lib/email/notifications';
-import { BUSINESS } from '@/lib/config';
+import { ADMIN_FROM_NAME, getAdminFrom, getAdminFromAddress, getInboundAddress } from '@/lib/email/addresses';
 import { logger } from '@/lib/logger';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-const FROM_EMAIL = 'notifications@mayells.com';
-const FROM_ADDRESS = `Mayells <${FROM_EMAIL}>`;
 
 const forwardSchema = z.object({
   to: z.string().email('Valid recipient email required').max(320),
@@ -101,12 +98,12 @@ export async function POST(
 
     const resend = getResend();
     const sendPayload = {
-      from: FROM_ADDRESS,
+      from: getAdminFrom(),
       to,
       // A forward is a fresh conversation with the recipient: replies come
       // back to the inbox, not to the original sender, and no threading
       // headers tie it to the customer's message.
-      replyTo: BUSINESS.email,
+      replyTo: getInboundAddress(),
       subject,
       html: bodyHtml,
       text: bodyText,
@@ -144,8 +141,8 @@ export async function POST(
       resendId: sent?.id || null,
       direction: 'outbound',
       status: 'sent',
-      fromEmail: FROM_EMAIL,
-      fromName: 'Mayells',
+      fromEmail: getAdminFromAddress(),
+      fromName: ADMIN_FROM_NAME,
       toEmail: to,
       subject,
       bodyHtml,

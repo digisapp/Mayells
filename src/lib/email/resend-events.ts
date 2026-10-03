@@ -32,13 +32,25 @@ export async function handleResendEvent(event: ResendEvent): Promise<ResendEvent
   const status = RESEND_STATUS_BY_EVENT[event.type];
   if (!status) return { status: 'ignored' };
 
-  await db.update(emails).set({ status }).where(eq(emails.resendId, emailId));
+  const updated = await db
+    .update(emails)
+    .set({ status })
+    .where(eq(emails.resendId, emailId))
+    .returning({ id: emails.id });
+  // Some sends (the owner-mailbox forward, a few senders outside
+  // notifications.ts) have no inbox row to stamp — say so rather than report
+  // a success.
+  if (updated.length === 0) return { status: 'ignored' };
   return { status: 'success', relatedType: 'email', relatedId: emailId };
 }
 
+// failed/suppressed mean Resend never delivered the message; the inbox shows
+// all three as "Bounced". (They only arrive if the webhook subscribes to them.)
 const RESEND_STATUS_BY_EVENT: Record<string, 'delivered' | 'bounced' | undefined> = {
   'email.delivered': 'delivered',
   'email.bounced': 'bounced',
+  'email.failed': 'bounced',
+  'email.suppressed': 'bounced',
 };
 
 /** Event types `handleResendEvent` acts on (everything else is ignored). */

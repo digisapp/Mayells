@@ -3,14 +3,15 @@ import { getModel } from './client';
 import { db } from '@/db';
 import { emails, automationSettings, type Email } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
-import { getResend } from '@/lib/email/resend';
 import { BUSINESS } from '@/lib/config';
 import { escapeHtml } from '@/lib/email/escape';
+import { replySubject, sendAdminEmail } from '@/lib/email/admin-inbox';
+import { autoReplySuppressionReason, type HeaderBag } from '@/lib/email/auto-reply-guards';
 import { logger } from '@/lib/logger';
 
 // ─── Categories ──────────────────────────────────────────────────────────────
 
-const EMAIL_CATEGORIES = [
+export const EMAIL_CATEGORIES = [
   'appraisal_request',
   'consignment_inquiry',
   'purchase_inquiry',
@@ -26,10 +27,10 @@ const EMAIL_CATEGORIES = [
   'other',
 ] as const;
 
-type EmailCategory = (typeof EMAIL_CATEGORIES)[number];
+export type EmailCategory = (typeof EMAIL_CATEGORIES)[number];
 
 // Categories safe for auto-reply
-const AUTO_SEND_SAFE_CATEGORIES: EmailCategory[] = [
+export const AUTO_SEND_SAFE_CATEGORIES: EmailCategory[] = [
   'appraisal_request',
   'consignment_inquiry',
   'purchase_inquiry',
@@ -39,7 +40,7 @@ const AUTO_SEND_SAFE_CATEGORIES: EmailCategory[] = [
   'general_inquiry',
 ];
 
-const AUTO_SEND_MIN_CONFIDENCE = 0.85;
+export const AUTO_SEND_MIN_CONFIDENCE = 0.85;
 
 // ─── System Prompt ───────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ function textToHtml(text: string): string {
 
 // ─── Branded Email Template ──────────────────────────────────────────────────
 
-function brandedReplyHtml(draftText: string, originalEmail: {
+export function brandedReplyHtml(draftText: string, originalEmail: {
   createdAt: Date;
   fromName: string | null;
   fromEmail: string;
@@ -249,11 +250,58 @@ export async function generateAndStoreDraft(
   return { draftText: result.draftText, draftHtml: result.draftHtml, draftedAt };
 }
 
+/** How long after our last outbound in a thread we refuse to auto-reply again. */
+const AUTO_REPLY_THREAD_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+/** And never more than this many auto-sends in one thread, ever. */
+const MAX_AUTO_REPLIES_PER_THREAD = 3;
+
+/**
+ * Send the stored AI draft of an inbound email as a reply, with the branded
+ * template. The manual "Send AI draft" button and the auto-reply share this
+ * so the two look identical to the customer.
+ */
+export async function sendAiDraft(
+  email: Email,
+  opts: { auto?: boolean; category?: string | null } = {},
+): Promise<{ ok: true; outboundId: string } | { ok: false; status: number; error: string }> {
+  if (email.direction !== 'inbound') return { ok: false, status: 400, error: 'Only incoming mail has a draft' };
+  if (!email.aiDraftText) return { ok: false, status: 400, error: 'No AI draft for this email' };
+  if (email.status === 'replied') return { ok: false, status: 409, error: 'This email was already answered' };
+
+  const brandedHtml = brandedReplyHtml(email.aiDraftText, {
+    createdAt: email.createdAt,
+    fromName: email.fromName,
+    fromEmail: email.fromEmail,
+    bodyHtml: email.bodyHtml,
+    bodyText: email.bodyText,
+  });
+
+  const result = await sendAdminEmail({
+    to: email.fromEmail,
+    subject: replySubject(email.subject),
+    text: email.aiDraftText,
+    html: brandedHtml,
+    inReplyToId: email.id,
+    rowExtras: {
+      aiAutoSent: !!opts.auto,
+      aiCategory: opts.category ?? email.aiCategory ?? null,
+      ...(opts.auto && { aiSummary: `Auto-reply to: ${email.aiSummary || email.subject || 'an email'}` }),
+    },
+  });
+  if (!result.ok) return result;
+
+  if (opts.auto) {
+    await db.update(emails).set({ aiAutoSent: true }).where(eq(emails.id, email.id));
+  }
+  return { ok: true, outboundId: result.email.id };
+}
+
 /**
  * Process an inbound email: classify, generate AI draft, and optionally auto-send.
- * Called from the webhook after storing the inbound email.
+ * Called from the webhook after storing the inbound email. `headers` are the
+ * raw headers of the received message, for the automation guards.
  */
-export async function processInboundEmail(emailId: string) {
+export async function processInboundEmail(emailId: string, opts: { headers?: HeaderBag } = {}) {
   try {
     const [email] = await db.select().from(emails).where(eq(emails.id, emailId)).limit(1);
     if (!email || email.isSpam || email.direction !== 'inbound') return;
@@ -281,11 +329,21 @@ export async function processInboundEmail(emailId: string) {
     await db.update(emails).set({
       aiDraftHtml: result.draftHtml,
       aiDraftText: result.draftText,
-      aiDraftedAt: new Date(),
+      aiDraftedAt: result.draftText ? new Date() : null,
       aiCategory: result.category,
       aiConfidence: result.confidence,
       aiSummary: result.summary,
     }).where(eq(emails.id, emailId));
+
+    // ─── Mail-loop guards ────────────────────────────────────────────────────
+    // Evaluated before the setting so a misconfigured toggle can't override
+    // them: never answer our own addresses, bots, list mail or auto-responders,
+    // and never keep answering the same thread.
+    const suppression = autoReplySuppressionReason({ from: email.fromEmail, subject: email.subject, headers: opts.headers });
+    if (suppression) {
+      logger.info('AI auto-reply suppressed', { emailId, reason: suppression });
+      return;
+    }
 
     // Check if auto-reply is enabled
     const [settings] = await db.select().from(automationSettings).limit(1);
@@ -306,112 +364,39 @@ export async function processInboundEmail(emailId: string) {
       return;
     }
 
-    // ─── Mail-loop guards ────────────────────────────────────────────────────
-    // Never auto-reply to our own addresses or to another automated system —
-    // and cap replies per thread — so two auto-responders can't ping-pong
-    // forever, flooding inboxes and burning Resend/LLM spend.
-    const fromAddr = (email.fromEmail || '').toLowerCase();
-
-    // 1. Self / same-domain guard.
-    if (fromAddr.endsWith('@mayells.com') || fromAddr.includes('notifications@')) {
-      logger.warn('Skipping AI auto-reply to our own domain', { emailId, fromAddr });
-      return;
-    }
-
-    // 2. Auto-responder / system-address detection.
-    const subject = (email.subject || '').toLowerCase();
-    const AUTO_MARKERS = [
-      'auto-reply', 'auto reply', 'autoreply', 'automatic reply', 'out of office',
-      'out-of-office', 'vacation', 'do not reply', 'undeliverable', 'delivery status',
-      'mail delivery', 'mailer-daemon', 'postmaster',
-    ];
-    const looksAutomated =
-      /(^|[.@+])(no-?reply|do-?not-?reply|mailer-daemon|postmaster|bounce)/i.test(fromAddr) ||
-      AUTO_MARKERS.some((m) => subject.includes(m));
-    if (looksAutomated) {
-      logger.warn('Skipping AI auto-reply to an automated/no-reply sender', { emailId, fromAddr, subject });
-      return;
-    }
-
-    // 3. Thread depth cap — stop after a few auto-sends in one thread.
-    const MAX_AUTO_REPLIES_PER_THREAD = 3;
+    // Thread caps: at most a few auto-sends per thread, and never twice in
+    // 24 hours (whoever sent the last reply).
     const threadKey = email.threadId || emailId;
-    const [{ n } = { n: 0 }] = await db
-      .select({ n: sql<number>`count(*)` })
+    const [{ autoSent, recent } = { autoSent: 0, recent: 0 }] = await db
+      .select({
+        autoSent: sql<number>`count(*) filter (where ${emails.aiAutoSent} = true)::int`,
+        recent: sql<number>`count(*) filter (where ${emails.createdAt} > ${new Date(Date.now() - AUTO_REPLY_THREAD_COOLDOWN_MS)})::int`,
+      })
       .from(emails)
-      .where(and(
-        eq(emails.threadId, threadKey),
-        eq(emails.direction, 'outbound'),
-        eq(emails.aiAutoSent, true),
-      ));
-    if (Number(n) >= MAX_AUTO_REPLIES_PER_THREAD) {
-      logger.warn('Thread hit AI auto-reply cap — not auto-sending', { emailId, threadKey, count: Number(n) });
+      .where(and(eq(emails.threadId, threadKey), eq(emails.direction, 'outbound')));
+    if (Number(autoSent) >= MAX_AUTO_REPLIES_PER_THREAD) {
+      logger.warn('Thread hit AI auto-reply cap — not auto-sending', { emailId, threadKey, count: Number(autoSent) });
+      return;
+    }
+    if (Number(recent) > 0) {
+      logger.info('AI auto-reply suppressed: we already replied on this thread in the last 24h', { emailId, threadKey });
       return;
     }
 
-    // Auto-send the AI draft with branded template
-    const resend = getResend();
-    const replySubject = `Re: ${(email.subject || '').replace(/^Re:\s*/i, '')}`;
-
-    const brandedHtml = brandedReplyHtml(result.draftText, {
-      createdAt: email.createdAt,
-      fromName: email.fromName,
-      fromEmail: email.fromEmail,
-      bodyHtml: email.bodyHtml,
-      bodyText: email.bodyText,
-    });
-
-    // Thread the reply under the customer's message and route their next
-    // reply back to the address they originally wrote to (the inbox).
-    const { data: sent, error: sendError } = await resend.emails.send({
-      from: `Mayells <notifications@mayells.com>`,
-      to: email.fromEmail,
-      replyTo: email.toEmail || BUSINESS.email,
-      subject: replySubject,
-      html: brandedHtml,
-      text: `${result.draftText}\n\n> On ${new Date(email.createdAt).toLocaleDateString()}, ${email.fromName || email.fromEmail} wrote:\n> ${(email.bodyText || '').split('\n').join('\n> ')}`,
-      ...(email.messageId && {
-        headers: { 'In-Reply-To': email.messageId, References: email.messageId },
-      }),
-    });
-    if (sendError) {
-      logger.error('AI auto-reply send failed', sendError, { emailId });
+    const [fresh] = await db.select().from(emails).where(eq(emails.id, emailId)).limit(1);
+    if (!fresh) return;
+    const sent = await sendAiDraft(fresh, { auto: true, category: result.category });
+    if (!sent.ok) {
+      logger.error('AI auto-reply send failed', undefined, { emailId, error: sent.error });
       return;
     }
-
-    // Log the sent reply
-    await db.insert(emails).values({
-      resendId: sent?.id || null,
-      direction: 'outbound',
-      status: 'sent',
-      fromEmail: 'notifications@mayells.com',
-      fromName: 'Mayells',
-      toEmail: email.fromEmail,
-      subject: replySubject,
-      bodyHtml: brandedHtml,
-      bodyText: result.draftText,
-      inReplyToId: emailId,
-      inReplyToMessageId: email.messageId,
-      threadId: email.threadId || emailId,
-      userId: email.userId,
-      aiAutoSent: true,
-      aiCategory: result.category,
-    });
-
-    // Mark original as replied (and stamp a thread root with its own id so the
-    // inbox shows the conversation control on it).
-    await db.update(emails).set({
-      status: 'replied',
-      aiAutoSent: true,
-      repliedAt: new Date(),
-      ...(!email.threadId && { threadId: emailId }),
-    }).where(eq(emails.id, emailId));
 
     logger.info('AI auto-replied to email', {
       emailId,
       to: email.fromEmail,
       category: result.category,
       confidence: result.confidence,
+      outboundId: sent.outboundId,
     });
   } catch (error) {
     logger.error('AI email processing failed', error, { emailId });
