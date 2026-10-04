@@ -207,6 +207,31 @@ async function postProcessInbound(params: {
   }
 }
 
+// ─── Whose mail is this? ──────────────────────────────────────────────────────
+
+/**
+ * The Resend account is shared with other businesses (Staycio, Digis, EXA,
+ * Boca Banker, ...) and its webhooks are account-wide, so this endpoint is
+ * called for every domain's inbound mail. Without this check a renter's
+ * message to another business was stored here and forwarded from a Mayells
+ * address.
+ */
+const OWN_EMAIL_DOMAINS = ['mayells.com', 'mayellauctions.com'];
+
+/** True when any envelope or header recipient is on one of our domains. */
+function isAddressedToMayells(data: Record<string, unknown>): boolean {
+  const recipients = [data.received_for, data.to, data.cc, data.bcc].flatMap((v) =>
+    Array.isArray(v) ? v : typeof v === 'string' ? [v] : [],
+  );
+  return recipients.some((raw) => {
+    const text = String(raw);
+    const bracketed = text.match(/<([^<>]+)>\s*$/);
+    const address = (bracketed ? bracketed[1] : text).trim().toLowerCase();
+    const domain = address.slice(address.lastIndexOf('@') + 1);
+    return OWN_EMAIL_DOMAINS.some((own) => domain === own || domain.endsWith(`.${own}`));
+  });
+}
+
 // ─── Webhook Handler ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -258,6 +283,12 @@ export async function POST(req: NextRequest) {
     }
     const type = body.type || 'unknown';
     const data = (body.data ?? {}) as Record<string, unknown>;
+
+    // Another business's mail: acknowledge it so Resend stops retrying, but
+    // never log, store, forward or draft a reply to it.
+    if (type === 'email.received' && !isAddressedToMayells(data)) {
+      return NextResponse.json({ received: true, ignored: true });
+    }
 
     // Log FIRST. The partial unique index on (provider, event_id) makes the
     // claim the atomic dedup: a concurrent delivery loses the insert race, and
