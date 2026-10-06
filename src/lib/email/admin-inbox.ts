@@ -38,7 +38,10 @@ export function textToHtml(text: string): string {
 
 /** The customer's message, quoted under a reply (HTML). */
 export function quotedHtml(original: Pick<Email, 'createdAt' | 'fromName' | 'fromEmail' | 'bodyHtml' | 'bodyText'>): string {
-  const quoted = original.bodyHtml || escapeHtml(original.bodyText || '').replace(/\n/g, '<br />');
+  // Never put the customer's raw HTML into mail we send: it may carry
+  // tracking pixels, hidden text or markup that breaks our own layout. Quote
+  // their words as escaped text (falling back to the HTML stripped to text).
+  const quoted = escapeHtml(original.bodyText || htmlToPlainText(original.bodyHtml)).replace(/\n/g, '<br />');
   if (!quoted) return '';
   return `
     <br /><br />
@@ -46,6 +49,19 @@ export function quotedHtml(original: Pick<Email, 'createdAt' | 'fromName' | 'fro
       <p style="margin: 0 0 4px;">On ${formatShortDate(original.createdAt)}, ${escapeHtml(original.fromName || original.fromEmail)} wrote:</p>
       <div>${quoted}</div>
     </div>`;
+}
+
+/** Rough HTML → text for quoting when a message arrived without a text part. */
+export function htmlToPlainText(html: string | null | undefined): string {
+  if (!html) return '';
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6]|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;/gi, "'")
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** The customer's message, quoted under a reply (plain text). */

@@ -91,6 +91,21 @@ async function findThread(params: {
   fromEmail: string;
   subject: string;
 }): Promise<{ inReplyToId: string | null; threadId: string | null }> {
+  // A thread is a conversation with one person. Mail only joins it when it
+  // comes from that person (the thread's counterpart), however the thread
+  // was found. Otherwise anyone who learns a plus tag or a Message-ID could
+  // attach mail to someone else's conversation and draw replies — manual or
+  // automatic — that go to, and quote, the other person.
+  const me = params.fromEmail.trim().toLowerCase();
+  const fromCounterpart = async (threadId: string): Promise<boolean> => {
+    const members = await db
+      .select({ direction: emails.direction, fromEmail: emails.fromEmail, toEmail: emails.toEmail })
+      .from(emails)
+      .where(or(eq(emails.id, threadId), eq(emails.threadId, threadId)))
+      .limit(500);
+    return members.some((m) => (m.direction === 'inbound' ? m.fromEmail : m.toEmail).trim().toLowerCase() === me);
+  };
+
   // 1. Plus-address tag — we set it on every outbound Reply-To, so this is
   //    exact. Verify the thread exists so a guessed or forged tag can't
   //    attach mail to nothing; the newest message in it is the parent.
@@ -101,7 +116,7 @@ async function findThread(params: {
       .where(or(eq(emails.id, params.threadIdHint), eq(emails.threadId, params.threadIdHint)))
       .orderBy(desc(emails.createdAt))
       .limit(1);
-    if (latest) {
+    if (latest && (await fromCounterpart(params.threadIdHint))) {
       return { inReplyToId: latest.id, threadId: params.threadIdHint };
     }
   }
@@ -124,7 +139,7 @@ async function findThread(params: {
       )
       .orderBy(desc(emails.createdAt))
       .limit(1);
-    if (parent) {
+    if (parent && (await fromCounterpart(parent.threadId || parent.id))) {
       return { inReplyToId: parent.id, threadId: parent.threadId || parent.id };
     }
   }

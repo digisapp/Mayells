@@ -142,7 +142,7 @@ describe('POST /api/email/inbound', () => {
   });
 
   it('threads a reply to our plus-addressed Reply-To exactly, and files it under the plain mailbox', async () => {
-    selectResults.push([{ id: 'root-1' }], []); // thread exists; no user
+    selectResults.push([{ id: 'root-1' }], [{ direction: 'outbound', fromEmail: 'info@mayells.com', toEmail: 'jane@gmail.com' }], []); // thread exists; sender is its counterpart; no user
     const res = await POST(request(received({
       to: [`info+${THREAD}@mayells.com`],
       received_for: [`info+${THREAD}@mayells.com`],

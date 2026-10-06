@@ -1,4 +1,5 @@
 import { isOwnAddress } from './addresses';
+import { parseAuthResults, senderAuthenticated } from './sender-auth';
 
 /**
  * Reasons an inbound email must never receive an automatic reply, no matter
@@ -49,6 +50,11 @@ export function autoReplySuppressionReason(args: {
   if (/bulk|list|junk|auto_reply/.test(precedence)) return `Precedence: ${precedence}`;
   if (h['x-auto-response-suppress'] || h['x-autoreply'] || h['x-autorespond'] || h['list-id'] || h['list-unsubscribe']) {
     return 'automated/list mail headers present';
+  }
+  // From is trivially forged; a reply to a forged From lands on a third
+  // party. Only answer a sender whose address passed DMARC (sender-auth.ts).
+  if (!senderAuthenticated(parseAuthResults(h['authentication-results']))) {
+    return 'sender not authenticated (no DMARC pass)';
   }
   return null;
 }

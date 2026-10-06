@@ -5,7 +5,7 @@ import { emails, automationSettings, type Email } from '@/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import { BUSINESS } from '@/lib/config';
 import { escapeHtml } from '@/lib/email/escape';
-import { replySubject, sendAdminEmail } from '@/lib/email/admin-inbox';
+import { htmlToPlainText, replySubject, sendAdminEmail } from '@/lib/email/admin-inbox';
 import { autoReplySuppressionReason, type HeaderBag } from '@/lib/email/auto-reply-guards';
 import { logger } from '@/lib/logger';
 
@@ -119,9 +119,9 @@ export function brandedReplyHtml(draftText: string, originalEmail: {
   bodyHtml: string | null;
   bodyText: string | null;
 }): string {
-  const quotedContent = originalEmail.bodyHtml
-    || (originalEmail.bodyText ? escapeHtml(originalEmail.bodyText).replace(/\n/g, '<br />') : '')
-    || '';
+  // Quote the customer's words as escaped text, never their raw HTML (see
+  // quotedHtml in admin-inbox.ts).
+  const quotedContent = escapeHtml(originalEmail.bodyText || htmlToPlainText(originalEmail.bodyHtml)).replace(/\n/g, '<br />');
   const dateStr = new Date(originalEmail.createdAt).toLocaleDateString();
   const senderName = escapeHtml(originalEmail.fromName || originalEmail.fromEmail);
 
