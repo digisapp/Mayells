@@ -11,7 +11,9 @@ import {
   htmlToText,
   isUnread,
   readError,
+  replyStarter,
   replySubject,
+  threadKeyOf,
   type BulkAction,
   type EmailDetail,
   type EmailRow,
@@ -39,6 +41,16 @@ export interface ComposeState {
   attachments: OutgoingAttachment[];
   /** One per composed message, so a retried send delivers once. */
   idempotencyKey: string;
+  /** Where the caret goes when the composer opens (a reply: after the greeting). */
+  caretAt?: number;
+}
+
+/** What a confirmed delete removes: messages by id and/or whole conversations. */
+export interface PendingDelete {
+  ids: string[];
+  threadIds: string[];
+  /** How many messages go, for the confirmation copy. */
+  messages: number;
 }
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -88,6 +100,11 @@ const BULK_BODY: Record<Exclude<BulkAction, 'delete'>, Record<string, boolean>> 
   spam: { spam: true }, notSpam: { spam: false }, archive: { archived: true }, unarchive: { archived: false },
 };
 
+// The list shows conversations, so a bulk action on a row acts on the whole
+// conversation — except starring, which marks the one message the row shows
+// (unstarring takes the star off every message, so the row leaves Starred).
+const BULK_ON_ROW_ONLY: ReadonlySet<BulkAction> = new Set(['star']);
+
 export function useAdminInbox() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -120,7 +137,7 @@ export function useAdminInbox() {
   // ── Selection / bulk ──
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkActing, setBulkActing] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   // ── Auto-reply ──
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
@@ -239,6 +256,20 @@ export function useAdminInbox() {
     setThread((prev) => prev.map((e) => (set.has(e.id) ? { ...e, ...patch } : e)));
   }, []);
 
+  /** Patch (or drop) every list row and thread message in the given conversations. */
+  const applyLocalByThread = useCallback((keys: string[], patch: Partial<EmailRow>, removeFromList = false) => {
+    const set = new Set(keys);
+    const hit = (e: EmailRow) => set.has(threadKeyOf(e));
+    setEmails((prev) => removeFromList ? prev.filter((e) => !hit(e)) : prev.map((e) => (hit(e) ? { ...e, ...patch } : e)));
+    setThread((prev) => prev.map((e) => (hit(e) ? { ...e, ...patch } : e)));
+  }, []);
+
+  /** Set the unread count a list row shows for its conversation. */
+  const setThreadUnread = useCallback((keys: string[], next: (current: number) => number) => {
+    const set = new Set(keys);
+    setEmails((prev) => prev.map((e) => (set.has(threadKeyOf(e)) ? { ...e, threadUnread: Math.max(0, next(e.threadUnread)) } : e)));
+  }, []);
+
   const bumpCounts = useCallback((patch: Partial<FolderCounts>) => {
     setCounts((prev) => {
       const next = { ...prev };
@@ -255,6 +286,10 @@ export function useAdminInbox() {
   // that need the body right away — forwarding — can await it.
   const detailsRef = useRef(details);
   detailsRef.current = details;
+  const emailsRef = useRef(emails);
+  emailsRef.current = emails;
+  const threadRef = useRef(thread);
+  threadRef.current = thread;
   const loadDetail = useCallback(async (id: string): Promise<EmailDetail | null> => {
     if (detailsRef.current[id]) return detailsRef.current[id];
     setDetailFailed((prev) => {
@@ -267,7 +302,7 @@ export function useAdminInbox() {
       const r = await fetch(`/api/admin/emails/${id}`);
       if (!r.ok) throw new Error(await readError(r, 'Failed to load email'));
       const d = await r.json();
-      const detail: EmailDetail = { ...d.data, links: d.links ?? { userId: null, prospectId: null, outreachId: null } };
+      const detail: EmailDetail = { ...d.data, links: d.links ?? { userId: null, prospectId: null, outreachId: null }, prospect: d.prospect ?? null };
       setDetails((prev) => ({ ...prev, [id]: detail }));
       return detail;
     } catch {
@@ -283,14 +318,26 @@ export function useAdminInbox() {
       if (!res.ok) throw new Error(await readError(res, 'Failed to update emails'));
       const now = new Date().toISOString();
       applyLocal(ids, read ? { readAt: now } : { readAt: null });
-      bumpCounts({ unread: read ? -ids.length : ids.length });
+      // Reading a conversation reads all of it (the ids are every unread
+      // message in it); marking one message unread makes its row unread.
+      const rows = [...emailsRef.current, ...threadRef.current];
+      const perKey = new Map<string, number>();
+      for (const id of ids) {
+        const row = rows.find((e) => e.id === id);
+        if (row) perKey.set(threadKeyOf(row), (perKey.get(threadKeyOf(row)) ?? 0) + 1);
+      }
+      for (const [key, n] of perKey) setThreadUnread([key], (current) => (read ? 0 : current + n));
+      // Folder counts are conversations: a read clears one per conversation,
+      // an unread adds one only where the conversation had none.
+      const before = new Set(emailsRef.current.filter((e) => perKey.has(threadKeyOf(e)) && e.threadUnread > 0).map(threadKeyOf));
+      bumpCounts({ unread: read ? -before.size : perKey.size - before.size });
       void refreshAdminBadges();
       return true;
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update emails');
       return false;
     }
-  }, [applyLocal, bumpCounts]);
+  }, [applyLocal, bumpCounts, setThreadUnread]);
 
   // ── Detail: one conversation on the right ──
   // The conversation most recently asked for: a slower response for one the
@@ -383,12 +430,19 @@ export function useAdminInbox() {
     }
   }, [setRead, applyLocal, closeDetail]);
 
+  const selectedKey = selectedEmail ? threadKeyOf(selectedEmail) : null;
+
+  /** Spam is decided per conversation: every message in it goes, or comes back. */
   const setSpam = useCallback(async (id: string, isSpam: boolean) => {
+    const row = emails.find((e) => e.id === id) ?? thread.find((e) => e.id === id);
+    if (!row) return;
+    const key = threadKeyOf(row);
     try {
-      await patchOne(id, { isSpam });
+      const res = await fetch('/api/admin/emails', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ threadIds: [key], spam: isSpam }) });
+      if (!res.ok) throw new Error(await readError(res, 'Could not update'));
       const leavesFolder = folder !== 'archived' && (folder === 'spam') !== isSpam;
-      applyLocal([id], { isSpam }, leavesFolder);
-      if (leavesFolder && selectedId === id) closeDetail();
+      applyLocalByThread([key], { isSpam }, leavesFolder);
+      if (leavesFolder && selectedKey === key) closeDetail();
       bumpCounts({ spam: isSpam ? 1 : -1 });
       toast.success(isSpam ? 'Moved to spam' : 'Moved back to inbox');
       void fetchEmails({ silent: true });
@@ -396,19 +450,23 @@ export function useAdminInbox() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not update');
     }
-  }, [folder, selectedId, patchOne, applyLocal, bumpCounts, closeDetail, fetchEmails]);
+  }, [emails, thread, folder, selectedKey, applyLocalByThread, bumpCounts, closeDetail, fetchEmails]);
 
-  const setArchived = useCallback(async (ids: string[], archived: boolean) => {
-    if (ids.length === 0) return false;
+  /** Archive (or restore) whole conversations, as the list shows them. */
+  const setArchivedThreads = useCallback(async (keys: string[], archived: boolean) => {
+    if (keys.length === 0) return false;
     try {
-      const res = await fetch('/api/admin/emails', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ ids, archived }) });
+      const res = await fetch('/api/admin/emails', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ threadIds: keys, archived }) });
       if (!res.ok) throw new Error(await readError(res, 'Failed to update emails'));
       const now = new Date().toISOString();
       const leavesFolder = (folder === 'archived') !== archived;
-      applyLocal(ids, { archivedAt: archived ? now : null }, leavesFolder);
-      bumpCounts({ archived: archived ? ids.length : -ids.length });
-      if (leavesFolder && selectedId && ids.includes(selectedId)) closeDetail();
-      toast.success(archived ? (ids.length === 1 ? 'Archived' : `Archived ${ids.length}`) : (ids.length === 1 ? 'Restored' : `Restored ${ids.length}`));
+      applyLocalByThread(keys, { archivedAt: archived ? now : null }, leavesFolder);
+      bumpCounts({ archived: archived ? keys.length : -keys.length });
+      if (leavesFolder && selectedKey && keys.includes(selectedKey)) closeDetail();
+      const n = keys.length;
+      toast.success(archived
+        ? (n === 1 ? 'Conversation archived' : `${n} conversations archived`)
+        : (n === 1 ? 'Conversation restored' : `${n} conversations restored`));
       void refreshAdminBadges();
       void fetchEmails({ silent: true });
       return true;
@@ -416,27 +474,41 @@ export function useAdminInbox() {
       toast.error(err instanceof Error ? err.message : 'Failed to update emails');
       return false;
     }
-  }, [folder, selectedId, applyLocal, bumpCounts, closeDetail, fetchEmails]);
+  }, [folder, selectedKey, applyLocalByThread, bumpCounts, closeDetail, fetchEmails]);
 
-  const archiveOne = useCallback((email: EmailRow) => setArchived([email.id], !email.archivedAt), [setArchived]);
-  const archiveThread = useCallback(() => setArchived(thread.map((e) => e.id), true), [setArchived, thread]);
+  const archiveOne = useCallback((email: EmailRow) => setArchivedThreads([threadKeyOf(email)], !email.archivedAt), [setArchivedThreads]);
 
   // Deletes always confirm first (the page renders the dialog).
-  const requestDelete = useCallback((ids: string[]) => { if (ids.length) setPendingDelete(ids); }, []);
+  const requestDelete = useCallback((ids: string[]) => {
+    if (ids.length) setPendingDelete({ ids, threadIds: [], messages: ids.length });
+  }, []);
+  /** Delete whole conversations (every message in each). */
+  const requestDeleteThreads = useCallback((rows: EmailRow[]) => {
+    if (rows.length === 0) return;
+    const keys = Array.from(new Set(rows.map(threadKeyOf)));
+    const messages = rows.reduce((n, r) => n + Math.max(1, r.threadCount), 0);
+    setPendingDelete({ ids: [], threadIds: keys, messages });
+  }, []);
   const cancelDelete = useCallback(() => setPendingDelete(null), []);
   const confirmDelete = useCallback(async () => {
-    const ids = pendingDelete;
-    if (!ids?.length) return;
+    const pending = pendingDelete;
+    if (!pending || (pending.ids.length === 0 && pending.threadIds.length === 0)) return;
+    const { ids, threadIds } = pending;
     setBulkActing(true);
     try {
-      const res = await fetch('/api/admin/emails', { method: 'DELETE', headers: JSON_HEADERS, body: JSON.stringify({ ids }) });
+      const res = await fetch('/api/admin/emails', { method: 'DELETE', headers: JSON_HEADERS, body: JSON.stringify({ ids, threadIds }) });
       if (!res.ok) throw new Error(await readError(res, 'Delete failed'));
-      setEmails((prev) => prev.filter((e) => !ids.includes(e.id)));
+      const keySet = new Set(threadIds);
+      setEmails((prev) => prev.filter((e) => !ids.includes(e.id) && !keySet.has(threadKeyOf(e))));
       setSelectedIds(new Set());
       setPendingDelete(null);
-      toast.success(ids.length === 1 ? 'Email deleted' : `${ids.length} emails deleted`);
+      toast.success(threadIds.length > 0
+        ? (threadIds.length === 1 ? 'Conversation deleted' : `${threadIds.length} conversations deleted`)
+        : (ids.length === 1 ? 'Email deleted' : `${ids.length} emails deleted`));
       void refreshAdminBadges();
-      if (selectedId && ids.includes(selectedId)) {
+      if (selectedKey && keySet.has(selectedKey)) {
+        closeDetail();
+      } else if (selectedId && ids.includes(selectedId)) {
         // The conversation may live on without this message.
         const rest = thread.filter((e) => !ids.includes(e.id));
         if (rest.length > 0) void openConversation(rest[rest.length - 1], { markRead: false });
@@ -451,7 +523,7 @@ export function useAdminInbox() {
     } finally {
       setBulkActing(false);
     }
-  }, [pendingDelete, selectedId, thread, openConversation, closeDetail, fetchEmails]);
+  }, [pendingDelete, selectedId, selectedKey, thread, openConversation, closeDetail, fetchEmails]);
 
   // ── Bulk ──
   const toggleSelect = useCallback((id: string) => {
@@ -469,15 +541,19 @@ export function useAdminInbox() {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
 
   const bulk = useCallback(async (action: BulkAction) => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
-    if (action === 'delete') { requestDelete(ids); return; }
+    const rows = emails.filter((e) => selectedIds.has(e.id));
+    if (rows.length === 0) return;
+    if (action === 'delete') { requestDeleteThreads(rows); return; }
+    const target = BULK_ON_ROW_ONLY.has(action)
+      ? { ids: rows.map((r) => r.id) }
+      : { threadIds: Array.from(new Set(rows.map(threadKeyOf))) };
     setBulkActing(true);
     try {
-      const res = await fetch('/api/admin/emails', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ ids, ...BULK_BODY[action] }) });
+      const res = await fetch('/api/admin/emails', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ ...target, ...BULK_BODY[action] }) });
       if (!res.ok) throw new Error(await readError(res, 'Action failed'));
       setSelectedIds(new Set());
-      if (selectedId && ids.includes(selectedId) && ['spam', 'notSpam', 'archive', 'unarchive'].includes(action)) closeDetail();
+      const keys = new Set(rows.map(threadKeyOf));
+      if (selectedKey && keys.has(selectedKey) && ['spam', 'notSpam', 'archive', 'unarchive'].includes(action)) closeDetail();
       await fetchEmails({ silent: true });
       void refreshAdminBadges();
       toast.success(BULK_TOAST[action]);
@@ -486,7 +562,7 @@ export function useAdminInbox() {
     } finally {
       setBulkActing(false);
     }
-  }, [selectedIds, selectedId, requestDelete, closeDetail, fetchEmails]);
+  }, [emails, selectedIds, selectedKey, requestDeleteThreads, closeDetail, fetchEmails]);
 
   // ── Compose ──
   const openCompose = useCallback(() => {
@@ -496,14 +572,22 @@ export function useAdminInbox() {
       : { ...emptyCompose(), open: true });
   }, []);
 
+  /**
+   * Open the composer on a reply. Without a seed (an AI draft) it starts
+   * already greeted and signed, the caret where the operator's words go.
+   */
   const startReply = useCallback((email: EmailRow, seed = '') => {
+    const inbound = email.direction === 'inbound';
+    const name = detailsRef.current[email.id]?.prospect?.fullName ?? (inbound ? email.fromName : email.toName);
+    const starter = seed ? { body: seed, caretAt: undefined } : replyStarter(name);
     setCompose({
       ...emptyCompose(),
       open: true,
       mode: 'reply',
-      to: email.direction === 'inbound' ? email.fromEmail : email.toEmail,
+      to: inbound ? email.fromEmail : email.toEmail,
       subject: replySubject(email.subject),
-      body: seed,
+      body: starter.body,
+      caretAt: starter.caretAt,
       replyTo: email,
     });
   }, []);
@@ -634,6 +718,29 @@ export function useAdminInbox() {
     }
   }, [applyLocal, bumpCounts, openConversation, fetchEmails]);
 
+  // ── Lead card: move the prospect through the funnel without leaving the inbox ──
+  const setProspectStatus = useCallback(async (prospectId: string, status: string) => {
+    const patchProspect = (next: Partial<NonNullable<EmailDetail['prospect']>>) => {
+      setDetails((prev) => {
+        const out: Record<string, EmailDetail> = {};
+        for (const [id, d] of Object.entries(prev)) {
+          out[id] = d.prospect?.id === prospectId ? { ...d, prospect: { ...d.prospect, ...next } } : d;
+        }
+        return out;
+      });
+    };
+    const previous = Object.values(detailsRef.current).find((d) => d.prospect?.id === prospectId)?.prospect?.status;
+    patchProspect({ status });
+    try {
+      const res = await fetch('/api/admin/prospects', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ id: prospectId, status }) });
+      if (!res.ok) throw new Error(await readError(res, 'Could not update the prospect'));
+      void refreshAdminBadges();
+    } catch (err) {
+      if (previous) patchProspect({ status: previous });
+      toast.error(err instanceof Error ? err.message : 'Could not update the prospect');
+    }
+  }, []);
+
   // ── Test email ──
   const sendTest = useCallback(async () => {
     setSendingTest(true);
@@ -711,7 +818,8 @@ export function useAdminInbox() {
     refresh: () => fetchEmails(),
     selectedId, selectedEmail, thread, threadLoading, threadError, details, detailFailed, loadDetail,
     selectEmail, closeDetail, reopen: () => selectedEmail && openConversation(selectedEmail, { markRead: false }),
-    toggleStar, markUnread, setSpam, archiveOne, archiveThread, requestDelete, cancelDelete, confirmDelete, pendingDelete,
+    toggleStar, markUnread, setSpam, archiveOne, requestDelete, requestDeleteThreads, cancelDelete, confirmDelete, pendingDelete,
+    setProspectStatus,
     selectedIds, toggleSelect, selectAllOnPage, clearSelection, bulk, bulkActing,
     sendAiDraft, editAiDraft, onDrafted,
     autoReplyEnabled, autoReplyLoading, setAutoReply,

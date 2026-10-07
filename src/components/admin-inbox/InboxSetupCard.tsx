@@ -110,20 +110,37 @@ function DnsTable({ title, records }: { title: string; records: InboxStatus['dom
  */
 export function InboxSetupCard({ status, loading, onRecheck, onSendTest, sendingTest }: Props) {
   const [open, setOpen] = useState(true);
+  const [notesOpen, setNotesOpen] = useState(false);
   const sendingWorks = status.env.resendApiKey;
 
   if (status.ready) {
+    // One quiet line once everything works. The warnings (missing delivery
+    // events, the shared Resend account) are standing facts, not news, so
+    // they wait behind a toggle instead of taking the top of the inbox
+    // every day.
+    const notes = status.warnings.length;
     return (
-      <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="flex items-center gap-2 text-sm text-green-800">
+      <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <p className="flex min-w-0 items-center gap-2 text-sm text-green-800">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>
+            <span className="min-w-0">
               Receiving is on for <span className="font-mono">{status.inboundDomain}</span>. Replies go out as {status.from}.
             </span>
           </p>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={onRecheck} disabled={loading} aria-label="Re-check">
+          <div className="flex items-center gap-1.5">
+            {notes > 0 && (
+              <button
+                type="button"
+                onClick={() => setNotesOpen((v) => !v)}
+                aria-expanded={notesOpen}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-green-900/80 hover:bg-green-100 hover:text-green-900"
+              >
+                {notes === 1 ? '1 note' : `${notes} notes`}
+                <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', notesOpen && 'rotate-180')} />
+              </button>
+            )}
+            <Button size="sm" variant="outline" onClick={onRecheck} disabled={loading} aria-label="Re-check" title="Re-check">
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             </Button>
             <Button size="sm" variant="outline" onClick={onSendTest} disabled={sendingTest}>
@@ -131,8 +148,8 @@ export function InboxSetupCard({ status, loading, onRecheck, onSendTest, sending
             </Button>
           </div>
         </div>
-        {status.warnings.length > 0 && (
-          <ul className="mt-1.5 list-disc space-y-0.5 pl-6 text-xs text-green-900/80">
+        {notesOpen && notes > 0 && (
+          <ul className="mt-2 list-disc space-y-1 border-t border-green-200 pl-6 pt-2 text-xs text-green-900/80">
             {status.warnings.map((w) => <li key={w}>{w}</li>)}
           </ul>
         )}

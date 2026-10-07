@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { ChevronDown, FileText, Forward, Paperclip, PenLine, Send, X } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
@@ -70,6 +71,20 @@ export function ComposeModal({ compose, from, sending, onField, onSend, onClose,
   const setAttachments: React.Dispatch<React.SetStateAction<OutgoingAttachment[]>> = (next) =>
     onField('attachments', typeof next === 'function' ? next(compose.attachments) : next);
 
+  // A reply opens greeted and signed; the caret lands between the two, so
+  // typing starts where the operator's words go. A ref callback, not an
+  // effect: the dialog's portal mounts a render later than the open flag,
+  // so an effect keyed on it finds no textarea yet. The callback runs when
+  // the textarea exists (and again per reply, as caretAt changes).
+  const caretAt = compose.caretAt;
+  const bodyRef = useCallback((el: HTMLTextAreaElement | null) => {
+    if (!el || caretAt === undefined) return;
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(caretAt, caretAt);
+    });
+  }, [caretAt]);
+
   return (
     <Dialog open={compose.open} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-2xl" showCloseButton={!sending}>
@@ -137,6 +152,7 @@ export function ComposeModal({ compose, from, sending, onField, onSend, onClose,
             <label htmlFor="compose-body" className="mb-1 block text-xs font-medium">Message</label>
             <Textarea
               id="compose-body"
+              ref={bodyRef}
               value={compose.body}
               onChange={(e) => onField('body', e.target.value)}
               placeholder="Write your message…"

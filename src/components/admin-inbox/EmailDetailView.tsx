@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Archive, ArchiveRestore, ArrowLeft, Bot, Building2, Forward, MailOpen, PenLine, RefreshCw,
   Reply, ShieldAlert, ShieldCheck, Sparkles, Star, Trash2, User, Users2, Wand2,
@@ -13,8 +13,9 @@ import { SandboxedEmail } from '@/components/admin/SandboxedEmail';
 import { cn } from '@/lib/utils';
 import { CategoryBadge, StatusBadge } from './badges';
 import { EmailAttachments } from './Attachments';
+import { ProspectCard } from './ProspectCard';
 import { formatFullDate } from './dates';
-import { CATEGORY_LABELS, isForwardOf, readError, type EmailDetail, type EmailLinks, type EmailRow } from './types';
+import { CATEGORY_LABELS, isForwardOf, readError, splitQuotedText, type EmailDetail, type EmailLinks, type EmailRow } from './types';
 
 interface Props {
   email: EmailRow;
@@ -30,18 +31,23 @@ interface Props {
   onForward: (email: EmailRow) => void;
   onToggleStar: (id: string) => void;
   onMarkUnread: (id: string) => void;
+  /** Spam is decided for the whole conversation. */
   onSetSpam: (id: string, isSpam: boolean) => void;
+  /** Archives (or restores) the whole conversation. */
   onArchive: (email: EmailRow) => void;
-  onArchiveThread: () => void;
+  /** Deletes one message of the conversation (asks first). */
   onDelete: (id: string) => void;
+  /** Deletes the whole conversation (asks first). */
+  onDeleteConversation: (rows: EmailRow[]) => void;
   onSendAiDraft: (email: EmailRow) => void;
   onEditAiDraft: (email: EmailRow) => void;
   onDrafted: (email: EmailRow, draft: { aiDraftText: string; aiDraftedAt: string }) => void;
+  onSetProspectStatus: (prospectId: string, status: string) => void;
 }
 
 /** Cross-links to the person/record behind an email. */
-function CounterpartyLinks({ links }: { links: EmailLinks | undefined }) {
-  if (!links || (!links.userId && !links.prospectId && !links.outreachId)) return null;
+function CounterpartyLinks({ links, hideProspect }: { links: EmailLinks | undefined; hideProspect: boolean }) {
+  if (!links || (!links.userId && !(links.prospectId && !hideProspect) && !links.outreachId)) return null;
   return (
     <div className="flex flex-wrap gap-3 text-xs">
       {links.userId && (
@@ -50,7 +56,7 @@ function CounterpartyLinks({ links }: { links: EmailLinks | undefined }) {
           View client profile
         </a>
       )}
-      {links.prospectId && (
+      {links.prospectId && !hideProspect && (
         <a href={`/admin/prospects/${links.prospectId}`} className="flex items-center gap-1 text-champagne transition-colors hover:underline">
           <Users2 className="h-3 w-3" />
           Seller prospect
@@ -61,6 +67,32 @@ function CounterpartyLinks({ links }: { links: EmailLinks | undefined }) {
           <Building2 className="h-3 w-3" />
           Outreach contact
         </a>
+      )}
+    </div>
+  );
+}
+
+function PlainTextBody({ text }: { text: string }) {
+  const [showQuoted, setShowQuoted] = useState(false);
+  const { own, quoted } = useMemo(() => splitQuotedText(text), [text]);
+  return (
+    <div className="max-h-[32rem] overflow-auto rounded-md bg-muted/30 p-4 text-sm">
+      <pre className="whitespace-pre-wrap font-sans leading-relaxed">{own}</pre>
+      {quoted && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowQuoted((v) => !v)}
+            aria-expanded={showQuoted}
+            title={showQuoted ? 'Hide quoted text' : 'Show quoted text'}
+            className="mt-3 inline-flex h-5 items-center rounded-full border border-border bg-background px-2.5 text-xs tracking-widest text-muted-foreground hover:text-foreground"
+          >
+            •••
+          </button>
+          {showQuoted && (
+            <pre className="mt-2 whitespace-pre-wrap border-l-2 border-border pl-3 font-sans leading-relaxed text-muted-foreground">{quoted}</pre>
+          )}
+        </>
       )}
     </div>
   );
@@ -77,9 +109,7 @@ function EmailBody({ detail, failed }: { detail: EmailDetail | undefined; failed
       </div>
     );
   }
-  if (detail.bodyText) {
-    return <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md bg-muted/30 p-4 font-sans text-sm">{detail.bodyText}</pre>;
-  }
+  if (detail.bodyText) return <PlainTextBody text={detail.bodyText} />;
   return <p className="p-4 text-sm italic text-muted-foreground">(no content)</p>;
 }
 
@@ -166,7 +196,7 @@ function AiDraftControls({
 }
 
 function Message({
-  msg, detail, failed, isLast, isForward, forwards, onReply, onForward, onDelete,
+  msg, detail, failed, isLast, isForward, forwards, hasProspectCard, onReply, onForward, onDelete,
 }: {
   msg: EmailRow;
   detail: EmailDetail | undefined;
@@ -174,6 +204,8 @@ function Message({
   isLast: boolean;
   isForward: boolean;
   forwards: EmailRow[];
+  /** The prospect card above the thread already links the prospect. */
+  hasProspectCard: boolean;
   onReply: (email: EmailRow) => void;
   onForward: (email: EmailRow) => void;
   onDelete: (id: string) => void;
@@ -205,7 +237,7 @@ function Message({
               )}
             </div>
             <p className="truncate text-xs text-muted-foreground">To: {msg.toName ? `${msg.toName} <${msg.toEmail}>` : msg.toEmail}</p>
-            <CounterpartyLinks links={detail?.links} />
+            <CounterpartyLinks links={detail?.links} hideProspect={hasProspectCard} />
           </div>
         </div>
         <time dateTime={msg.createdAt} className="shrink-0 text-xs text-muted-foreground">{formatFullDate(msg.createdAt)}</time>
@@ -235,12 +267,16 @@ function Message({
 
 export function EmailDetailView({
   email, thread, loading, error, details, detailFailed, sending,
-  onBack, onRetry, onReply, onForward, onToggleStar, onMarkUnread, onSetSpam, onArchive, onArchiveThread, onDelete,
-  onSendAiDraft, onEditAiDraft, onDrafted,
+  onBack, onRetry, onReply, onForward, onToggleStar, onMarkUnread, onSetSpam, onArchive, onDelete, onDeleteConversation,
+  onSendAiDraft, onEditAiDraft, onDrafted, onSetProspectStatus,
 }: Props) {
   const messages = thread.length > 0 ? thread : [email];
   const inbound = email.direction === 'inbound';
   const detail = details[email.id];
+  // The prospect behind the conversation: the same person on every message,
+  // so the first loaded detail that knows them is enough.
+  const prospect = messages.map((m) => details[m.id]?.prospect).find(Boolean) ?? null;
+  const conversationLabel = messages.length > 1 ? 'conversation' : 'email';
   const hasDraft = !!detail?.aiDraftText;
   const canUseDraft = inbound && hasDraft && !email.aiAutoSent && email.status !== 'replied';
   const canOfferDraft = inbound && detail && !hasDraft && !email.aiAutoSent && email.status !== 'replied';
@@ -283,14 +319,27 @@ export function EmailDetailView({
             </Button>
           )}
           {inbound && (
-            <Button size="icon-sm" variant="ghost" onClick={() => onSetSpam(email.id, !email.isSpam)} aria-label={email.isSpam ? 'Not spam' : 'Mark as spam'} title={email.isSpam ? 'Not spam' : 'Mark as spam'}>
+            <Button size="icon-sm" variant="ghost" onClick={() => onSetSpam(email.id, !email.isSpam)} aria-label={email.isSpam ? 'Not spam' : 'Mark as spam'} title={email.isSpam ? `Not spam (whole ${conversationLabel})` : `Mark ${conversationLabel} as spam`}>
               {email.isSpam ? <ShieldCheck className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
             </Button>
           )}
-          <Button size="icon-sm" variant="ghost" onClick={() => onArchive(email)} aria-label={email.archivedAt ? 'Unarchive' : 'Archive'} title={email.archivedAt ? 'Unarchive' : 'Archive (e)'}>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => onArchive(email)}
+            aria-label={email.archivedAt ? `Restore ${conversationLabel}` : `Archive ${conversationLabel}`}
+            title={email.archivedAt ? `Restore ${conversationLabel}` : `Archive ${conversationLabel} (e)`}
+          >
             {email.archivedAt ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
           </Button>
-          <Button size="icon-sm" variant="ghost" className="hover:text-red-600" onClick={() => onDelete(email.id)} aria-label="Delete" title="Delete">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="hover:text-red-600"
+            onClick={() => onDeleteConversation(messages)}
+            aria-label={`Delete ${conversationLabel}`}
+            title={`Delete ${conversationLabel}`}
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -303,6 +352,8 @@ export function EmailDetailView({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
+          {prospect && <ProspectCard prospect={prospect} onSetStatus={(status) => onSetProspectStatus(prospect.id, status)} />}
+
           {/* AI summary + draft */}
           {inbound && (email.aiSummary || canUseDraft || canOfferDraft || email.aiAutoSent) && (
             <div className="space-y-3 border-b border-border/60 bg-muted/30 px-4 py-3 sm:px-5">
@@ -363,6 +414,7 @@ export function EmailDetailView({
                 isLast={i === messages.length - 1}
                 isForward={isForwardOf(msg, msg.inReplyToId ? byId.get(msg.inReplyToId) : undefined)}
                 forwards={forwardsByParent.get(msg.id) ?? []}
+                hasProspectCard={!!prospect}
                 onReply={onReply}
                 onForward={onForward}
                 onDelete={onDelete}
@@ -388,9 +440,7 @@ export function EmailDetailView({
           </Button>
         )}
         {messages.length > 1 && (
-          <Button variant="ghost" className="ml-auto" onClick={onArchiveThread}>
-            <Archive className="h-4 w-4" /> Archive conversation
-          </Button>
+          <span className="ml-auto text-xs text-muted-foreground tabular-nums">{messages.length} messages in this conversation</span>
         )}
       </div>
     </div>

@@ -41,7 +41,16 @@ export async function GET(
         ? Promise.resolve([{ id: email.userId }])
         : db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${counterparty}`).limit(1),
       db
-        .select({ id: sellerProspects.id })
+        .select({
+          id: sellerProspects.id,
+          fullName: sellerProspects.fullName,
+          phone: sellerProspects.phone,
+          status: sellerProspects.status,
+          itemSummary: sellerProspects.itemSummary,
+          estimatedItemCount: sellerProspects.estimatedItemCount,
+          city: sellerProspects.city,
+          site: sellerProspects.site,
+        })
         .from(sellerProspects)
         .where(sql`lower(${sellerProspects.email}) = ${counterparty}`)
         .orderBy(desc(sellerProspects.createdAt))
@@ -61,6 +70,10 @@ export async function GET(
         prospectId: prospectRow[0]?.id ?? null,
         outreachId: outreachRow[0]?.id ?? null,
       },
+      // The seller prospect behind the conversation, for the lead card at
+      // the top of the thread: who they are, how to call them, where they
+      // are in the funnel.
+      prospect: prospectRow[0] ?? null,
     });
   } catch (error) {
     logger.error('Admin email fetch error', error);

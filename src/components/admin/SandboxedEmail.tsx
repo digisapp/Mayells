@@ -11,6 +11,97 @@ interface SandboxedEmailProps {
 const REMOTE_IMG_ATTR = /(<img\b[^>]*?)\s(src|srcset)\s*=\s*(["']?)(https?:)/gi;
 const HAS_REMOTE_IMAGE = /<img\b[^>]*\s(src|srcset)\s*=\s*["']?https?:|url\(\s*["']?https?:/i;
 
+const QUOTE_SELECTOR = '.gmail_quote, blockquote[type="cite"], #divRplyFwdMsg, .yahoo_quoted, blockquote';
+
+/** Whitespace, a <br>, or a block with no text and no image. */
+function isBlank(node: Node): boolean {
+  if (node.nodeType === Node.TEXT_NODE) return !(node.textContent || '').trim();
+  if (node.nodeType !== Node.ELEMENT_NODE) return true;
+  const el = node as Element;
+  if (el.id === 'quoted' || el.id === 'quoted-toggle') return false;
+  if (el.tagName === 'BR') return true;
+  if (el.tagName === 'IMG' || el.tagName === 'HR' || el.tagName === 'TABLE') return false;
+  return !(el.textContent || '').trim() && !el.querySelector('img, hr, table');
+}
+
+function trimEmptySiblings(from: Node, direction: 'previousSibling' | 'nextSibling') {
+  let node = from[direction];
+  while (node && isBlank(node)) {
+    const gone = node;
+    node = node[direction];
+    gone.parentNode?.removeChild(gone);
+  }
+}
+
+/**
+ * Fold the quoted history of a reply ("On …, X wrote:" and the quote under
+ * it) behind a "•••" toggle. The thread above already shows those messages.
+ * A message that is nothing but a quote (a bare forward) is left alone, and
+ * a signature after the quote stays visible. Runs on the frame's document,
+ * which the parent can reach because the sandbox keeps same-origin.
+ */
+function foldQuotedHistory(doc: Document, onToggle: () => void) {
+  const root = doc.body;
+  const quote = root.querySelector(QUOTE_SELECTOR);
+  if (!quote) return;
+  let start: Element = quote;
+  const prev = quote.previousElementSibling;
+  if (prev && /wrote:\s*$/i.test((prev.textContent || '').trim())) start = prev;
+  // Gmail wraps the attribution and the quote in one container.
+  const parent = start.parentElement;
+  if (parent && parent !== root && parent.firstElementChild === start && parent.lastElementChild === quote) start = parent;
+
+  const nodes: Node[] = [];
+  let node: Node | null = start;
+  while (node) {
+    nodes.push(node);
+    if (node === quote || (node as Element).contains?.(quote)) break;
+    node = node.nextSibling;
+  }
+
+  const own = root.cloneNode(true) as HTMLElement;
+  own.querySelector(QUOTE_SELECTOR)?.remove();
+  if (!(own.textContent || '').replace(/\s+/g, '').length) return;
+
+  const wrap = doc.createElement('div');
+  wrap.id = 'quoted';
+  wrap.hidden = true;
+  start.parentNode?.insertBefore(wrap, start);
+  for (const n of nodes) wrap.appendChild(n);
+
+  const btn = doc.createElement('button');
+  btn.id = 'quoted-toggle';
+  btn.type = 'button';
+  btn.textContent = '•••';
+  btn.title = 'Show quoted text';
+  btn.setAttribute('aria-expanded', 'false');
+  btn.addEventListener('click', () => {
+    wrap.hidden = !wrap.hidden;
+    btn.title = wrap.hidden ? 'Show quoted text' : 'Hide quoted text';
+    btn.setAttribute('aria-expanded', String(!wrap.hidden));
+    onToggle();
+  });
+  wrap.parentNode?.insertBefore(btn, wrap);
+
+  trimEmptySiblings(btn, 'previousSibling');
+  trimEmptySiblings(wrap, 'nextSibling');
+}
+
+/** Mail clients end a message with a run of empty lines; drop them. */
+function trimTrailingBlank(container: Node) {
+  let last = container.lastChild;
+  while (last) {
+    if (isBlank(last)) {
+      const gone = last;
+      last = last.previousSibling;
+      gone.parentNode?.removeChild(gone);
+      continue;
+    }
+    if (last.nodeType === Node.ELEMENT_NODE && (last as Element).id !== 'quoted' && (last as Element).tagName !== 'IMG') trimTrailingBlank(last);
+    break;
+  }
+}
+
 /**
  * Renders HTML email content inside a sandboxed iframe to prevent XSS.
  *
@@ -24,9 +115,12 @@ const HAS_REMOTE_IMAGE = /<img\b[^>]*\s(src|srcset)\s*=\s*["']?https?:|url\(\s*[
  *    stops tracking pixels firing on open;
  *  - `<base target="_blank">` makes every link leave the admin frame.
  */
+/** Taller than this and the message scrolls inside its own frame. */
+const MAX_HEIGHT = 900;
+
 export function SandboxedEmail({ html, className }: SandboxedEmailProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(200);
+  const [height, setHeight] = useState(120);
   // The opt-in is keyed to the message, so a new message is blocked from its
   // very first render (no transient frame where the previous choice applies).
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -67,8 +161,17 @@ export function SandboxedEmail({ html, className }: SandboxedEmailProps) {
             }
             img { max-width: 100%; height: auto; }
             img[data-src] { min-width: 24px; min-height: 24px; background: #eee; }
+            img[width="1"], img[height="1"] { display: none !important; }
             a { color: #D4C5A0; }
             table { max-width: 100%; }
+            blockquote { margin: 8px 0; padding-left: 12px; border-left: 2px solid #ddd; color: #666; }
+            #quoted-toggle {
+              display: block; width: fit-content; margin: 10px 0; padding: 0 10px; height: 20px; line-height: 18px;
+              font-size: 12px; letter-spacing: 2px; border-radius: 999px; cursor: pointer; font-family: inherit;
+              background: #f1efe8; color: #666; border: 1px solid #e5e2d9;
+            }
+            #quoted-toggle:hover { background: #e5e2d9; color: #333; }
+            #quoted[hidden] { display: none; }
           </style>
         </head>
         <body>${body}</body>
@@ -76,16 +179,19 @@ export function SandboxedEmail({ html, className }: SandboxedEmailProps) {
     `);
     doc.close();
 
-    // Auto-resize iframe to fit content; when content exceeds the 600px cap,
+    // Auto-resize iframe to fit content; when content exceeds the cap,
     // let the iframe body scroll internally instead of clipping.
     const resize = () => {
       if (doc.body) {
         const contentHeight = doc.body.scrollHeight + 16;
-        const capped = contentHeight > 600;
+        const capped = contentHeight > MAX_HEIGHT;
         doc.body.style.overflowY = capped ? 'auto' : 'hidden';
-        setHeight(capped ? 600 : contentHeight);
+        setHeight(capped ? MAX_HEIGHT : contentHeight);
       }
     };
+
+    try { foldQuotedHistory(doc, resize); } catch { /* an odd DOM is shown unfolded */ }
+    try { if (doc.body) trimTrailingBlank(doc.body); } catch { /* ditto */ }
 
     // Resize again once images settle; listeners are tracked so they're
     // removed when the message changes or the component unmounts.

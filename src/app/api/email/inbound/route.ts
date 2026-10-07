@@ -20,6 +20,7 @@ import {
   recipientsOf,
   senderDisplayName,
 } from '@/lib/email/addresses';
+import { parseAuthResults, senderAuthenticated } from '@/lib/email/sender-auth';
 import { claimWebhookEvent, finalizeWebhookLog } from '@/lib/webhooks/log';
 
 /**
@@ -64,6 +65,13 @@ function isSpamEmail(fromEmail: string, subject: string): boolean {
     if (pattern.test(subject)) return true;
   }
   return false;
+}
+
+/** One raw header, whatever the case Resend returned its name in. */
+function headerValue(headers: Record<string, string> | null, name: string): string | null {
+  if (!headers) return null;
+  const key = Object.keys(headers).find((k) => k.toLowerCase() === name);
+  return key ? headers[key] : null;
 }
 
 // ─── User Linking ─────────────────────────────────────────────────────────────
@@ -366,11 +374,23 @@ export async function POST(req: NextRequest) {
       // looping back (info@ is both a notify target and the inbound address).
       // It is stored for the record but never forwarded, never fed to the AI,
       // and never counted as unread.
-      const ownAddress = isOwnAddress(fromEmail);
-      const spam = isSpamEmail(fromEmail, subject);
+      //
+      // From is trivially forged, and "our own address" is exactly what a
+      // spammer writes there to slip past filters (and, here, to be filed as
+      // a trusted notification). Only a message whose From our receiving
+      // server verified (an aligned DMARC pass, sender-auth.ts) counts as
+      // ours; a forged one is spam, kept out of every conversation.
+      const claimsOwnAddress = isOwnAddress(fromEmail);
+      const authenticated = senderAuthenticated(parseAuthResults(headerValue(headers, 'authentication-results')));
+      const ownAddress = claimsOwnAddress && authenticated;
+      const forged = claimsOwnAddress && !authenticated;
+      const spam = forged || isSpamEmail(fromEmail, subject);
       const threadIdHint = parseThreadIdFromAddresses(recipients);
-      const { inReplyToId, threadId } = await findThread({ threadIdHint, inReplyToHeader, fromEmail, subject });
-      const userId = await findUserByEmail(fromEmail);
+      const { inReplyToId, threadId } = forged
+        ? { inReplyToId: null, threadId: null }
+        : await findThread({ threadIdHint, inReplyToHeader, fromEmail, subject });
+      const userId = forged ? null : await findUserByEmail(fromEmail);
+      const replyTo = forged ? parseEmailAddress(headerValue(headers, 'reply-to')).email : '';
 
       // NB: a customer reply never rewrites the parent OUTBOUND row's status —
       // "answered" is derived from the thread when listing.
@@ -396,6 +416,13 @@ export async function POST(req: NextRequest) {
           readAt: new Date(),
           aiCategory: 'system',
           aiSummary: 'Platform notification from one of our own addresses.',
+        }),
+        // A forged From on our own domain: say so, so the Spam folder shows
+        // why it is there and nobody "un-spams" it as a lost notification.
+        ...(forged && {
+          aiCategory: 'spam',
+          aiConfidence: 1,
+          aiSummary: `Forged sender: claims to be ${fromEmail} but failed authentication${replyTo ? ` (replies would go to ${replyTo})` : ''}.`,
         }),
       }).returning({ id: emails.id });
 

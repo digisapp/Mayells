@@ -151,6 +151,57 @@ describe('POST /api/email/inbound', () => {
     expect(inserted[0]).toMatchObject({ threadId: THREAD, inReplyToId: 'root-1', toEmail: 'info@mayells.com' });
   });
 
+  it('files a forged From on our own domain as spam, outside every conversation', async () => {
+    // Real case: "Camara Contact" <info@mayells.com>, Reply-To a Gmail
+    // address, SES verdict dmarc=fail. Before this it was stored as a read
+    // "system" notification and threaded by subject with the last one.
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: 'info@mayells.com', to: ['info@mayells.com'], cc: null, bcc: null, received_for: ['info@mayells.com'],
+        subject: 'Business and Project Loan Proposal', html: '<p>Loan</p>', text: 'Loan', message_id: '<m9@spam>',
+        headers: {
+          from: '"Camara Contact" <info@mayells.com>',
+          'reply-to': 'camayaya78@gmail.com',
+          'authentication-results': 'amazonses.com; spf=none (spfCheck: 1.2.3.4 is neither permitted nor denied) client-ip=1.2.3.4; dmarc=fail header.from=mayells.com;',
+        },
+        attachments: [],
+      },
+      error: null,
+    });
+    const res = await POST(request(received({ from: '"Camara Contact" <info@mayells.com>', subject: 'Business and Project Loan Proposal' })) as never);
+    expect(res.status).toBe(200);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject({
+      fromEmail: 'info@mayells.com', isSpam: true, status: 'received', aiCategory: 'spam', threadId: null, inReplyToId: null, userId: null,
+    });
+    expect(inserted[0].readAt).toBeUndefined();
+    expect(String(inserted[0].aiSummary)).toMatch(/Forged sender.*camayaya78@gmail\.com/);
+    // Never forwarded to the owner, never handed to the AI, never threaded.
+    expect(afterCalls).toHaveLength(0);
+    expect(selectResults).toHaveLength(0);
+  });
+
+  it('files an authenticated message from our own address as a read system notification', async () => {
+    selectResults.push([], []); // no thread match (in-reply-to, subject); findUserByEmail
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: 'notifications@mayells.com', to: ['info@mayells.com'], cc: null, bcc: null, received_for: ['info@mayells.com'],
+        subject: 'New Service Request from Jane', html: '<p>Jane wants an appraisal</p>', text: 'Jane wants an appraisal', message_id: '<n1@mayells.com>',
+        headers: {
+          from: 'Mayells <notifications@mayells.com>',
+          'authentication-results': 'amazonses.com; spf=pass smtp.mailfrom=mayells.com; dkim=pass header.i=@mayells.com; dmarc=pass header.from=mayells.com;',
+        },
+        attachments: [],
+      },
+      error: null,
+    });
+    const res = await POST(request(received({ from: 'Mayells <notifications@mayells.com>', subject: 'New Service Request from Jane' })) as never);
+    expect(res.status).toBe(200);
+    expect(inserted[0]).toMatchObject({ fromEmail: 'notifications@mayells.com', isSpam: false, status: 'read', aiCategory: 'system' });
+    expect(inserted[0].readAt).toBeInstanceOf(Date);
+    expect(afterCalls).toHaveLength(0);
+  });
+
   it('fails the delivery (so Resend retries) when the body cannot be fetched', async () => {
     receivingGet.mockResolvedValue({ data: null, error: { message: 'boom' } });
     const res = await POST(request(received({})) as never);

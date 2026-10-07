@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import {
   AlertTriangle, Archive, ArchiveRestore, Bot, ChevronLeft, ChevronRight, Inbox as InboxIcon, Keyboard,
   Mail, MailOpen, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Star, StarOff, Trash2, X,
@@ -24,6 +24,26 @@ function AdminEmailsPageInner() {
   const inArchived = d.folder === 'archived';
   const from = d.status?.from ?? 'Mayells <info@mayells.com>';
   const categoryLabel = d.category ? (CATEGORY_LABELS[d.category] || d.category) : null;
+  const showCategories = (d.folder === 'inbox' || d.folder === 'unread') && d.categories.length > 0;
+  const pending = d.pendingDelete;
+  const deleteTitle = !pending
+    ? 'Delete?'
+    : pending.threadIds.length > 0
+      ? (pending.threadIds.length === 1
+        ? (pending.messages > 1 ? `Delete this conversation (${pending.messages} messages)?` : 'Delete this email?')
+        : `Delete ${pending.threadIds.length} conversations (${pending.messages} messages)?`)
+      : (pending.ids.length > 1 ? `Delete ${pending.ids.length} emails?` : 'Delete this email?');
+  const deleteDescription = pending && pending.threadIds.length > 0 && pending.messages > 1
+    ? 'This permanently removes every message in the conversation from the inbox, including replies you sent. The copies in the other person\'s mailbox are not affected.'
+    : 'This permanently removes the message from the inbox. Replies in the same conversation are kept and re-threaded. The copy in the other person\'s mailbox is not affected.';
+
+  // New mail is visible from any other tab: the unread count leads the title.
+  const unread = d.counts.unread;
+  useEffect(() => {
+    const base = 'Inbox | Mayells Admin';
+    document.title = unread > 0 ? `(${unread}) ${base}` : base;
+    return () => { document.title = base; };
+  }, [unread]);
 
   return (
     <div>
@@ -43,9 +63,7 @@ function AdminEmailsPageInner() {
               <Keyboard className="h-3.5 w-3.5" />
               j/k · r · f · e · s
             </span>
-            {!d.autoReplyLoading && (
-              <AutoReplyControl enabled={d.autoReplyEnabled} loading={d.autoReplyLoading} from={from} onChange={d.setAutoReply} />
-            )}
+            <AutoReplyControl enabled={d.autoReplyEnabled} loading={d.autoReplyLoading} from={from} onChange={d.setAutoReply} />
             <Button variant="outline" onClick={d.refresh} disabled={d.loading} aria-label="Refresh">
               <RefreshCw className={`h-4 w-4 ${d.loading ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Refresh</span>
@@ -62,36 +80,21 @@ function AdminEmailsPageInner() {
         <InboxSetupCard status={d.status} loading={d.statusLoading} onRecheck={d.refreshStatus} onSendTest={d.sendTest} sendingTest={d.sendingTest} />
       )}
 
-      {/* Folders + search */}
-      <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          {FOLDERS.map((f) => {
-            const count = f.count ? d.counts[f.count] : 0;
-            return (
-              <FilterChip key={f.value} active={d.folder === f.value} onClick={() => d.setFolder(f.value)}>
-                {f.label}
-                {count > 0 && <span className={filterChipCountClass}>{count}</span>}
-              </FilterChip>
-            );
-          })}
-          {(d.folder === 'inbox' || d.folder === 'unread') && d.categories.length > 0 && (
-            <>
-              <span className="mx-1 h-4 w-px bg-border" aria-hidden />
-              {d.categories.map((c) => (
-                <FilterChip
-                  key={c.category}
-                  active={d.category === c.category}
-                  onClick={() => d.setCategory(d.category === c.category ? null : c.category)}
-                >
-                  <Bot className="h-2.5 w-2.5" />
-                  {CATEGORY_LABELS[c.category] || c.category}
-                  <span className={filterChipCountClass}>{c.count}</span>
+      {/* Folders + search, then the AI categories on their own line */}
+      <div className="mb-3 flex flex-col gap-2.5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Folders">
+            {FOLDERS.map((f) => {
+              const count = f.count ? d.counts[f.count] : 0;
+              return (
+                <FilterChip key={f.value} active={d.folder === f.value} onClick={() => d.setFolder(f.value)}>
+                  {f.label}
+                  {count > 0 && <span className={filterChipCountClass}>{count}</span>}
                 </FilterChip>
-              ))}
-            </>
-          )}
-        </div>
-        <div className="relative lg:w-72 lg:shrink-0">
+              );
+            })}
+          </div>
+          <div className="relative lg:w-72 lg:shrink-0">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
@@ -101,7 +104,31 @@ function AdminEmailsPageInner() {
             aria-label="Search emails"
             className="w-full rounded-md border bg-background py-1.5 pl-8 pr-3 text-sm placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
           />
+          </div>
         </div>
+        {showCategories && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by what the email is about">
+            <span className="mr-1 inline-flex items-center gap-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+              <Bot className="h-3 w-3" /> About
+            </span>
+            {d.categories.map((c) => (
+              <FilterChip
+                key={c.category}
+                active={d.category === c.category}
+                onClick={() => d.setCategory(d.category === c.category ? null : c.category)}
+                className="px-2.5 py-1"
+              >
+                {CATEGORY_LABELS[c.category] || c.category}
+                <span className={filterChipCountClass}>{c.count}</span>
+              </FilterChip>
+            ))}
+            {d.category && (
+              <button type="button" onClick={() => d.setCategory(null)} className="ml-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {d.error && (
@@ -150,7 +177,7 @@ function AdminEmailsPageInner() {
                 </div>
               ) : (
                 <span className="text-muted-foreground tabular-nums">
-                  {d.loading ? 'Loading…' : `${d.pagination.total.toLocaleString()} ${d.pagination.total === 1 ? 'email' : 'emails'}`}
+                  {d.loading ? 'Loading…' : `${d.pagination.total.toLocaleString()} ${d.pagination.total === 1 ? 'conversation' : 'conversations'}`}
                 </span>
               )}
             </div>
@@ -206,11 +233,12 @@ function AdminEmailsPageInner() {
                 onMarkUnread={d.markUnread}
                 onSetSpam={d.setSpam}
                 onArchive={d.archiveOne}
-                onArchiveThread={d.archiveThread}
                 onDelete={(id) => d.requestDelete([id])}
+                onDeleteConversation={d.requestDeleteThreads}
                 onSendAiDraft={d.sendAiDraft}
                 onEditAiDraft={d.editAiDraft}
                 onDrafted={d.onDrafted}
+                onSetProspectStatus={d.setProspectStatus}
               />
             ) : d.selectedId && d.threadLoading ? (
               <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground">Loading conversation…</div>
@@ -243,8 +271,8 @@ function AdminEmailsPageInner() {
       <ConfirmDialog
         open={!!d.pendingDelete}
         onOpenChange={(open) => { if (!open) d.cancelDelete(); }}
-        title={d.pendingDelete && d.pendingDelete.length > 1 ? `Delete ${d.pendingDelete.length} emails?` : 'Delete this email?'}
-        description="This permanently removes the message from the inbox. Replies in the same conversation are kept and re-threaded. The copy in the other person's mailbox is not affected."
+        title={deleteTitle}
+        description={deleteDescription}
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={d.confirmDelete}

@@ -95,6 +95,35 @@ to its own domains, so Mayells mail is not stored there — but it is still
 posted to their endpoints. The readiness card says how many. Moving Mayells
 to a Resend account of its own is the only way to stop that.
 
+## Conversations, not messages
+
+The list shows one row per conversation (`coalesce(thread_id, id)`), the
+way any mail client does: the row is the newest message in the conversation
+that matches the folder, it is bold while *any* message in the conversation
+is unread, and the counts on the folder chips and the sidebar badge count
+conversations too. Opening a row shows the whole thread and reads all of it.
+
+Actions on a row act on the conversation: archive, restore, spam, not spam,
+mark read/unread and delete (the dialog says how many messages go) apply to
+every message in it (`PATCH`/`DELETE /api/admin/emails` with `threadIds`).
+Starring marks just the message the row shows. Inside the thread each
+message still has its own Reply, Forward and Delete.
+
+When the sender is a seller prospect, a card at the top of the thread shows
+who they are, what they have, Call / Text buttons and their funnel status
+(changeable there). A typed reply opens already greeted and signed, with
+the caret between; quoted history inside a message folds behind "•••".
+
+## Forged senders
+
+From is trivially forged, and "our own address" is what spammers write
+there. The webhook only treats mail as a platform notification (filed
+"System", already read, never forwarded or drafted) when the From is on our
+domain **and** Amazon SES reported an aligned DMARC pass
+(`src/lib/email/sender-auth.ts`). A From on our domain that fails
+authentication is filed as spam with the summary "Forged sender …", never
+threaded, never forwarded.
+
 ## Threading
 
 Every email sent from the inbox carries `Reply-To: info+<threadId>@mayells.com`
@@ -134,13 +163,15 @@ own domains. Auto-sent replies carry an AI badge and the original lands under
 
 ## Folders and actions
 
-Inbox · Unread · Needs review · Starred · Sent · Spam · Archived, plus AI
-category chips on the inbox. Per email: reply, forward (with the original
-attachments relayed as Resend-hosted URLs), star, mark unread, spam / not
-spam, archive, delete (confirmed). Bulk: read / unread / star / spam / archive
-/ delete. Keyboard: `j`/`k` next & previous, `r` reply, `f` forward, `e`
-archive, `s` star, `Esc` close. The list refreshes silently every 45 s while
-the tab is visible. Deep link: `/admin/emails?thread=<thread or email id>`.
+Inbox · Unread · Needs review · Starred · Sent · Spam · Archived, plus
+"About" chips (AI categories) under them on the inbox. Per conversation:
+reply, forward (with the original attachments relayed as Resend-hosted
+URLs), star, mark unread, spam / not spam, archive, delete (confirmed).
+Bulk: read / unread / star / spam / archive / delete. Keyboard: `j`/`k`
+next & previous, `r` reply, `f` forward, `e` archive the conversation, `s`
+star, `Esc` close. The list refreshes silently every 45 s while the tab is
+visible; the tab title carries the unread count. Deep link:
+`/admin/emails?thread=<thread or email id>`.
 
 ## Related
 

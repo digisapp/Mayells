@@ -1,12 +1,12 @@
 'use client';
 
-import { Archive, Bot, Mail, MessageSquare, Paperclip, Reply, Star, User } from 'lucide-react';
+import { Archive, Bell, Bot, Mail, MessageSquare, Paperclip, Reply, Star, User } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { CategoryBadge, StatusBadge } from './badges';
 import { formatListDate } from './dates';
-import { EMPTY_COPY, counterpart, isUnread, type EmailRow, type InboxFolder } from './types';
+import { EMPTY_COPY, conversationUnread, counterpart, type EmailRow, type InboxFolder } from './types';
 
 interface EmailListProps {
   emails: EmailRow[];
@@ -45,9 +45,14 @@ export function EmailList({
       {emails.map((email) => {
         const active = email.id === selectedId;
         const checked = selectedIds.has(email.id);
-        const unread = isUnread(email);
+        // A row is a conversation: bold while any message in it is unread.
+        const unread = conversationUnread(email);
         const who = counterpart(email);
         const showStatus = email.direction === 'outbound' ? email.status !== 'sent' : email.status === 'replied';
+        // Our own notifications (contact form, service requests) summarise
+        // as "platform notification" — the row should show what they say.
+        const system = email.aiCategory === 'system';
+        const snippet = (!system && email.aiSummary) || email.preview || '';
 
         return (
           <li
@@ -63,7 +68,7 @@ export function EmailList({
               type="checkbox"
               checked={checked}
               onChange={() => onToggleSelect(email.id)}
-              aria-label={`Select email from ${who.name}`}
+              aria-label={`Select conversation with ${who.name}`}
               className="mt-1.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-champagne"
             />
 
@@ -78,9 +83,10 @@ export function EmailList({
                   className={cn('inline-block h-2 w-2 shrink-0 rounded-full', unread ? 'bg-champagne' : 'bg-transparent')}
                   aria-hidden="true"
                 />
-                <span className={cn('flex-1 truncate text-sm', unread ? 'font-semibold text-foreground' : 'text-foreground/90')}>
+                <span className={cn('flex min-w-0 flex-1 items-center gap-1.5 text-sm', unread ? 'font-semibold text-foreground' : 'text-foreground/90')}>
                   {email.direction === 'outbound' && <span className="font-normal text-muted-foreground">To: </span>}
-                  {who.name}
+                  {system && <Bell className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Platform notification" />}
+                  <span className="truncate">{who.name}</span>
                 </span>
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{formatListDate(email.createdAt)}</span>
               </div>
@@ -88,14 +94,17 @@ export function EmailList({
                 {email.hasAttachments && <Paperclip className="h-3 w-3 shrink-0 text-muted-foreground" />}
                 <span className="truncate">{email.subject || '(no subject)'}</span>
                 {email.threadCount > 1 && (
-                  <span className="ml-auto inline-flex shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground tabular-nums">
+                  <span
+                    className={cn('ml-auto inline-flex shrink-0 items-center gap-0.5 text-[11px] tabular-nums', unread && email.threadUnread > 1 ? 'text-foreground' : 'text-muted-foreground')}
+                    title={`${email.threadCount} messages in this conversation${email.threadUnread > 0 ? `, ${email.threadUnread} unread` : ''}`}
+                  >
                     <MessageSquare className="h-3 w-3" />
                     {email.threadCount}
                   </span>
                 )}
               </p>
               <div className="mt-0.5 flex items-center gap-1.5 pl-4">
-                <p className="flex-1 truncate text-xs text-muted-foreground">{email.aiSummary || email.preview || ''}</p>
+                <p className="flex-1 truncate text-xs text-muted-foreground">{snippet}</p>
                 {email.userId && (
                   <Badge variant="secondary" className="bg-purple-100 text-purple-800 gap-1 text-[11px]">
                     <User className="h-2.5 w-2.5" />

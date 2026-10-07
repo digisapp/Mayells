@@ -225,6 +225,14 @@ export function isInboxFolder(v: unknown): v is InboxFolder {
 const live = isNull(emails.archivedAt);
 const inboundLive = and(eq(emails.direction, 'inbound'), eq(emails.isSpam, false), live);
 
+/**
+ * The conversation a row belongs to. A thread root carries its own id in
+ * thread_id once it has a reply (sendAdminEmail stamps it) and null before,
+ * so the key is coalesce(thread_id, id) — the same key the inbox list groups
+ * by and the thread view loads by.
+ */
+export const threadKey = sql<string>`coalesce(${emails.threadId}, ${emails.id})`;
+
 /** Auto-sent replies not yet looked at, plus AI drafts never sent. */
 export const needsReviewCondition = and(
   inboundLive,
@@ -264,15 +272,19 @@ export interface FolderCounts {
   archived: number;
 }
 
-/** Badge numbers for the folder chips, in one query. */
+/**
+ * Badge numbers for the folder chips, in one query. The inbox lists
+ * conversations, so these count conversations too: three unread replies in
+ * one thread are one unread conversation, the same as the row they make.
+ */
 export async function getFolderCounts(): Promise<FolderCounts> {
   const [row] = await db
     .select({
-      unread: sql<number>`count(*) filter (where ${unreadCondition})::int`,
-      needsReview: sql<number>`count(*) filter (where ${needsReviewCondition})::int`,
-      starred: sql<number>`count(*) filter (where ${folderCondition('starred')})::int`,
-      spam: sql<number>`count(*) filter (where ${folderCondition('spam')})::int`,
-      archived: sql<number>`count(*) filter (where ${folderCondition('archived')})::int`,
+      unread: sql<number>`count(distinct ${threadKey}) filter (where ${unreadCondition})::int`,
+      needsReview: sql<number>`count(distinct ${threadKey}) filter (where ${needsReviewCondition})::int`,
+      starred: sql<number>`count(distinct ${threadKey}) filter (where ${folderCondition('starred')})::int`,
+      spam: sql<number>`count(distinct ${threadKey}) filter (where ${folderCondition('spam')})::int`,
+      archived: sql<number>`count(distinct ${threadKey}) filter (where ${folderCondition('archived')})::int`,
     })
     .from(emails);
   return {

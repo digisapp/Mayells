@@ -10,6 +10,7 @@ import {
   getFolderCounts,
   isInboxFolder,
   sendAdminEmail,
+  threadKey,
   unreadCondition,
   type InboxFolder,
 } from '@/lib/email/admin-inbox';
@@ -40,6 +41,8 @@ const emailSendSchema = z.object({
 const emailPatchSchema = z.object({
   id: z.string().uuid().optional(),
   ids: z.array(z.string().uuid()).max(500).optional(),
+  /** Whole conversations (thread keys): every message in each of them. */
+  threadIds: z.array(z.string().uuid()).max(500).optional(),
   status: z.enum(EMAIL_STATUSES).optional(),
   /** true = mark read, false = mark unread */
   read: z.boolean().optional(),
@@ -50,7 +53,7 @@ const emailPatchSchema = z.object({
   /** true = spam, false = not spam (inbound only) */
   spam: z.boolean().optional(),
 })
-  .refine(d => d.id || (d.ids && d.ids.length > 0), { message: 'id or ids required' })
+  .refine(d => d.id || (d.ids && d.ids.length > 0) || (d.threadIds && d.threadIds.length > 0), { message: 'id, ids or threadIds required' })
   .refine(d => [d.status, d.read, d.archived, d.starred, d.spam].some((v) => v !== undefined), {
     message: 'status, read, archived, starred, or spam is required',
   });
@@ -58,7 +61,9 @@ const emailPatchSchema = z.object({
 const emailDeleteSchema = z.object({
   id: z.string().uuid().optional(),
   ids: z.array(z.string().uuid()).max(500).optional(),
-}).refine(d => d.id || (d.ids && d.ids.length > 0), { message: 'id or ids required' });
+  /** Whole conversations (thread keys): every message in each of them. */
+  threadIds: z.array(z.string().uuid()).max(500).optional(),
+}).refine(d => d.id || (d.ids && d.ids.length > 0) || (d.threadIds && d.threadIds.length > 0), { message: 'id, ids or threadIds required' });
 
 const listQuerySchema = z.object({
   /** Inbox folder (the admin inbox). Takes precedence over direction/spam/filter. */
@@ -100,7 +105,9 @@ const listColumns = {
   readAt: emails.readAt,
   archivedAt: emails.archivedAt,
   createdAt: emails.createdAt,
-  preview: sql<string>`left(regexp_replace(coalesce(${emails.bodyText}, ''), '\\s+', ' ', 'g'), 200)`,
+  // Our own notifications (and some senders) arrive HTML-only: strip the
+  // markup so the row still shows what the email says.
+  preview: sql<string>`left(regexp_replace(regexp_replace(regexp_replace(coalesce(nullif(${emails.bodyText}, ''), ${emails.bodyHtml}, ''), '<(style|script|head)[^>]*>.*?</\\1>', ' ', 'gi'), '<[^>]+>|&nbsp;', ' ', 'g'), '\\s+', ' ', 'g'), 200)`,
   // CASE guards jsonb_array_length so a null or non-array value can't throw
   hasAttachments: sql<boolean>`coalesce(case when jsonb_typeof(${emails.attachments}) = 'array' then jsonb_array_length(${emails.attachments}) > 0 end, false)`,
   // "Answered" is derived from the thread, never written onto the row: an
@@ -112,7 +119,18 @@ const listColumns = {
   hasResponse: sql<boolean>`exists (select 1 from ${emails} r where r.in_reply_to_id = "emails"."id" and r.direction <> "emails"."direction")`,
   // How many messages share this conversation (1 for a lone email).
   threadCount: sql<number>`(select count(*) from ${emails} t where t.thread_id = coalesce("emails"."thread_id", "emails"."id") or t.id = coalesce("emails"."thread_id", "emails"."id"))::int`,
+  // Unread messages anywhere in the conversation: a list row is bold while
+  // any of them is, not only when the latest one is.
+  threadUnread: sql<number>`(select count(*) from ${emails} u where (u.thread_id = coalesce("emails"."thread_id", "emails"."id") or u.id = coalesce("emails"."thread_id", "emails"."id")) and u.direction = 'inbound' and u.read_at is null and u.is_spam = false and u.archived_at is null)::int`,
 };
+
+/**
+ * Columns of the slim projection, aliased so they can come back out of a
+ * subquery (Drizzle needs a name for every SQL expression it re-selects).
+ */
+const conversationColumns = Object.fromEntries(
+  Object.entries(listColumns).map(([key, col]) => [key, 'as' in col && typeof col.as === 'function' && !('name' in col) ? col.as(key) : col]),
+) as typeof listColumns;
 
 /** Legacy direction/spam/filter params → the equivalent folder. */
 function legacyFolder(direction?: 'inbound' | 'outbound', spam?: 'true' | 'false', filter?: (typeof EMAIL_FILTERS)[number]): InboxFolder | null {
@@ -193,27 +211,37 @@ export async function GET(req: NextRequest) {
 
     const whereClause = and(...conditions);
 
+    // One row per conversation: the newest message in it that matches the
+    // folder (DISTINCT ON picks it), the page ordered by that message's
+    // date. Three replies in one thread are one row, as in any mail client;
+    // opening the row shows the whole conversation.
+    const newestPerConversation = db
+      .selectDistinctOn([threadKey], conversationColumns)
+      .from(emails)
+      .where(whereClause)
+      .orderBy(threadKey, desc(emails.createdAt))
+      .as('conversation');
+
     const [data, countResult, unreadResult, categoryRows, counts] = await Promise.all([
       db
-        .select(listColumns)
-        .from(emails)
-        .where(whereClause)
-        .orderBy(desc(emails.createdAt))
+        .select()
+        .from(newestPerConversation)
+        .orderBy(desc(newestPerConversation.createdAt))
         .limit(pageSize)
         .offset(offset),
       db
-        .select({ count: sql<number>`count(*)::int` })
+        .select({ count: sql<number>`count(distinct ${threadKey})::int` })
         .from(emails)
         .where(whereClause),
       // Global unread (not page-scoped): what the inbox tab badge shows.
       db
-        .select({ count: sql<number>`count(*)::int` })
+        .select({ count: sql<number>`count(distinct ${threadKey})::int` })
         .from(emails)
         .where(unreadCondition),
       // Which AI categories exist in the (non-archived, non-spam) inbox, for
       // the filter chips.
       db
-        .select({ category: emails.aiCategory, count: sql<number>`count(*)::int` })
+        .select({ category: emails.aiCategory, count: sql<number>`count(distinct ${threadKey})::int` })
         .from(emails)
         .where(and(
           eq(emails.direction, 'inbound'),
@@ -222,7 +250,7 @@ export async function GET(req: NextRequest) {
           isNotNull(emails.aiCategory),
         ))
         .groupBy(emails.aiCategory)
-        .orderBy(desc(sql`count(*)`)),
+        .orderBy(desc(sql`count(distinct ${threadKey})`)),
       getFolderCounts(),
     ]);
 
@@ -293,8 +321,13 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: parsedPatch.error.issues[0].message }, { status: 400 });
     }
 
-    const { id, ids, status, read, archived, starred, spam } = parsedPatch.data;
-    const targetIds = ids && ids.length > 0 ? ids : [id!];
+    const { id, ids, threadIds, status, read, archived, starred, spam } = parsedPatch.data;
+    const targetIds = ids && ids.length > 0 ? ids : id ? [id] : [];
+    // Messages named directly, plus every message of each named conversation.
+    const targets = or(
+      ...(targetIds.length > 0 ? [inArray(emails.id, targetIds)] : []),
+      ...(threadIds && threadIds.length > 0 ? [inArray(threadKey, threadIds)] : []),
+    )!;
     const now = new Date();
 
     const updates: Record<string, unknown> = {};
@@ -315,17 +348,26 @@ export async function PATCH(req: NextRequest) {
       if (!status) updates.status = sql`case when ${emails.status} = 'read' then 'received'::email_status else ${emails.status} end`;
     }
 
+    let updated = 0;
     if (Object.keys(updates).length > 0) {
-      await db.update(emails).set(updates).where(inArray(emails.id, targetIds));
+      // Read marks are an inbound notion too: an outbound row never has a
+      // read_at, and marking one would make nothing happen either way.
+      const scope = read !== undefined && !status && archived === undefined && starred === undefined
+        ? and(targets, eq(emails.direction, 'inbound'))
+        : targets;
+      const rows = await db.update(emails).set(updates).where(scope).returning({ id: emails.id });
+      updated = rows.length;
     }
     // Spam is an inbound notion; outbound rows in a bulk selection are skipped.
     if (spam !== undefined) {
-      await db
+      const rows = await db
         .update(emails)
         .set({ isSpam: spam })
-        .where(and(inArray(emails.id, targetIds), eq(emails.direction, 'inbound')));
+        .where(and(targets, eq(emails.direction, 'inbound')))
+        .returning({ id: emails.id });
+      updated = Math.max(updated, rows.length);
     }
-    return NextResponse.json({ success: true, updated: targetIds.length });
+    return NextResponse.json({ success: true, updated });
   } catch (error) {
     logger.error('Admin email update error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -344,8 +386,14 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: parsedDelete.error.issues[0].message }, { status: 400 });
     }
 
-    const { id, ids } = parsedDelete.data;
-    const idsToDelete: string[] = ids && ids.length > 0 ? ids : id ? [id] : [];
+    const { id, ids, threadIds } = parsedDelete.data;
+    const named: string[] = ids && ids.length > 0 ? ids : id ? [id] : [];
+    // A conversation named by its key deletes every message in it.
+    const members = threadIds && threadIds.length > 0
+      ? await db.select({ id: emails.id }).from(emails).where(inArray(threadKey, threadIds))
+      : [];
+    const idsToDelete = Array.from(new Set([...named, ...members.map((m) => m.id)]));
+    if (idsToDelete.length === 0) return NextResponse.json({ success: true, deleted: 0 });
     const doomed = new Set(idsToDelete);
 
     await db.transaction(async (tx) => {

@@ -35,6 +35,20 @@ export interface EmailRow {
   /** Derived from the thread: the other side has replied to this message. */
   hasResponse: boolean;
   threadCount: number;
+  /** Unread messages anywhere in this row's conversation. */
+  threadUnread: number;
+}
+
+/** Summary of the seller prospect behind a conversation, for the lead card. */
+export interface ProspectSummary {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  status: string;
+  itemSummary: string | null;
+  estimatedItemCount: number | null;
+  city: string | null;
+  site: string | null;
 }
 
 export interface EmailLinks {
@@ -51,6 +65,7 @@ export interface EmailDetail {
   aiDraftText: string | null;
   aiDraftedAt: string | null;
   links: EmailLinks;
+  prospect: ProspectSummary | null;
 }
 
 export interface AttachmentLink {
@@ -136,6 +151,8 @@ export const EMPTY_COPY: Record<InboxFolder, { title: string; body: string }> = 
 };
 
 export const SIGNATURE = 'MAYELLS · Palm Beach · info@mayells.com';
+/** How a typed reply signs off; the AI drafts sign the same way. */
+export const REPLY_CLOSING = 'Warm regards,\nThe Mayells Team';
 
 // Vercel rejects request bodies over 4.5 MB; base64 adds a third, so cap the
 // raw attachment bytes well below that.
@@ -143,6 +160,40 @@ export const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
 export function isUnread(email: Pick<EmailRow, 'direction' | 'readAt'>): boolean {
   return email.direction === 'inbound' && !email.readAt;
+}
+
+/** A list row stands for its conversation: unread while any message in it is. */
+export function conversationUnread(row: Pick<EmailRow, 'threadUnread'>): boolean {
+  return row.threadUnread > 0;
+}
+
+/** The conversation key a row belongs to (the server groups by the same). */
+export function threadKeyOf(row: Pick<EmailRow, 'id' | 'threadId'>): string {
+  return row.threadId || row.id;
+}
+
+/** "Jane" from "Jane Doe", "jane.doe@x" or "Doe, Jane"; null when there is nothing usable. */
+export function firstNameOf(name: string | null | undefined): string | null {
+  const raw = (name || '').trim();
+  if (!raw) return null;
+  if (raw.includes('@')) {
+    const local = raw.split('@')[0].split(/[._-]/)[0];
+    return /^[a-z]{2,}$/i.test(local) ? local[0].toUpperCase() + local.slice(1).toLowerCase() : null;
+  }
+  const commaSplit = raw.split(',');
+  const first = (commaSplit.length === 2 ? commaSplit[1] : raw).trim().split(/\s+/)[0].replace(/[^\p{L}'-]/gu, '');
+  return first.length >= 2 ? first : null;
+}
+
+/**
+ * A reply starts already greeted and signed, with room between for the
+ * operator's words (the composer puts the caret there).
+ */
+export function replyStarter(name: string | null | undefined): { body: string; caretAt: number } {
+  const first = firstNameOf(name);
+  const greeting = first ? `Hi ${first},` : 'Hello,';
+  const body = `${greeting}\n\n\n\n${REPLY_CLOSING}`;
+  return { body, caretAt: greeting.length + 2 };
 }
 
 export function replySubject(subject: string | null): string {
@@ -203,6 +254,24 @@ export function isForwardOf(row: EmailRow, parent: EmailRow | undefined): boolea
   if (!parent) return false;
   const counterpartyAddress = parent.direction === 'inbound' ? parent.fromEmail : parent.toEmail;
   return counterpartyAddress.toLowerCase() !== row.toEmail.toLowerCase();
+}
+
+/**
+ * Where a plain-text reply starts quoting the message it answers: an
+ * "On …, X wrote:" line or the first "> " line. The thread above already
+ * shows that message, so the quote folds behind a toggle.
+ */
+export function splitQuotedText(text: string): { own: string; quoted: string | null } {
+  const lines = text.split('\n');
+  let cut = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^>/.test(line) || /^(on .{6,120} wrote:|-{2,}\s*original message\s*-{2,}|from:\s.+)$/i.test(line)) { cut = i; break; }
+  }
+  if (cut <= 0) return { own: text, quoted: null };
+  const own = lines.slice(0, cut).join('\n').replace(/\s+$/, '');
+  if (!own.trim()) return { own: text, quoted: null };
+  return { own, quoted: lines.slice(cut).join('\n').trim() || null };
 }
 
 /** Extract an error message without assuming the body is JSON (413s, proxy errors…). */

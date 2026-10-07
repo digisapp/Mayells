@@ -28,10 +28,12 @@ export async function getAdminBadges(): Promise<AdminBadges> {
 
   const { rows } = await db.execute(sql`
     select
-      (select count(*) from emails
+      -- The inbox lists conversations (coalesce(thread_id, id)), so the
+      -- badge counts conversations too, matching its Unread chip.
+      (select count(distinct coalesce(thread_id, id)) from emails
         where direction = 'inbound' and read_at is null and is_spam = false
           and archived_at is null)::int                                         as inbox_unread,
-      (select count(*) from emails
+      (select count(distinct coalesce(thread_id, id)) from emails
         where direction = 'inbound' and ai_auto_sent = true and read_at is null
           and archived_at is null)::int                                         as inbox_auto_replied,
       (select count(*) from lots where status = 'pending_review')::int          as lots_pending_review,
