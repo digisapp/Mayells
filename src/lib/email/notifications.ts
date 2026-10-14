@@ -2,6 +2,7 @@ import { getResend } from './resend';
 import { escapeHtml } from './escape';
 import { formatCurrency, formatCurrencyWithCents } from '@/types';
 import { BUSINESS } from '@/lib/config';
+import { formatLongDate, formatShortDateTime } from '@/lib/format/dates';
 import { db } from '@/db';
 import { emails } from '@/db/schema';
 import { logger } from '@/lib/logger';
@@ -116,10 +117,9 @@ export async function sendEndingSoonNotification(params: {
   hasBids: boolean;
   closingAt: Date;
 }) {
-  const closesLabel = params.closingAt.toLocaleString('en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  // House timezone: the server runs in UTC, so a bare toLocaleString would
+  // show an evening ET close as the next day.
+  const closesLabel = formatShortDateTime(params.closingAt);
   await sendAndLog({
     to: params.email,
     subject: `Ending soon: "${params.lotTitle}"`,
@@ -318,7 +318,7 @@ export async function sendInvoiceNotification(params: {
           </tr>
           <tr>
             <td style="padding: 8px 16px; color: #666;">Due by:</td>
-            <td style="padding: 8px 16px;">${params.dueDate.toLocaleDateString()}</td>
+            <td style="padding: 8px 16px;">${formatLongDate(params.dueDate)}</td>
           </tr>
         </table>
         ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/invoices/${params.accessToken}`, 'View & Pay Invoice')}
@@ -342,7 +342,7 @@ export async function sendInvoicePaymentReminder(params: {
     to: params.email,
     subject: `Payment reminder — invoice ${params.invoiceNumber} is past due`,
     html: emailLayout(`
-        <p>A friendly reminder that your invoice for <strong>${escapeHtml(params.lotTitle)}</strong> was due on ${params.dueDate.toLocaleDateString()} and is still outstanding.</p>
+        <p>A friendly reminder that your invoice for <strong>${escapeHtml(params.lotTitle)}</strong> was due on ${formatLongDate(params.dueDate)} and is still outstanding.</p>
         <table style="margin: 20px 0; border-collapse: collapse;">
           <tr>
             <td style="padding: 8px 16px; color: #666;">Invoice:</td>
@@ -354,7 +354,7 @@ export async function sendInvoicePaymentReminder(params: {
           </tr>
           <tr>
             <td style="padding: 8px 16px; color: #666;">Was due:</td>
-            <td style="padding: 8px 16px;">${params.dueDate.toLocaleDateString()}</td>
+            <td style="padding: 8px 16px;">${formatLongDate(params.dueDate)}</td>
           </tr>
         </table>
         ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/invoices/${params.accessToken}`, 'Pay Invoice')}
@@ -432,7 +432,7 @@ export async function sendPayoutSentNotification(params: {
     subject: `Your ${methodLabel} of ${formatCurrencyWithCents(params.totalAmount)} is on its way`,
     html: emailLayout(`
         <p>Dear ${escapeHtml(params.sellerName)},</p>
-        <p>We've sent your proceeds by <strong>${methodLabel}</strong> on ${params.paidAt.toLocaleDateString('en-US', { dateStyle: 'long' })}${params.reference ? ` (reference <strong>${escapeHtml(params.reference)}</strong>)` : ''}.</p>
+        <p>We've sent your proceeds by <strong>${methodLabel}</strong> on ${formatLongDate(params.paidAt)}${params.reference ? ` (reference <strong>${escapeHtml(params.reference)}</strong>)` : ''}.</p>
         <table style="margin: 20px 0; border-collapse: collapse; width: 100%;">
           ${rows}
           <tr style="border-top: 1px solid #ddd;">
@@ -916,7 +916,7 @@ export async function sendAgreementSignedConfirmation(params: {
   totalEstimateHigh: number;
   agreementUrl: string;
 }) {
-  const signedOn = params.signedAt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const signedOn = formatLongDate(params.signedAt);
   await sendAndLog({
     to: params.prospectEmail,
     subject: `${BUSINESS.name} — Your Consignment Agreement Is Signed`,

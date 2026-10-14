@@ -14,6 +14,8 @@ const bulkSchema = z.object({
     .trim()
     .refine((s) => !Number.isNaN(Date.parse(s)), 'Valid date required')
     .optional(),
+  // Pay despite the buyer's open dispute — only ever sent deliberately.
+  overrideDispute: z.boolean().optional(),
 });
 
 /**
@@ -38,6 +40,7 @@ export async function POST(request: NextRequest) {
       notes: parsed.data.notes,
       paidAt: parsed.data.paidAt ? new Date(parsed.data.paidAt) : null,
       adminId: admin.id,
+      allowDisputed: parsed.data.overrideDispute === true,
     });
 
     if (result.paid.length === 0) {

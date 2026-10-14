@@ -1,6 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { getModel } from './client';
+import { visionImageParts } from './vision-images';
 
 const authenticationSchema = z.object({
   verdict: z.enum(['likely_authentic', 'uncertain', 'likely_inauthentic']).describe('Overall authenticity assessment'),
@@ -43,10 +44,7 @@ export async function authenticateLot(params: {
   provenance?: string;
   estimatedValue?: number;
 }): Promise<AuthenticationResult> {
-  const imageContent = params.imageUrls.map((url) => ({
-    type: 'image' as const,
-    image: new URL(url),
-  }));
+  const imageContent = visionImageParts(params.imageUrls);
 
   const metadata = [
     params.title && `Title: ${params.title}`,

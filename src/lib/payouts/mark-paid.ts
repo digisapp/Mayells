@@ -6,6 +6,9 @@
  *    or a double-click can't record the payment twice);
  *  - the buyer's invoice must still be `paid` — never pay a consignor for a
  *    sale that has since been refunded;
+ *  - no open chargeback on that invoice: if the bank rules for the buyer the
+ *    sale is unwound, and money already sent to the consignor would have to
+ *    be clawed back. An admin can override deliberately (`allowDisputed`);
  *  - the consignor gets one "payment sent" email per batch (skipped for
  *    shadow sellers with sentinel addresses).
  */
@@ -20,6 +23,8 @@ import { logger } from '@/lib/logger';
 
 export type ManualPayoutMethod = 'wire' | 'check' | 'other';
 
+export const DISPUTE_OPEN_REASON = 'Buyer dispute open — wait for the outcome';
+
 export interface MarkPayoutsPaidInput {
   payoutIds: string[];
   method: ManualPayoutMethod;
@@ -27,6 +32,8 @@ export interface MarkPayoutsPaidInput {
   notes?: string | null;
   paidAt?: Date | null;
   adminId: string;
+  /** Pay even though the buyer has an open dispute (explicit admin choice). */
+  allowDisputed?: boolean;
 }
 
 export interface MarkPayoutsPaidResult {
@@ -44,6 +51,7 @@ export async function markPayoutsPaid(input: MarkPayoutsPaidInput): Promise<Mark
     .select({
       payout: payouts,
       invoiceStatus: invoices.status,
+      invoiceDisputedAt: invoices.disputedAt,
       lotTitle: lots.title,
     })
     .from(payouts)
@@ -70,6 +78,10 @@ export async function markPayoutsPaid(input: MarkPayoutsPaidInput): Promise<Mark
         payoutId,
         reason: `Buyer's invoice is ${row.invoiceStatus} — the consignor must not be paid for this sale`,
       });
+      continue;
+    }
+    if (row.invoiceDisputedAt && !input.allowDisputed) {
+      result.skipped.push({ payoutId, reason: DISPUTE_OPEN_REASON });
       continue;
     }
 
@@ -100,6 +112,7 @@ export async function markPayoutsPaid(input: MarkPayoutsPaidInput): Promise<Mark
       method: input.method,
       netAmount: updated.netAmount,
       by: input.adminId,
+      ...(row.invoiceDisputedAt ? { overrodeOpenDispute: true } : {}),
     });
   }
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { authenticateLot } from '@/lib/ai/authentication';
 import { logger } from '@/lib/logger';
+import { NoStillImagesError } from '@/lib/ai/vision-images';
 
 const bodySchema = z.object({
   imageUrls: z
@@ -34,6 +35,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ data: result });
   } catch (error) {
+    if (error instanceof NoStillImagesError) {
+      return NextResponse.json({ error: 'Add at least one photo. Videos cannot be analyzed.' }, { status: 400 });
+    }
     logger.error('AI authenticate error', error);
     return NextResponse.json({ error: 'AI authentication failed' }, { status: 500 });
   }

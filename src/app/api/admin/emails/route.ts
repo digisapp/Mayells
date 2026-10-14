@@ -8,6 +8,7 @@ import { containsPattern } from '@/lib/db/like';
 import {
   folderCondition,
   getFolderCounts,
+  INBOX_FOLDERS,
   isInboxFolder,
   sendAdminEmail,
   threadKey,
@@ -52,6 +53,8 @@ const emailPatchSchema = z.object({
   starred: z.boolean().optional(),
   /** true = spam, false = not spam (inbound only) */
   spam: z.boolean().optional(),
+  /** The folder the action was taken in; `spam` narrows threadIds to their spam messages. */
+  folder: z.enum(INBOX_FOLDERS).optional(),
 })
   .refine(d => d.id || (d.ids && d.ids.length > 0) || (d.threadIds && d.threadIds.length > 0), { message: 'id, ids or threadIds required' })
   .refine(d => [d.status, d.read, d.archived, d.starred, d.spam].some((v) => v !== undefined), {
@@ -63,7 +66,21 @@ const emailDeleteSchema = z.object({
   ids: z.array(z.string().uuid()).max(500).optional(),
   /** Whole conversations (thread keys): every message in each of them. */
   threadIds: z.array(z.string().uuid()).max(500).optional(),
+  /** The folder the action was taken in; `spam` narrows threadIds to their spam messages. */
+  folder: z.enum(INBOX_FOLDERS).optional(),
 }).refine(d => d.id || (d.ids && d.ids.length > 0) || (d.threadIds && d.threadIds.length > 0), { message: 'id, ids or threadIds required' });
+
+/**
+ * Every message of the named conversations — or, for an action taken in the
+ * Spam folder, only their spam messages. A conversation is listed there when
+ * any message in it is spam, which can be one out-of-office or an AI-flagged
+ * reply in a real customer thread; deleting or archiving "it" from Spam must
+ * not take the customer's mail and our replies with it.
+ */
+function conversationMessages(threadIds: string[], folder: InboxFolder | undefined) {
+  const inConversations = inArray(threadKey, threadIds);
+  return folder === 'spam' ? and(inConversations, eq(emails.isSpam, true))! : inConversations;
+}
 
 const listQuerySchema = z.object({
   /** Inbox folder (the admin inbox). Takes precedence over direction/spam/filter. */
@@ -122,6 +139,8 @@ const listColumns = {
   // Unread messages anywhere in the conversation: a list row is bold while
   // any of them is, not only when the latest one is.
   threadUnread: sql<number>`(select count(*) from ${emails} u where (u.thread_id = coalesce("emails"."thread_id", "emails"."id") or u.id = coalesce("emails"."thread_id", "emails"."id")) and u.direction = 'inbound' and u.read_at is null and u.is_spam = false and u.archived_at is null)::int`,
+  // Spam messages in the conversation: what a delete in the Spam folder removes.
+  threadSpam: sql<number>`(select count(*) from ${emails} s where (s.thread_id = coalesce("emails"."thread_id", "emails"."id") or s.id = coalesce("emails"."thread_id", "emails"."id")) and s.is_spam = true)::int`,
 };
 
 /**
@@ -168,15 +187,40 @@ export async function GET(req: NextRequest) {
     const pageSize = parsedQuery.data.limit ?? PAGE_SIZE;
     const offset = (page - 1) * pageSize;
 
-    // Thread view: every email in a conversation, archived ones included
+    // Thread view: every email in a conversation, archived ones included.
+    // Any message's id opens its whole conversation (deep links name the
+    // message they are about, not always the root). Older webhook-log links
+    // carry Resend's id for a delivery event, so that is looked up too.
     if (threadId) {
+      const [anchor] = await db
+        .select({ key: threadKey })
+        .from(emails)
+        .where(or(eq(emails.id, threadId), eq(emails.resendId, threadId)))
+        .orderBy(sql`${emails.id} = ${threadId} desc`)
+        .limit(1);
+      const key = anchor?.key ?? threadId;
       const threadEmails = await db
         .select(listColumns)
         .from(emails)
-        .where(or(eq(emails.id, threadId), eq(emails.threadId, threadId)))
+        .where(or(eq(emails.id, key), eq(emails.threadId, key)))
         .orderBy(emails.createdAt);
 
-      return NextResponse.json({ data: threadEmails, thread: true });
+      // Forwards are conversations of their own with whoever they went to;
+      // the messages they forwarded still say where they went.
+      const memberIds = threadEmails.map((e) => e.id);
+      const forwards = memberIds.length > 0
+        ? await db
+          .select({ id: emails.id, inReplyToId: emails.inReplyToId, toEmail: emails.toEmail, createdAt: emails.createdAt })
+          .from(emails)
+          .where(and(
+            eq(emails.direction, 'outbound'),
+            inArray(emails.inReplyToId, memberIds),
+            sql`${threadKey} <> ${key}`,
+          ))
+          .orderBy(emails.createdAt)
+        : [];
+
+      return NextResponse.json({ data: threadEmails, thread: true, threadKey: key, forwards });
     }
 
     const folder: InboxFolder | null = isInboxFolder(parsedQuery.data.folder)
@@ -321,12 +365,12 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: parsedPatch.error.issues[0].message }, { status: 400 });
     }
 
-    const { id, ids, threadIds, status, read, archived, starred, spam } = parsedPatch.data;
+    const { id, ids, threadIds, status, read, archived, starred, spam, folder } = parsedPatch.data;
     const targetIds = ids && ids.length > 0 ? ids : id ? [id] : [];
-    // Messages named directly, plus every message of each named conversation.
+    // Messages named directly, plus the messages of each named conversation.
     const targets = or(
       ...(targetIds.length > 0 ? [inArray(emails.id, targetIds)] : []),
-      ...(threadIds && threadIds.length > 0 ? [inArray(threadKey, threadIds)] : []),
+      ...(threadIds && threadIds.length > 0 ? [conversationMessages(threadIds, folder)] : []),
     )!;
     const now = new Date();
 
@@ -386,15 +430,19 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: parsedDelete.error.issues[0].message }, { status: 400 });
     }
 
-    const { id, ids, threadIds } = parsedDelete.data;
+    const { id, ids, threadIds, folder } = parsedDelete.data;
     const named: string[] = ids && ids.length > 0 ? ids : id ? [id] : [];
-    // A conversation named by its key deletes every message in it.
+    // A conversation named by its key deletes every message in it (in the
+    // Spam folder, every spam message in it).
     const members = threadIds && threadIds.length > 0
-      ? await db.select({ id: emails.id }).from(emails).where(inArray(threadKey, threadIds))
+      ? await db.select({ id: emails.id }).from(emails).where(conversationMessages(threadIds, folder))
       : [];
     const idsToDelete = Array.from(new Set([...named, ...members.map((m) => m.id)]));
-    if (idsToDelete.length === 0) return NextResponse.json({ success: true, deleted: 0 });
+    if (idsToDelete.length === 0) return NextResponse.json({ success: true, deleted: 0, reRooted: {} });
     const doomed = new Set(idsToDelete);
+    // Old root id → new root id, for every conversation that outlives its
+    // root: the client keeps showing it under the new key.
+    const reRooted: Record<string, string> = {};
 
     await db.transaction(async (tx) => {
       const doomedRows = await tx
@@ -424,6 +472,7 @@ export async function DELETE(req: NextRequest) {
           .set({ threadId: survivor.id })
           .where(and(eq(emails.threadId, threadId), notInArray(emails.id, idsToDelete)));
         await tx.update(emails).set({ inReplyToId: null }).where(eq(emails.id, survivor.id));
+        reRooted[threadId] = survivor.id;
       }
 
       // 2. Re-parent direct replies to a deleted message onto its nearest
@@ -449,7 +498,7 @@ export async function DELETE(req: NextRequest) {
       await tx.delete(emails).where(inArray(emails.id, idsToDelete));
     });
 
-    return NextResponse.json({ success: true, deleted: idsToDelete.length });
+    return NextResponse.json({ success: true, deleted: idsToDelete.length, reRooted });
   } catch (error) {
     logger.error('Admin email delete error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

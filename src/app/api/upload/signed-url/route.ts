@@ -7,12 +7,12 @@ import { logger } from '@/lib/logger';
 /**
  * Admin direct-to-storage uploads.
  *
- * `POST /api/upload` streams the file through this Next route, which on
- * Vercel hits the ~4.5 MB request-body cap before the route's own size check
- * runs — large phone photos simply fail. Mirroring the seller flow
+ * Streaming a file through a Next route hits Vercel's ~4.5 MB request-body
+ * cap before any size check runs — large phone photos simply fail. Mirroring
+ * the seller flow
  * (`/api/upload/[token]/signed-url`), this hands the admin a short-lived
  * signed URL so the bytes go straight to Supabase Storage. Same bucket and
- * key convention as `/api/upload` (`<userId>/<ts>-<rand>.<ext>`), so every
+ * key convention as before (`<userId>/<ts>-<rand>.<ext>`), so every
  * other piece of code that derives a storage path from a public URL keeps
  * working.
  *

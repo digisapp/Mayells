@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import Stripe from 'stripe';
 import { handleStripeEvent } from '@/lib/stripe/handlers';
 import { handleResendEvent, type ResendEvent } from '@/lib/email/resend-events';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
 /**
  * POST /api/admin/webhooks/:id/replay — re-run a stored event through the
@@ -25,6 +26,7 @@ export async function POST(
     if (response) return response;
 
     const { id } = await params;
+    if (!UUID_RE.test(id)) return NextResponse.json({ error: 'Webhook log not found' }, { status: 404 });
     const [requested] = await db.select().from(webhookLogs).where(eq(webhookLogs.id, id)).limit(1);
     if (!requested) return NextResponse.json({ error: 'Webhook log not found' }, { status: 404 });
 

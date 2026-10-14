@@ -11,11 +11,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Search, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Search, Sparkles, X } from 'lucide-react';
 import { PageHeader, filterChipClass, filterChipCountClass } from '@/components/admin/PageHeader';
 import { formatCurrency } from '@/types';
 import { LOT_STATUS, lotStatus } from '@/lib/admin/status/sales';
 import { formatEstimate } from '@/lib/format/estimate';
+import { containsPattern } from '@/lib/db/like';
 import { AutoSubmitSelect } from './_components/AutoSubmitSelect';
 import { Pager } from '../_components/Pager';
 
@@ -103,6 +104,9 @@ export default async function AdminLotsPage({
   // Lots with no seller-of-record are skipped at payout time — the dashboard
   // links here with ?missingSeller=1 so they get fixed before settlement.
   const missingSeller = first(params.missingSeller) === '1';
+  // One consignor's lots (the prospect page links here with ?seller=<userId>).
+  const rawSeller = first(params.seller);
+  const seller = UUID_RE.test(rawSeller) ? rawSeller : '';
   const pageNumber = Number(first(params.page) || '1');
   const page = Number.isFinite(pageNumber) && pageNumber >= 1 ? Math.floor(pageNumber) : 1;
   const offset = (page - 1) * PAGE_SIZE;
@@ -110,10 +114,11 @@ export default async function AdminLotsPage({
   // Status is kept separate so the chip counts can ignore it: every chip then
   // shows how many lots clicking it would yield under the other filters.
   const nonStatusConditions: SQL[] = [];
-  if (q) nonStatusConditions.push(ilike(lots.title, `%${q}%`));
+  if (q) nonStatusConditions.push(ilike(lots.title, containsPattern(q)));
   if (saleType) nonStatusConditions.push(eq(lots.saleType, saleType));
   if (category) nonStatusConditions.push(eq(lots.categoryId, category));
   if (missingSeller) nonStatusConditions.push(isNull(lots.sellerId));
+  if (seller) nonStatusConditions.push(eq(lots.sellerId, seller));
   const chipWhere = nonStatusConditions.length > 0 ? and(...nonStatusConditions) : undefined;
   const conditions: SQL[] = status ? [...nonStatusConditions, eq(lots.status, status)] : nonStatusConditions;
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -124,7 +129,7 @@ export default async function AdminLotsPage({
       ? desc(sql`COALESCE(${lots.buyNowPrice}, ${lots.estimateHigh}, ${lots.currentBidAmount}, 0)`)
       : desc(lots.createdAt);
 
-  const [rows, [{ total }], statusCounts, departments] = await Promise.all([
+  const [rows, [{ total }], statusCounts, departments, [sellerFilter]] = await Promise.all([
     db
       .select({
         lot: lots,
@@ -150,17 +155,21 @@ export default async function AdminLotsPage({
       .from(categories)
       .where(eq(categories.isActive, true))
       .orderBy(asc(categories.sortOrder)),
+    // Name for the active consignor chip.
+    seller
+      ? db.select({ fullName: users.fullName, email: users.email }).from(users).where(eq(users.id, seller)).limit(1)
+      : Promise.resolve([]),
   ]);
 
   const countByStatus = new Map(statusCounts.map((r) => [r.status as string, r.count]));
   const allCount = statusCounts.reduce((sum, r) => sum + r.count, 0);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const hasFilters = !!(q || status || saleType || category || missingSeller || sort !== 'newest');
+  const hasFilters = !!(q || status || saleType || category || missingSeller || seller || sort !== 'newest');
 
   /** Build a lots URL keeping the current filters, with overrides. Page resets unless given. */
-  function hrefWith(overrides: Partial<Record<'q' | 'status' | 'saleType' | 'category' | 'sort' | 'page' | 'missingSeller', string | number>>) {
-    const merged: Record<string, string | number> = { q, status, saleType, category, sort, missingSeller: missingSeller ? '1' : '', page: 1, ...overrides };
+  function hrefWith(overrides: Partial<Record<'q' | 'status' | 'saleType' | 'category' | 'sort' | 'page' | 'missingSeller' | 'seller', string | number>>) {
+    const merged: Record<string, string | number> = { q, status, saleType, category, sort, missingSeller: missingSeller ? '1' : '', seller, page: 1, ...overrides };
     const sp = new URLSearchParams();
     for (const [key, value] of Object.entries(merged)) {
       const str = String(value ?? '');
@@ -218,7 +227,8 @@ export default async function AdminLotsPage({
           );
         })}
         <Link
-          href={hrefWith({ missingSeller: missingSeller ? '' : '1' })}
+          // "No consignor" and one consignor's lots can't both hold.
+          href={hrefWith({ missingSeller: missingSeller ? '' : '1', ...(!missingSeller && { seller: '' }) })}
           className={filterChipClass(
             missingSeller,
             missingSeller
@@ -229,13 +239,28 @@ export default async function AdminLotsPage({
         >
           No consignor set
         </Link>
+        {seller && (
+          <Link
+            href={hrefWith({ seller: '' })}
+            className={filterChipClass(true)}
+            title="Show every consignor's lots"
+          >
+            Consignor: {sellerFilter?.fullName || sellerFilter?.email || 'Unknown account'}
+            <X className="h-3 w-3" aria-hidden />
+            <span className="sr-only">(remove filter)</span>
+          </Link>
+        )}
       </div>
 
       {/* Search / type / department / sort — a plain GET form. The selects
-          submit it on change; the search box submits on Enter. */}
-      <form method="get" action="/admin/lots" className="flex flex-wrap items-center gap-2 mb-6">
+          submit it on change; the search box submits on Enter. Keyed on the
+          filters so it remounts on navigation: the page stays mounted across
+          search-param changes, and uncontrolled fields would keep stale values
+          (e.g. after "Clear filters"). */}
+      <form key={hrefWith({})} method="get" action="/admin/lots" className="flex flex-wrap items-center gap-2 mb-6">
         {status && <input type="hidden" name="status" value={status} />}
         {missingSeller && <input type="hidden" name="missingSeller" value="1" />}
+        {seller && <input type="hidden" name="seller" value={seller} />}
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input name="q" defaultValue={q} placeholder="Search titles" className="pl-9" />

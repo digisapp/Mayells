@@ -272,7 +272,7 @@ export function LotForm({
     const failed: string[] = [];
 
     // Bytes go straight to storage via a signed URL (see admin-upload.ts);
-    // routing them through /api/upload trips Vercel's 4.5 MB body cap on
+    // routing them through a Next route trips Vercel's 4.5 MB body cap on
     // phone photos. One failure must not abort the run — the rest still land.
     for (const file of Array.from(files)) {
       try {

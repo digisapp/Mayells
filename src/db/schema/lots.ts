@@ -96,6 +96,12 @@ export const lots = pgTable('lots', {
   // SEO
   slug: text('slug').unique(),
 
+  // First time the lot went on public sale (for_sale or in_auction). Stamped
+  // by a database trigger (migration 0029), so every path that lists a lot
+  // sets it. The saved-search alert watermark: lots are drafted long before
+  // they are listed, so created_at would skip most of them.
+  listedAt: timestamp('listed_at'),
+
   createdAt: timestamp('created_at').default(sql`now()`),
   updatedAt: timestamp('updated_at').default(sql`now()`),
 }, (table) => [
@@ -112,6 +118,7 @@ export const lots = pgTable('lots', {
   // Default "newest" ordering on public browse + admin lots lists, and the
   // saved-search watermark predicate.
   index('lots_created_at_idx').on(table.createdAt),
+  index('lots_listed_at_idx').on(table.listedAt),
 ]).enableRLS();
 
 export const lotsRelations = relations(lots, ({ one, many }) => ({

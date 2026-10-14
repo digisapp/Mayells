@@ -1,7 +1,44 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { db } from '@/db';
 import { auctionLots, auctions } from '@/db/schema';
 import { PUBLIC_AUCTION_STATUSES } from '@/lib/auctions/visibility';
+
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Sale statuses in which a placement still holds its lot: everything short of
+ * `completed` (settled) and `cancelled`. A lot belongs to at most one such
+ * sale at a time. Two would mean two bidding ladders, two settlements and an
+ * invoice for the wrong buyer.
+ */
+export const ACTIVE_SALE_STATUSES = [
+  'draft', 'scheduled', 'preview', 'open', 'live', 'closing', 'closed',
+] as const;
+
+/**
+ * The unfinished sale (other than `exceptAuctionId`) that holds this lot, or
+ * null. Callers: catalogue a lot only when this is null; reset a lot's status
+ * on removal only when this is null.
+ */
+export async function findActivePlacement(
+  lotId: string,
+  opts: { exceptAuctionId?: string; executor?: Executor } = {},
+): Promise<{ auctionId: string; auctionTitle: string; auctionStatus: string } | null> {
+  const executor = opts.executor ?? db;
+  const [row] = await executor
+    .select({ auctionId: auctions.id, auctionTitle: auctions.title, auctionStatus: auctions.status })
+    .from(auctionLots)
+    .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
+    .where(
+      and(
+        eq(auctionLots.lotId, lotId),
+        inArray(auctions.status, [...ACTIVE_SALE_STATUSES]),
+        opts.exceptAuctionId ? ne(auctions.id, opts.exceptAuctionId) : undefined,
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
 
 /**
  * A lot sits in the catalogue of a public sale (scheduled/preview/open/…)

@@ -38,3 +38,29 @@ export function parseAuthResults(header: string | null | undefined): SenderAuth 
 export function senderAuthenticated(auth: SenderAuth | null | undefined): boolean {
   return auth?.dmarc === 'pass';
 }
+
+/**
+ * An explicit DMARC fail: the From domain publishes a policy and this message
+ * did not meet it. Not proof of forgery (some forwarders break alignment), so
+ * the mail is still delivered, but it never joins an existing conversation.
+ * `none` or no verdict at all is not a fail: plenty of small senders have no
+ * DMARC record.
+ */
+export function senderFailedDmarc(auth: SenderAuth | null | undefined): boolean {
+  return auth?.dmarc === 'fail';
+}
+
+/**
+ * Why the webhook kept a message out of every conversation, written at the
+ * front of its summary. The AI pass keeps it there (senderWarningOf), so the
+ * operator sees it before replying.
+ */
+export const SENDER_WARNINGS = {
+  dmarcFail: 'Unverified sender: this message failed DMARC, so the From address may be forged. It was kept out of existing conversations.',
+  replyToOnly: 'Unverified sender: the From header could not be read, so this shows the unverified Reply-To address. It was kept out of existing conversations.',
+} as const;
+
+/** The sender warning a stored summary starts with, or null. */
+export function senderWarningOf(summary: string | null | undefined): string | null {
+  return Object.values(SENDER_WARNINGS).find((w) => !!summary && summary.startsWith(w)) ?? null;
+}

@@ -6,11 +6,16 @@ import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { loginSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
-import { rateLimit } from '@/lib/rate-limit';
-import { ensureUserProfile, roleFromMetadata } from '@/lib/auth/profile';
+import { ensureUserProfile } from '@/lib/auth/profile';
+import { isAdminProfile } from '@/lib/auth/admin';
+import { checkLoginAttempt, recordLoginFailure, LOGIN_RETRY_AFTER } from '@/lib/auth/attempt-limits';
+import { rejectCrossSiteAuthRequest } from '@/lib/auth/same-origin';
 
 export async function POST(req: NextRequest) {
   try {
+    const rejected = rejectCrossSiteAuthRequest(req);
+    if (rejected) return rejected;
+
     const ip = getClientIp(req);
 
     const body = await req.json();
@@ -25,17 +30,14 @@ export async function POST(req: NextRequest) {
 
     const { email, password } = parsed.data;
 
-    // Per-IP limit plus per-email limit (catches distributed attacks across
-    // many IPs). Checked in parallel — they're independent Redis round trips.
-    const [{ success: ipOk }, { success: emailOk }] = await Promise.all([
-      rateLimit(`auth:login:ip:${ip}`, { maxRequests: 10, windowSeconds: 900, failClosed: true }),
-      rateLimit(`auth:login:email:${email.toLowerCase()}`, { maxRequests: 10, windowSeconds: 900, failClosed: true }),
-    ]);
-    if (!ipOk) {
-      return NextResponse.json({ error: 'Too many login attempts. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': '900' } });
+    // Per-IP limit on every attempt; per-account limits on wrong passwords
+    // only, so nobody can lock someone else out (see attempt-limits.ts).
+    const allowed = await checkLoginAttempt(ip, email);
+    if (allowed === 'ip') {
+      return NextResponse.json({ error: 'Too many login attempts. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': LOGIN_RETRY_AFTER } });
     }
-    if (!emailOk) {
-      return NextResponse.json({ error: 'Too many login attempts for this account. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': '900' } });
+    if (allowed === 'account') {
+      return NextResponse.json({ error: 'Too many login attempts for this account. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': LOGIN_RETRY_AFTER } });
     }
 
     const supabase = await createClient();
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest) {
         );
       }
       if (error.code === 'invalid_credentials') {
+        await recordLoginFailure(ip, email);
         return NextResponse.json({ error: 'That email and password don’t match. Check them and try again.', code: 'invalid_credentials' }, { status: 401 });
       }
       logger.warn('Login failed', { code: error.code, status: error.status });
@@ -70,7 +73,6 @@ export async function POST(req: NextRequest) {
         id: data.user.id,
         email: data.user.email ?? email,
         fullName: (data.user.user_metadata?.full_name as string | undefined) ?? null,
-        role: roleFromMetadata(data.user.user_metadata?.role),
       });
     } catch (profileError) {
       logger.error('Login: failed to ensure user profile', profileError, { userId: data.user.id });
@@ -78,17 +80,19 @@ export async function POST(req: NextRequest) {
 
     // Fetch user role to determine redirect. Uses the pooled DB connection
     // rather than a per-request Supabase REST client — one warm query instead
-    // of a cold HTTP round trip on the login critical path.
+    // of a cold HTTP round trip on the login critical path. isAdminProfile
+    // checks the account status too, so a suspended admin is answered as a
+    // buyer and never sent to /admin.
     let role = 'buyer';
     try {
       const [profile] = await db
-        .select({ role: users.role, isAdmin: users.isAdmin })
+        .select({ role: users.role, isAdmin: users.isAdmin, accountStatus: users.accountStatus })
         .from(users)
         .where(eq(users.id, data.user.id))
         .limit(1);
-      if (profile?.isAdmin) {
+      if (isAdminProfile(profile)) {
         role = 'admin';
-      } else if (profile?.role) {
+      } else if (profile?.role && profile.role !== 'admin') {
         role = profile.role;
       }
     } catch {

@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '@/db';
 import { calls, sellerProspects } from '@/db/schema';
 import { rejectUnlessVoiceAgent } from '@/lib/voice/agent-auth';
+import { missingContactMessage, usablePhone } from '@/lib/voice/lead-contact';
 import { recordConversationLead, emailUploadLink } from '@/lib/prospects/intake';
 import { sendAppraisalRequestNotification } from '@/lib/email/notifications';
 import { getMicrositeBySlug } from '@/lib/microsites/config';
@@ -42,14 +43,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cal
   }
   const raw = parsed.data;
   const emailOk = !!raw.email && z.email().safeParse(raw.email).success;
+  const heardPhone = usablePhone(raw.phone);
   const countOk = raw.estimatedItemCount !== undefined
     && Number.isInteger(raw.estimatedItemCount) && raw.estimatedItemCount >= 1 && raw.estimatedItemCount <= 100000;
   const unparsed = [
     raw.email && !emailOk ? `Email as heard (did not parse): ${raw.email}` : null,
+    raw.phone && !heardPhone ? `Phone as heard (too short to dial): ${raw.phone}` : null,
     raw.estimatedItemCount !== undefined && !countOk ? `Item count as heard: ${raw.estimatedItemCount}` : null,
   ].filter(Boolean);
   const input = {
     ...raw,
+    phone: heardPhone,
     email: emailOk ? raw.email : undefined,
     estimatedItemCount: countOk ? raw.estimatedItemCount : undefined,
     items: unparsed.length ? `${raw.items}\n${unparsed.join('\n')}`.slice(0, 3200) : raw.items,
@@ -62,7 +66,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cal
     const site = call.site ? getMicrositeBySlug(call.site) : undefined;
     // Caller ID is the fallback, not the default: people often ask to be
     // called back on a different number than the one they rang from.
-    const phone = input.phone || call.callerNumber || undefined;
+    const phone = input.phone ?? usablePhone(call.callerNumber);
+    // A lead nobody can reach is no lead. Refused while the caller is still
+    // on the line, with what to ask for: the agent relays this message.
+    const missing = missingContactMessage({ phone, email: input.email, phoneHeard: !!raw.phone, emailHeard: !!raw.email });
+    if (missing) return NextResponse.json({ error: missing }, { status: 400 });
     const line = call.channel === 'web'
       ? `the website voice concierge${site ? ` on ${site.domain}` : ''}`
       : `the AI phone concierge on the ${site ? `${site.city} line` : 'main line'}`;

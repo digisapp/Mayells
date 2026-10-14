@@ -3,7 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { redis, isRedisConfigured } from '@/lib/redis';
-import { hasVerifiedTotpFactor, needsMfaChallenge, isMfaExemptPath, MFA_CHALLENGE_PATH } from '@/lib/auth/mfa';
+import {
+  enrollmentFromFactorsResult,
+  hasVerifiedTotpFactor,
+  needsMfaChallenge,
+  isMfaExemptPath,
+  MFA_CHALLENGE_PATH,
+} from '@/lib/auth/mfa';
 import { profileCacheKey, PROFILE_CACHE_SECONDS } from '@/lib/auth/profile-cache';
 import { getMicrositeByHost } from '@/lib/microsites/config';
 import { supabaseAnonKey, supabaseUrl } from '@/lib/supabase/env';
@@ -26,7 +32,7 @@ type CachedProfile = { role: string | null; is_admin: boolean | null; account_st
 // Role changes are rare; a short TTL keeps every admin page load from paying
 // a Supabase REST round trip. Trade-off: revoking admin can take up to this
 // long to bite in the middleware (API routes still check the DB directly).
-async function getUserProfile(userId: string): Promise<CachedProfile | null> {
+async function getUserProfile(userId: string): Promise<CachedProfile> {
   const cacheKey = profileCacheKey(userId);
 
   if (isRedisConfigured) {
@@ -42,20 +48,35 @@ async function getUserProfile(userId: string): Promise<CachedProfile | null> {
     supabaseUrl()!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
-  const [{ data: row }, factorsResult] = await Promise.all([
+  const [{ data: row, error: rowError }, factorsResult] = await Promise.all([
     adminClient.from('users').select('role, is_admin, account_status').eq('id', userId).single(),
     adminClient.auth.admin.mfa.listFactors({ userId }).catch(() => null),
   ]);
-  if (!row) return null;
+
+  // Factors unknown (Auth errored or unreachable): fail closed for accounts
+  // that can hold a factor — admins enroll at /admin/security, buyers can't —
+  // so a password-only admin session is refused while bidders keep bidding.
+  // A profile row that is simply absent (PGRST116) is not an admin; only a
+  // failed row lookup leaves the role unknown too. Nothing is cached, so the
+  // next request asks again.
+  const factors = enrollmentFromFactorsResult(factorsResult);
+  const factorsKnown = factors.known;
+  const roleUnknown = !row && !!rowError && rowError.code !== 'PGRST116';
+  const mfa = factorsKnown ? factors.enrolled : row ? isAdminProfile(row) : roleUnknown;
+  if (!row) {
+    // No profile row (or the lookup failed): never an admin, but two-factor
+    // still applies to the session.
+    return { role: null, is_admin: null, account_status: null, mfa };
+  }
 
   const profile: CachedProfile = {
     role: row.role,
     is_admin: row.is_admin,
     account_status: row.account_status,
-    mfa: hasVerifiedTotpFactor(factorsResult?.data?.factors),
+    mfa,
   };
 
-  if (isRedisConfigured) {
+  if (isRedisConfigured && factorsKnown) {
     try {
       await redis.set(cacheKey, profile, { ex: PROFILE_CACHE_SECONDS });
     } catch {
@@ -63,6 +84,21 @@ async function getUserProfile(userId: string): Promise<CachedProfile | null> {
     }
   }
   return profile;
+}
+
+/**
+ * A factor added or removed outside the app (the Supabase dashboard) never
+ * hits /api/auth/mfa/refresh. When an admin page load sees fresh factors that
+ * disagree with the cached flag, drop the cache so API enforcement follows
+ * now rather than when the TTL runs out.
+ */
+async function syncCachedMfa(userId: string, profile: CachedProfile, mfaEnrolled: boolean) {
+  if (!isRedisConfigured || profile.mfa === mfaEnrolled) return;
+  try {
+    await redis.del(profileCacheKey(userId));
+  } catch {
+    // Best-effort; the TTL still bounds staleness.
+  }
 }
 
 /** Current authenticator assurance level from the locally-verified JWT. */
@@ -179,7 +215,7 @@ export async function middleware(request: NextRequest) {
       const claims = data?.claims as { sub?: string; aal?: string } | undefined;
       if (claims?.sub && claims.aal !== 'aal2') {
         const profile = await getUserProfile(claims.sub);
-        if (needsMfaChallenge({ mfaEnrolled: profile?.mfa === true, aal: claims.aal })) {
+        if (needsMfaChallenge({ mfaEnrolled: profile.mfa === true, aal: claims.aal })) {
           return NextResponse.json(
             { error: 'Two-factor verification required', code: 'MFA_REQUIRED' },
             { status: 401 },
@@ -220,10 +256,9 @@ export async function middleware(request: NextRequest) {
     if (!isAdminUser(profile)) {
       return isChallengePage ? redirectWithNext(request, '/admin/login', next) : response;
     }
-    const mustChallenge = needsMfaChallenge({
-      mfaEnrolled: hasVerifiedTotpFactor(user.factors) || profile?.mfa === true,
-      aal: await currentAal(supabase),
-    });
+    const mfaEnrolled = hasVerifiedTotpFactor(user.factors);
+    await syncCachedMfa(user.id, profile, mfaEnrolled);
+    const mustChallenge = needsMfaChallenge({ mfaEnrolled, aal: await currentAal(supabase) });
     if (mustChallenge) {
       return isChallengePage ? response : redirectWithNext(request, MFA_CHALLENGE_PATH, next);
     }
@@ -243,12 +278,13 @@ export async function middleware(request: NextRequest) {
   }
 
   // Accounts that enrolled a TOTP factor must present the code once per
-  // session before any admin page renders. `user.factors` comes fresh from
-  // Auth on every admin navigation; the cached flag is the fallback.
-  const mustChallenge = needsMfaChallenge({
-    mfaEnrolled: hasVerifiedTotpFactor(user.factors) || profile?.mfa === true,
-    aal: await currentAal(supabase),
-  });
+  // session before any admin page renders. Pages go by `user.factors` alone:
+  // it comes fresh from Auth on every admin navigation, whereas a cached flag
+  // left over from a factor removed in the Supabase dashboard would send the
+  // admin to a challenge with nothing to challenge, and back, in a loop.
+  const mfaEnrolled = hasVerifiedTotpFactor(user.factors);
+  await syncCachedMfa(user.id, profile, mfaEnrolled);
+  const mustChallenge = needsMfaChallenge({ mfaEnrolled, aal: await currentAal(supabase) });
   if (mustChallenge) {
     return redirectWithNext(request, MFA_CHALLENGE_PATH, requested);
   }

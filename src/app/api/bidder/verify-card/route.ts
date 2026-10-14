@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { stripe } from '@/lib/stripe/config';
+import { stripe, isStripeConfigured } from '@/lib/stripe/config';
 import { db } from '@/db';
 import { users } from '@/db/schema';
 import { eq, and, isNull } from 'drizzle-orm';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-ip';
 import { logger } from '@/lib/logger';
+import { BUSINESS } from '@/lib/config';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 
@@ -22,6 +23,14 @@ export async function POST(req: NextRequest) {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
+    // No Stripe key: a clear message instead of a 500 from inside the SDK.
+    if (!isStripeConfigured()) {
+      return NextResponse.json(
+        { error: `Card verification isn't available right now. Please contact us at ${BUSINESS.phone} or ${BUSINESS.email} for help.` },
+        { status: 503 },
+      );
+    }
 
     const { success } = await rateLimit(`verify-card:${getClientIp(req)}`, { maxRequests: 10, windowSeconds: 3600 });
     if (!success) return NextResponse.json({ error: 'Too many attempts. Please try again later.' }, { status: 429 });

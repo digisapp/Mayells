@@ -67,6 +67,10 @@ export const sellerProspects = pgTable('seller_prospects', {
   agreementSentAt: timestamp('agreement_sent_at'),
   agreementSignedAt: timestamp('agreement_signed_at'),
   agreementIp: text('agreement_ip'),
+  // The capability in the emailed signing link. Never the prospect id: that
+  // id also appears in the consignor's photo paths, which become public lot
+  // images.
+  agreementToken: uuid('agreement_token').default(sql`gen_random_uuid()`).notNull().unique(),
 
   // If they become a registered user later
   userId: uuid('user_id'),

@@ -1,22 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
 import { db } from '@/db';
-import { auctions, users } from '@/db/schema';
-import { eq, desc, and, inArray } from 'drizzle-orm';
+import { auctions } from '@/db/schema';
+import { desc, and, inArray } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { auctionSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { PUBLIC_AUCTION_STATUSES, toPublicAuction, type AuctionStatus } from '@/lib/auctions/visibility';
-import { requireAdminApi } from '@/lib/auth/require-admin';
-
-/**
- * True for a Postgres unique violation (23505). Drizzle wraps the driver
- * error, so the code can sit on the error itself or on `cause`.
- */
-function isUniqueViolation(err: unknown): boolean {
-  const candidates = [err, (err as { cause?: unknown })?.cause];
-  return candidates.some((c) => (c as { code?: string } | undefined)?.code === '23505');
-}
+import { isAdminUser, requireAdminApi } from '@/lib/auth/require-admin';
+import { isUniqueViolation, SLUG_IN_USE_ERROR } from '@/lib/auctions/db-errors';
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,14 +20,7 @@ export async function GET(req: NextRequest) {
     try {
       const supabase = await createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const [profile] = await db
-          .select({ role: users.role, isAdmin: users.isAdmin })
-          .from(users)
-          .where(eq(users.id, user.id))
-          .limit(1);
-        isAdmin = isAdminProfile(profile);
-      }
+      isAdmin = await isAdminUser(user?.id);
     } catch {
       isAdmin = false;
     }
@@ -97,7 +81,7 @@ export async function POST(req: NextRequest) {
       // auctions.slug is unique; the form derives it from the title, so a
       // second "Spring Sale" collides. Tell the operator instead of 500ing.
       if (isUniqueViolation(err)) {
-        return NextResponse.json({ error: 'That URL slug is already in use' }, { status: 409 });
+        return NextResponse.json({ error: SLUG_IN_USE_ERROR }, { status: 409 });
       }
       throw err;
     }

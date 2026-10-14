@@ -64,10 +64,11 @@ export function htmlToPlainText(html: string | null | undefined): string {
     .trim();
 }
 
-/** The customer's message, quoted under a reply (plain text). */
-export function quotedText(original: Pick<Email, 'createdAt' | 'fromName' | 'fromEmail' | 'bodyText'>): string {
-  if (!original.bodyText) return '';
-  return `\n\n> On ${formatShortDate(original.createdAt)}, ${original.fromName || original.fromEmail} wrote:\n> ${original.bodyText.split('\n').join('\n> ')}`;
+/** The customer's message, quoted under a reply (plain text; an HTML-only message stripped to text). */
+export function quotedText(original: Pick<Email, 'createdAt' | 'fromName' | 'fromEmail' | 'bodyHtml' | 'bodyText'>): string {
+  const body = original.bodyText || htmlToPlainText(original.bodyHtml);
+  if (!body) return '';
+  return `\n\n> On ${formatShortDate(original.createdAt)}, ${original.fromName || original.fromEmail} wrote:\n> ${body.split('\n').join('\n> ')}`;
 }
 
 export function replySubject(subject: string | null | undefined): string {

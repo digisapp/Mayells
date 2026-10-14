@@ -17,7 +17,8 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
-  openGraph: { title: 'Sell With Mayells', description: DESCRIPTION, type: 'website' },
+  alternates: { canonical: '/consign' },
+  openGraph: { title: 'Sell With Mayells', description: DESCRIPTION, type: 'website', url: '/consign' },
   twitter: { card: 'summary_large_image', title: 'Sell With Mayells', description: DESCRIPTION },
 };
 

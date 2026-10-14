@@ -20,6 +20,7 @@ const DEFAULT_SORT = 'newest';
 
 export const metadata = {
   title: 'Gallery',
+  alternates: { canonical: '/gallery' },
   description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices from Mayells.',
   openGraph: {
     title: 'Gallery | Mayells',

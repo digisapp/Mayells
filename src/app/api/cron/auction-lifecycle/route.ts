@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual, randomUUID } from 'node:crypto';
 import { db } from '@/db';
 import { auctions, auctionLots, lots, bids, maxBids, users, invoices, consignments, automationSettings } from '@/db/schema';
-import { eq, lte, and, or, inArray, desc, asc, isNull, gt } from 'drizzle-orm';
+import { eq, lte, and, or, inArray, desc, asc, isNull, gt, sql } from 'drizzle-orm';
 import { generateInvoiceForWonLot } from '@/lib/invoicing/generate-invoice';
 import { relistUnsoldLot } from '@/lib/lots/relist';
-import { openAuctionLots } from '@/lib/bidding/lifecycle';
+import { markLiveAuctioneersLotsListed, openAuctionLots } from '@/lib/bidding/lifecycle';
+import { biddingVenue, liveAuctioneersSaleStep } from '@/lib/bidding/venue';
+import { LA_AWAITING_RESULT_LOT_STATUSES } from '@/lib/auctions/la-results';
 import { sealLotForSettlement, settlingKeyFor } from '@/lib/bidding/bid-engine';
 import { notifyWatchersOfEndingLots } from '@/lib/bidding/ending-soon';
 import { sendInvoiceNotification } from '@/lib/email/notifications';
@@ -76,6 +78,7 @@ async function runLifecycle() {
     invoicesGenerated: 0,
     relistedToGallery: 0,
     returnedToSeller: 0,
+    liveauctioneersEnded: 0,
     markedOverdue: 0,
     invoiceEmailsRetried: 0,
     invoiceRemindersSent: 0,
@@ -103,6 +106,22 @@ async function runLifecycle() {
 
     for (const auction of toOpen) {
       try {
+        // A LiveAuctioneers sale is bid there: only its status follows the
+        // schedule (the catalogue then shows "Bid on LiveAuctioneers"). Its
+        // lots stay approved — public in an open sale — with no close times
+        // or Redis state, so nothing here can take or settle a bid on them.
+        if (biddingVenue(auction) === 'liveauctioneers') {
+          if (liveAuctioneersSaleStep(auction, now) === 'open') {
+            await db
+              .update(auctions)
+              .set({ status: 'open', updatedAt: now })
+              .where(and(eq(auctions.id, auction.id), inArray(auctions.status, ['scheduled', 'preview'])));
+            await markLiveAuctioneersLotsListed(auction.id, now);
+            results.opened++;
+          }
+          continue;
+        }
+
         // An auction with no end time is not cron-openable:
         //  - a LIVE auction with no scheduled end opens when the auctioneer
         //    starts the session (/api/live/[id]/start), not on a timer — opening
@@ -154,6 +173,39 @@ async function runLifecycle() {
 
     for (const auction of toSettle) {
       try {
+        // A LiveAuctioneers sale is never settled here: its winners and
+        // hammer prices exist only on LiveAuctioneers, so relisting or
+        // returning its lots for "no bids" would undo real sales. The sale
+        // just reads as ended; an admin records each lot's result
+        // (/api/admin/auctions/[id]/results), which completes the sale.
+        if (biddingVenue(auction) === 'liveauctioneers') {
+          if (liveAuctioneersSaleStep(auction, now) === 'close') {
+            await db
+              .update(auctions)
+              .set({ status: 'closed', actualEndedAt: auction.actualEndedAt ?? now, updatedAt: now })
+              .where(and(eq(auctions.id, auction.id), inArray(auctions.status, ['open', 'live', 'closing'])));
+            results.liveauctioneersEnded++;
+          }
+          // Nothing left awaiting a result (an empty sale, or the last result
+          // landed mid-run): complete it rather than leave it closed forever.
+          const [{ awaiting }] = await db
+            .select({ awaiting: sql<number>`count(*)::int` })
+            .from(auctionLots)
+            .innerJoin(lots, eq(lots.id, auctionLots.lotId))
+            .where(and(
+              eq(auctionLots.auctionId, auction.id),
+              inArray(lots.status, [...LA_AWAITING_RESULT_LOT_STATUSES]),
+            ));
+          if (awaiting === 0) {
+            await db
+              .update(auctions)
+              .set({ status: 'completed', actualEndedAt: auction.actualEndedAt ?? now, updatedAt: now })
+              .where(and(eq(auctions.id, auction.id), inArray(auctions.status, ['open', 'live', 'closing', 'closed'])));
+            results.closed++;
+          }
+          continue;
+        }
+
         if (auction.status !== 'closed') {
           await db
             .update(auctions)
@@ -356,8 +408,11 @@ async function runLifecycle() {
               broadcastLiveAuctionEvent(auction.id, 'lot_closed', { lotId: al.lotId, outcome: settlement.outcome }),
             );
           } catch (err) {
+            // The lot's transaction rolled back; it stays in_auction and is
+            // retried next tick. The rest of the sale keeps settling.
             unsettledRemaining++;
             results.errors.push(`Failed to settle lot ${al.lotId}: ${err}`);
+            logger.error('Failed to settle lot', err, { auctionId: auction.id, lotId: al.lotId });
           }
         }
 
@@ -381,10 +436,12 @@ async function runLifecycle() {
     // button moves it. Surface it loudly instead of letting it sit unnoticed.
     try {
       const liveNoEnd = await db
-        .select({ id: auctions.id, title: auctions.title })
+        .select({ id: auctions.id, title: auctions.title, liveauctioneersUrl: auctions.liveauctioneersUrl })
         .from(auctions)
         .where(and(eq(auctions.status, 'live'), isNull(auctions.biddingEndsAt)));
       for (const liveAuction of liveNoEnd) {
+        // No lots open on site for a LiveAuctioneers sale; nothing to strand.
+        if (biddingVenue(liveAuction) === 'liveauctioneers') continue;
         const [stillOpen] = await db
           .select({ id: auctionLots.id })
           .from(auctionLots)
@@ -486,7 +543,7 @@ async function runLifecycle() {
     // revalidate window.
     if (
       results.opened + results.closed + results.lotsSettled +
-      results.relistedToGallery + results.returnedToSeller > 0
+      results.relistedToGallery + results.returnedToSeller + results.liveauctioneersEnded > 0
     ) {
       revalidatePublicCatalog();
     }

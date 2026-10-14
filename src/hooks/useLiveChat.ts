@@ -7,7 +7,6 @@ import { useRealtimeTopic } from './useRealtimeTopic';
 export interface ChatMessage {
   /** Stable client-side id assigned when the message is received (used as React key) */
   id: string;
-  userId: string;
   displayName: string;
   role: string;
   message: string;
@@ -52,7 +51,6 @@ export function useLiveChat(auctionId: string) {
     resumedRef.current = false;
     const marker: ChatMessage = {
       id: messageId(),
-      userId: '',
       displayName: '',
       role: 'system',
       message: 'Reconnected',

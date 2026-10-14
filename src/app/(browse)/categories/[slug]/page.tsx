@@ -18,6 +18,12 @@ const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 // the full lists live on each sale's page.
 const LOT_LIMIT = 48;
 
+// No category is rendered at build time; each is rendered on its first
+// request and then cached (ISR) — an empty list is what enables that here.
+export async function generateStaticParams() {
+  return [];
+}
+
 // Deduplicated per request — generateMetadata and the page component share one DB call
 const getCategory = cache(async (slug: string) => {
   const [category] = await db.select().from(categories).where(eq(categories.slug, slug)).limit(1);

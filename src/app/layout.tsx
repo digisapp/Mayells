@@ -40,10 +40,13 @@ export const metadata: Metadata = {
   },
   description: 'Mayells is a luxury auction house in Palm Beach, Florida and New York. Live and online auctions for fine art, antiques, jewelry, watches, and design. Free appraisals and estate evaluations.',
   keywords: ['auction', 'auction house', 'Palm Beach auction house', 'New York auction house', 'Delray Beach auctions', 'South Florida auctions', 'fine art', 'antiques', 'jewelry', 'watches', 'collectibles', 'consignment', 'estate sale', 'appraisal', 'live auction', 'online bidding'],
+  // No url / canonical here: metadata merges shallowly, so every page that
+  // didn't set its own would inherit the homepage's and tell search engines
+  // (and share cards) it is the homepage. Each indexable page sets its own
+  // canonical; og:url is left to the pages that set openGraph.url.
   openGraph: {
     type: 'website',
     siteName: 'Mayells',
-    url: BASE_URL,
     locale: 'en_US',
     images: [{
       url: `${BASE_URL}/opengraph-image`,
@@ -55,9 +58,6 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     images: [`${BASE_URL}/opengraph-image`],
-  },
-  alternates: {
-    canonical: BASE_URL,
   },
   icons: {
     icon: [

@@ -70,7 +70,8 @@ export const payoutListColumns = {
   },
   seller: { id: users.id, fullName: users.fullName, email: users.email },
   lot: { id: lots.id, title: lots.title },
-  invoice: { id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status },
+  // disputedAt: an open chargeback — "Disputed" pill, and mark-paid refuses.
+  invoice: { id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status, disputedAt: invoices.disputedAt },
   auction: { id: auctions.id, title: auctions.title },
 };
 

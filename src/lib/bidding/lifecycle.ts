@@ -1,11 +1,43 @@
 import { db } from '@/db';
 import { auctions, auctionLots, lots, bids, maxBids } from '@/db/schema';
-import { eq, asc, gt, and, inArray, ne, notInArray, sql } from 'drizzle-orm';
+import { eq, asc, gt, and, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
 import { initializeLotBidStates, settlingKeyFor } from './bid-engine';
+import { isOnSiteBiddingSale } from './venue';
+import { ACTIVE_SALE_STATUSES } from '@/lib/lots/placement';
 import { redis } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
 type Auction = typeof auctions.$inferSelect;
+type AuctionStatus = Auction['status'];
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Sale statuses in which a placement's lot is (or was just) taking bids. Includes
+ * 'closing', unlike the public BIDDING_SALE_STATUSES in lib/auctions/bidding-window. */
+const LIVE_PLACEMENT_SALE_STATUSES: readonly AuctionStatus[] = ['open', 'live', 'closing', 'closed'];
+
+/**
+ * Of `lotIds`, the ones another sale (in one of `statuses`) also holds — the
+ * set-based form of findActivePlacement. A lot in two unfinished sales is a
+ * data error; whichever sale is acting must not take over the other's lot.
+ */
+async function lotsHeldByOtherSales(
+  lotIds: string[],
+  exceptAuctionId: string,
+  statuses: readonly AuctionStatus[] = ACTIVE_SALE_STATUSES,
+  executor: Executor = db,
+): Promise<Set<string>> {
+  if (lotIds.length === 0) return new Set();
+  const rows = await executor
+    .select({ lotId: auctionLots.lotId })
+    .from(auctionLots)
+    .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
+    .where(and(
+      inArray(auctionLots.lotId, lotIds),
+      ne(auctionLots.auctionId, exceptAuctionId),
+      inArray(auctions.status, [...statuses]),
+    ));
+  return new Set(rows.map((r) => r.lotId));
+}
 
 // For a live auction with no scheduled biddingEndsAt, bidding stays open until
 // the auctioneer ends the session. We still need a close-time so the atomic bid
@@ -15,8 +47,30 @@ type Auction = typeof auctions.$inferSelect;
 export const LIVE_FALLBACK_CLOSE_MS = 12 * 60 * 60 * 1000;
 
 /**
+ * A LiveAuctioneers sale's lots stay `approved` while it runs (they take no
+ * bids here), so the listed_at trigger — which fires on for_sale/in_auction —
+ * never stamps them. Stamp them when the sale opens so saved-search alerts
+ * announce them like any other lot going on sale. Idempotent.
+ */
+export async function markLiveAuctioneersLotsListed(auctionId: string, now: Date = new Date()): Promise<void> {
+  await db
+    .update(lots)
+    .set({ listedAt: now })
+    .where(
+      and(
+        isNull(lots.listedAt),
+        eq(lots.status, 'approved'),
+        inArray(
+          lots.id,
+          db.select({ id: auctionLots.lotId }).from(auctionLots).where(eq(auctionLots.auctionId, auctionId)),
+        ),
+      ),
+    );
+}
+
+/**
  * Move an auction's lots into the biddable state exactly once:
- *  - flip each lot to `in_auction`
+ *  - flip each `approved` lot to `in_auction`
  *  - assign a staggered per-lot `closingAt`
  *  - initialize the authoritative Redis bid state so the atomic bid gate works
  *
@@ -25,10 +79,20 @@ export const LIVE_FALLBACK_CLOSE_MS = 12 * 60 * 60 * 1000;
  * live-start route, so a live auction started from `scheduled`/`preview` gets
  * its lots opened instead of flipping to `live` with unbiddable lots.
  *
+ * Lots in any other state (draft, sold, withdrawn, listed in the gallery…)
+ * are skipped with a warning, as is an `in_auction` lot another bidding sale
+ * holds. A LiveAuctioneers sale opens nothing: it takes no bids here.
+ *
  * Does NOT change the auction's own status — the caller sets `open` (cron) or
- * `live` (start route) after this returns.
+ * `live` (start route) after this returns. Returns the number of lots made
+ * biddable.
  */
 export async function openAuctionLots(auction: Auction, now: Date = new Date()): Promise<number> {
+  if (!isOnSiteBiddingSale(auction)) {
+    logger.warn('Not opening lots of a LiveAuctioneers sale on mayells.com', { auctionId: auction.id });
+    return 0;
+  }
+
   // Determine the base close time for lot #0.
   let baseCloseMs: number | null = auction.biddingEndsAt?.getTime() ?? null;
   if (baseCloseMs === null) {
@@ -56,43 +120,67 @@ export async function openAuctionLots(auction: Auction, now: Date = new Date()):
   const intervalSeconds = auction.lotClosingIntervalSeconds ?? 0;
   const lotIds = aLots.map(({ auctionLot: al }) => al.lotId);
 
-  // Flip every lot in one statement. RETURNING identifies the lots that
-  // actually transitioned ("fresh" opens — no live bids can exist for those)
-  // vs. lots already in_auction from a partially-completed earlier run, which
-  // must keep their live Redis state (NX seed below).
+  // Flip every approved lot in one statement. RETURNING identifies the lots
+  // that actually transitioned ("fresh" opens — no live bids can exist for
+  // those) vs. lots already in_auction from a partially-completed earlier
+  // run, which must keep their live Redis state (NX seed below).
   const flipped = await db
     .update(lots)
     .set({ status: 'in_auction', updatedAt: now })
-    .where(and(inArray(lots.id, lotIds), ne(lots.status, 'in_auction')))
+    .where(and(inArray(lots.id, lotIds), eq(lots.status, 'approved')))
     .returning({ id: lots.id });
   const freshIds = new Set(flipped.map((row) => row.id));
+
+  // Re-entry: in_auction before this run. Normally this sale's own lot from
+  // an interrupted run — unless another bidding sale holds it.
+  const reentryIds = new Set(
+    aLots
+      .filter(({ auctionLot: al, lot }) => !freshIds.has(al.lotId) && lot.status === 'in_auction')
+      .map(({ auctionLot: al }) => al.lotId),
+  );
+  const heldElsewhere = await lotsHeldByOtherSales([...reentryIds], auction.id, LIVE_PLACEMENT_SALE_STATUSES);
+
+  // Keep each lot's position in the catalogue order so a re-run computes the
+  // same close times; only biddable lots get one.
+  const biddable = aLots
+    .map((row, index) => ({ ...row, closingAt: new Date(baseCloseMs + index * intervalSeconds * 1000) }))
+    .filter(({ auctionLot: al, lot }) => {
+      const ok = freshIds.has(al.lotId) || (reentryIds.has(al.lotId) && !heldElsewhere.has(al.lotId));
+      if (!ok) {
+        logger.warn('Lot not opened for bidding', {
+          auctionId: auction.id,
+          lotId: al.lotId,
+          lotStatus: lot.status,
+          reason: heldElsewhere.has(al.lotId) ? 'in another open sale' : 'not approved',
+        });
+      }
+      return ok;
+    });
 
   // Staggered close times. Kept as per-row Drizzle updates (identical Date
   // serialization to the rest of the codebase) but pool-parallel instead of
   // sequential — a 300-lot sale finishes in a couple of seconds instead of
   // eating most of the cron's budget.
   const CHUNK = 10;
-  for (let i = 0; i < aLots.length; i += CHUNK) {
+  for (let i = 0; i < biddable.length; i += CHUNK) {
     await Promise.all(
-      aLots.slice(i, i + CHUNK).map(({ auctionLot: al }, offset) => {
-        const index = i + offset;
-        const closingAt = new Date(baseCloseMs + index * intervalSeconds * 1000);
-        return db.update(auctionLots).set({ closingAt }).where(eq(auctionLots.id, al.id));
-      }),
+      biddable.slice(i, i + CHUNK).map(({ auctionLot: al, closingAt }) =>
+        db.update(auctionLots).set({ closingAt }).where(eq(auctionLots.id, al.id)),
+      ),
     );
   }
 
   // Seed all Redis bid states in one pipelined round trip.
   await initializeLotBidStates(
-    aLots.map(({ auctionLot: al, lot }, index) => ({
+    biddable.map(({ auctionLot: al, lot, closingAt }) => ({
       lotId: al.lotId,
-      closeTime: new Date(baseCloseMs + index * intervalSeconds * 1000),
+      closeTime: closingAt,
       startingBid: lot.startingBid ?? 0,
       fresh: freshIds.has(al.lotId),
     })),
   );
 
-  return aLots.length;
+  return biddable.length;
 }
 
 /**
@@ -165,7 +253,9 @@ export type CancelAuctionResult = { ok: true; lotsReleased: number } | { ok: fal
  * only allowed while no bids exist (a sale with bids must be ended and settled
  * instead, so every bidder's record stays intact). Lots that were opened go
  * back to `approved`, their per-lot close times are cleared, armed max-bids are
- * retired, and their Redis bid state is dropped.
+ * retired, and their Redis bid state is dropped — but only lots this sale
+ * actually holds: a sold lot, or one that another unfinished sale also holds,
+ * is left exactly as it is.
  */
 export async function cancelAuction(auction: Auction, now: Date = new Date()): Promise<CancelAuctionResult> {
   if (auction.status === 'cancelled' || auction.status === 'completed') {
@@ -186,31 +276,44 @@ export async function cancelAuction(auction: Auction, now: Date = new Date()): P
   }
 
   const placements = await db
-    .select({ lotId: auctionLots.lotId })
+    .select({ lotId: auctionLots.lotId, status: lots.status })
     .from(auctionLots)
+    .innerJoin(lots, eq(lots.id, auctionLots.lotId))
     .where(eq(auctionLots.auctionId, auction.id));
-  const lotIds = placements.map((p) => p.lotId);
+
+  // A LiveAuctioneers sale takes no bids here, so the check above never
+  // trips; a recorded hammer price is its equivalent.
+  if (!isOnSiteBiddingSale(auction) && placements.some((p) => p.status === 'sold')) {
+    return { ok: false, reason: 'LiveAuctioneers results are already recorded for this sale. Record the rest instead of cancelling.' };
+  }
+
+  const candidates = placements
+    .filter((p) => p.status === 'approved' || p.status === 'in_auction')
+    .map((p) => p.lotId);
+  const heldElsewhere = await lotsHeldByOtherSales(candidates, auction.id);
+  const releasable = candidates.filter((id) => !heldElsewhere.has(id));
 
   await db.transaction(async (tx) => {
-    if (lotIds.length > 0) {
+    if (releasable.length > 0) {
       await tx
         .update(lots)
         .set({ status: 'approved', currentBidAmount: 0, currentBidderId: null, bidCount: 0, updatedAt: now })
-        .where(and(inArray(lots.id, lotIds), eq(lots.status, 'in_auction')));
-      await tx.update(auctionLots).set({ closingAt: null }).where(eq(auctionLots.auctionId, auction.id));
+        .where(and(inArray(lots.id, releasable), inArray(lots.status, ['approved', 'in_auction'])));
       await tx
         .update(maxBids)
         .set({ isActive: false, updatedAt: now })
-        .where(and(inArray(maxBids.lotId, lotIds), eq(maxBids.isActive, true)));
+        .where(and(inArray(maxBids.lotId, releasable), eq(maxBids.isActive, true)));
     }
+    // This sale's own close times only; other placements are untouched.
+    await tx.update(auctionLots).set({ closingAt: null }).where(eq(auctionLots.auctionId, auction.id));
     await tx
       .update(auctions)
       .set({ status: 'cancelled', actualEndedAt: now, updatedAt: now })
       .where(eq(auctions.id, auction.id));
   });
 
-  await clearLotBidState(lotIds);
-  return { ok: true, lotsReleased: lotIds.length };
+  await clearLotBidState(releasable);
+  return { ok: true, lotsReleased: releasable.length };
 }
 
 /**
@@ -232,7 +335,12 @@ export async function withdrawLot(
   now: Date = new Date(),
 ): Promise<{ removedFromAuctions: number; retractedBids: number }> {
   const placements = await db
-    .select({ id: auctionLots.id, auctionId: auctionLots.auctionId, auctionStatus: auctions.status })
+    .select({
+      id: auctionLots.id,
+      auctionId: auctionLots.auctionId,
+      auctionStatus: auctions.status,
+      liveauctioneersUrl: auctions.liveauctioneersUrl,
+    })
     .from(auctionLots)
     .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
     .where(and(eq(auctionLots.lotId, lotId), notInArray(auctions.status, ['completed', 'cancelled'])));
@@ -241,7 +349,8 @@ export async function withdrawLot(
   // generated an invoice for this lot; pulling it now would race that work
   // (retract the winning bid while the invoice stays payable, or have the
   // cron relist a withdrawn lot). Wait for settlement, then refund instead.
-  if (placements.some((p) => p.auctionStatus === 'closing' || p.auctionStatus === 'closed')) {
+  // A LiveAuctioneers sale is never settled by the cron, so there is no race.
+  if (placements.some((p) => (p.auctionStatus === 'closing' || p.auctionStatus === 'closed') && isOnSiteBiddingSale(p))) {
     throw new LotWithdrawBlockedError('This lot is in a sale that is being settled. Wait for settlement to finish, then refund its invoice if needed.');
   }
 

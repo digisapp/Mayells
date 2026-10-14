@@ -29,13 +29,19 @@ function AdminEmailsPageInner() {
   const deleteTitle = !pending
     ? 'Delete?'
     : pending.threadIds.length > 0
-      ? (pending.threadIds.length === 1
-        ? (pending.messages > 1 ? `Delete this conversation (${pending.messages} messages)?` : 'Delete this email?')
-        : `Delete ${pending.threadIds.length} conversations (${pending.messages} messages)?`)
+      ? pending.spamOnly
+        ? (pending.threadIds.length === 1
+          ? (pending.messages > 1 ? `Delete ${pending.messages} spam messages?` : 'Delete this email?')
+          : `Delete the spam in ${pending.threadIds.length} conversations (${pending.messages} messages)?`)
+        : (pending.threadIds.length === 1
+          ? (pending.messages > 1 ? `Delete this conversation (${pending.messages} messages)?` : 'Delete this email?')
+          : `Delete ${pending.threadIds.length} conversations (${pending.messages} messages)?`)
       : (pending.ids.length > 1 ? `Delete ${pending.ids.length} emails?` : 'Delete this email?');
-  const deleteDescription = pending && pending.threadIds.length > 0 && pending.messages > 1
-    ? 'This permanently removes every message in the conversation from the inbox, including replies you sent. The copies in the other person\'s mailbox are not affected.'
-    : 'This permanently removes the message from the inbox. Replies in the same conversation are kept and re-threaded. The copy in the other person\'s mailbox is not affected.';
+  const deleteDescription = pending?.spamOnly
+    ? 'This permanently removes the messages marked as spam. Anything else in the same conversation, including replies you sent, is kept. The copies in the other person\'s mailbox are not affected.'
+    : pending && pending.threadIds.length > 0 && pending.messages > 1
+      ? 'This permanently removes every message in the conversation from the inbox, including replies you sent. The copies in the other person\'s mailbox are not affected.'
+      : 'This permanently removes the message from the inbox. Replies in the same conversation are kept and re-threaded. The copy in the other person\'s mailbox is not affected.';
 
   // New mail is visible from any other tab: the unread count leads the title.
   const unread = d.counts.unread;
@@ -220,6 +226,8 @@ function AdminEmailsPageInner() {
               <EmailDetailView
                 email={d.selectedEmail}
                 thread={d.thread}
+                forwards={d.threadForwards}
+                spamOnly={inSpam}
                 loading={d.threadLoading}
                 error={d.threadError}
                 details={d.details}

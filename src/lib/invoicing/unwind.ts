@@ -5,7 +5,10 @@
  * webhook, or an admin recording a wire/check refund). One code path for
  * both so the side effects can never drift:
  *   (a) release the lot (relist to gallery at reserve/low estimate, else
- *       `unsold`) via the same helper the auction cron uses,
+ *       `unsold`) via the same helper the auction cron uses — unless the
+ *       item has already left the seller (shipment in transit, delivered or
+ *       in exception): then the lot is held `unsold` and flagged, because
+ *       relisting would sell an item we don't have,
  *   (b) cancel the pending payout / reverse an already-paid one,
  *   (c) cancel shipments that have not left the seller,
  *   (d) email the buyer,
@@ -25,18 +28,25 @@
  */
 
 import { db } from '@/db';
-import { invoices, lots, shipments, auctions, users } from '@/db/schema';
+import { invoices, lots, shipments, auctions, users, consignments } from '@/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { relistUnsoldLot, type Executor } from '@/lib/lots/relist';
 import { cancelPayoutForRefundedInvoice } from '@/lib/payouts/service';
-import { OPEN_SHIPMENT_STATUSES, IN_FLIGHT_SHIPMENT_STATUSES } from '@/lib/shipping/transitions';
+import { OPEN_SHIPMENT_STATUSES, IN_FLIGHT_SHIPMENT_STATUSES, type ShipmentStatus } from '@/lib/shipping/transitions';
 import { stripe } from '@/lib/stripe/config';
 import { sendInvoiceRefundedNotification } from '@/lib/email/notifications';
 import { isSentinelEmail } from '@/lib/sellers/sentinel';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { logger } from '@/lib/logger';
 
-export type LotRelease = 'relisted' | 'returned' | 'left';
+export type LotRelease = 'relisted' | 'returned' | 'held' | 'left';
+
+/**
+ * Shipment states in which the item is no longer with the seller. A refund
+ * then can't relist the lot: it is held `unsold` (not public) until staff get
+ * the item back.
+ */
+const ITEM_GONE_SHIPMENT_STATUSES: readonly ShipmentStatus[] = [...IN_FLIGHT_SHIPMENT_STATUSES, 'delivered', 'exception'];
 
 export interface UnwindResult {
   unwound: boolean;
@@ -75,12 +85,15 @@ export async function expireCheckoutSession(sessionId: string | null | undefined
 /**
  * Put the lot back on the market. Guarded so a lot that has since been
  * re-auctioned or re-sold to someone else is never touched. Locks the lot
- * row so a concurrent settlement/withdrawal can't interleave.
+ * row so a concurrent settlement/withdrawal can't interleave. With `hold`
+ * (the item already shipped) the lot is taken off sale as `unsold` instead
+ * of relisted; its bid state is cleared exactly as a relist would.
  */
 async function releaseLotForInvoice(
   tx: Executor,
   invoice: { id: string; lotId: string; buyerId: string },
   now: Date,
+  opts: { hold?: boolean } = {},
 ): Promise<LotRelease> {
   const [lot] = await tx.select().from(lots).where(eq(lots.id, invoice.lotId)).for('update');
   if (!lot) return 'left';
@@ -92,6 +105,27 @@ async function releaseLotForInvoice(
       winnerId: lot.winnerId,
     });
     return 'left';
+  }
+  if (opts.hold) {
+    await tx.update(lots).set({
+      status: 'unsold',
+      currentBidAmount: 0,
+      currentBidderId: null,
+      bidCount: 0,
+      winnerId: null,
+      hammerPrice: null,
+      updatedAt: now,
+    }).where(eq(lots.id, lot.id));
+    // The sale is undone but the item is still with the buyer or the carrier,
+    // so it is neither sold, listed nor back with the consignor: 'approved'
+    // (accepted by the house, not on sale) until staff resolve it.
+    if (lot.consignmentId) {
+      await tx
+        .update(consignments)
+        .set({ status: 'approved', updatedAt: now })
+        .where(eq(consignments.id, lot.consignmentId));
+    }
+    return 'held';
   }
   return relistUnsoldLot(lot, now, tx);
 }
@@ -140,8 +174,21 @@ export async function unwindPaidInvoice(
 
     if (!refunded) return null;
 
-    // (a) Release the lot
-    const lot = await releaseLotForInvoice(tx, refunded, now);
+    // (a) Release the lot — unless the item has already left the seller.
+    const gone = await tx
+      .select({ id: shipments.id, status: shipments.status })
+      .from(shipments)
+      .where(and(eq(shipments.invoiceId, invoiceId), inArray(shipments.status, [...ITEM_GONE_SHIPMENT_STATUSES])));
+    const lot = await releaseLotForInvoice(tx, refunded, now, { hold: gone.length > 0 });
+    if (lot === 'held') {
+      const statuses = Array.from(new Set(gone.map((g) => g.status.replace(/_/g, ' ')))).join(', ');
+      await tx
+        .update(invoices)
+        .set({
+          notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('ATTENTION', `lot held as unsold, NOT relisted — its shipment is ${statuses}, so the item may be with the buyer or carrier. Recover it before relisting`)})`,
+        })
+        .where(eq(invoices.id, invoiceId));
+    }
 
     // (b) Payout — inside the transaction it throws on failure so the flip rolls back
     const payout = await cancelPayoutForRefundedInvoice(invoiceId, reason, tx);
@@ -195,6 +242,12 @@ export async function unwindPaidInvoice(
     logger.error('REFUND on an invoice whose shipment is already in transit — manual recall required', undefined, {
       invoiceId,
       shipments: inFlight,
+    });
+  }
+  if (outcome.lot === 'held') {
+    logger.error('REFUND after the item shipped — lot held as unsold, not relisted; staff must recover the item', undefined, {
+      invoiceId,
+      lotId: refunded.lotId,
     });
   }
 

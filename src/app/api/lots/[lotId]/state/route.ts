@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getMinNextBid } from '@/lib/bidding/bid-increments';
 import { UUID_RE, biddableAuctionOrder } from '@/lib/bidding/lot-resolution';
 import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
+import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
 import { logger } from '@/lib/logger';
 
 /**
@@ -44,7 +45,15 @@ export async function GET(
       .orderBy(...biddableAuctionOrder, desc(auctions.biddingEndsAt))
       .limit(1);
 
-    if (!row) {
+    // A draft sale or a lot that was never published has no public state.
+    // Withdrawn/unsold lots still answer, so an open bid panel learns that
+    // bidding stopped.
+    if (
+      !row ||
+      !isPubliclyVisibleAuction(row.auctionStatus) ||
+      row.lotStatus === 'draft' ||
+      row.lotStatus === 'pending_review'
+    ) {
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 

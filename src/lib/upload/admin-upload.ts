@@ -4,7 +4,7 @@
 //
 // Bytes go straight to Supabase Storage via a short-lived signed URL from
 // `POST /api/upload/signed-url`; only the resulting public URL is handed back
-// to the caller. Routing the file through `/api/upload` is not an option for
+// to the caller. Routing the file through a Next route is not an option for
 // phone photos: Vercel rejects request bodies over ~4.5 MB before the route's
 // own size check ever runs.
 

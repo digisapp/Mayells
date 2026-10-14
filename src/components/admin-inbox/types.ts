@@ -37,6 +37,19 @@ export interface EmailRow {
   threadCount: number;
   /** Unread messages anywhere in this row's conversation. */
   threadUnread: number;
+  /** Spam messages in this row's conversation (what a delete in Spam removes). */
+  threadSpam: number;
+}
+
+/**
+ * A forward of a message in the open conversation. Forwards are
+ * conversations of their own; the thread view only notes where each went.
+ */
+export interface ForwardNote {
+  id: string;
+  inReplyToId: string | null;
+  toEmail: string;
+  createdAt: string;
 }
 
 /** Summary of the seller prospect behind a conversation, for the lead card. */
@@ -247,11 +260,13 @@ export function htmlToText(html: string): string {
  * An outbound thread member is a forward (not a reply) when it went somewhere
  * other than the counterparty of the message it hangs off. Nothing on the row
  * says so; the "Fwd:" subject is the fallback when the recipient was the same.
+ * A forward roots its own conversation (the message it forwarded lives in
+ * another one), which no reply ever does.
  */
 export function isForwardOf(row: EmailRow, parent: EmailRow | undefined): boolean {
   if (row.direction !== 'outbound' || !row.inReplyToId) return false;
   if (/^\s*fwd?\s*:/i.test(row.subject || '')) return true;
-  if (!parent) return false;
+  if (!parent) return threadKeyOf(row) === row.id;
   const counterpartyAddress = parent.direction === 'inbound' ? parent.fromEmail : parent.toEmail;
   return counterpartyAddress.toLowerCase() !== row.toEmail.toLowerCase();
 }

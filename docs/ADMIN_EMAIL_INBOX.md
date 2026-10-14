@@ -29,6 +29,8 @@ Code:
 | Piece | Where |
 | --- | --- |
 | Addressing (own domains, plus-address threading, RFC 2047 names) | `src/lib/email/addresses.ts` (unit tested) |
+| Who a conversation is with (forwards excluded) | `src/lib/email/threading.ts` (unit tested) |
+| Sender verdicts (DMARC) and the "Unverified sender" warning | `src/lib/email/sender-auth.ts` (unit tested) |
 | The only Resend client; refuses any From off our domains | `src/lib/email/resend.ts` (unit tested) |
 | Send path shared by compose / reply / AI draft / test; folder maths | `src/lib/email/admin-inbox.ts` |
 | Readiness check against Resend | `src/lib/email/inbox-status.ts` (unit tested) |
@@ -109,6 +111,18 @@ every message in it (`PATCH`/`DELETE /api/admin/emails` with `threadIds`).
 Starring marks just the message the row shows. Inside the thread each
 message still has its own Reply, Forward and Delete.
 
+**In the Spam folder, actions reach only the spam.** A conversation is listed
+there when any message in it is spam, and that can be one AI-flagged reply
+in a real customer thread. Archive and delete taken from Spam (bulk, the
+thread toolbar, `e`) send `folder: "spam"`, and the server narrows the
+conversations to their `is_spam = true` messages: the customer's other mail
+and our replies stay where they are. Deleting a conversation the operator
+marked as spam from the Inbox therefore leaves any replies we sent in Sent.
+The delete dialog counts spam messages there (`threadSpam` on each row).
+Deleting a conversation's first message re-roots the rest onto the oldest
+survivor; `DELETE` returns `reRooted` (old root → new root) so the open
+thread follows it.
+
 When the sender is a seller prospect, a card at the top of the thread shows
 who they are, what they have, Call / Text buttons and their funnel status
 (changeable there). A typed reply opens already greeted and signed, with
@@ -124,6 +138,20 @@ domain **and** Amazon SES reported an aligned DMARC pass
 authentication is filed as spam with the summary "Forged sender …", never
 threaded, never forwarded.
 
+A foreign From with an explicit `dmarc=fail` (someone writing as a customer)
+is still delivered — forwarding can break alignment for real people — but
+always as a conversation of its own, never joined to the real person's, and
+its summary starts "Unverified sender: …" (the AI pass keeps that at the
+front). `dmarc=none` or no verdict threads as usual: many small senders have
+no DMARC record. The same applies when the From header cannot be read at all
+and the address came from Reply-To; the AI never auto-replies to an address
+the From header does not name.
+
+The sender address is the last `<…@…>` in From, so names like
+`Jane "JJ" Doe` or `"Sales <EU>"` and the old `jane@x.com (Jane)` form all
+parse (`parseEmailAddress`, unit tested). Over-long headers are cut to their
+column sizes before the insert rather than failing every redelivery.
+
 ## Threading
 
 Every email sent from the inbox carries `Reply-To: info+<threadId>@mayells.com`
@@ -131,7 +159,22 @@ Every email sent from the inbox carries `Reply-To: info+<threadId>@mayells.com`
 receiving domain, so the customer's answer comes back already tagged and is
 filed under that thread, stored with `to_email = info@mayells.com`. Fallbacks,
 in order: the `In-Reply-To` header (matched against stored Message-IDs and
-Resend send ids), then subject + counterpart address.
+Resend send ids), then subject + counterpart address (never onto a spam
+message). However it was found, mail only joins a conversation when it comes
+from the person that conversation is with (`src/lib/email/threading.ts`).
+
+Spam is never threaded: an out-of-office or a bounce answering one of our
+replies is filed on its own, so it cannot drag the real conversation into
+the Spam folder.
+
+**Forwards are conversations of their own.** A forward is stored with its
+own thread (`thread_id` = its id, Reply-To `info+<forwardId>@`), linked to
+the original by `in_reply_to_id`; the original's thread view gets them as
+`forwards` and shows "Forwarded to …". The recipient's answer threads under
+the forward, never under the customer, so Reply and AI drafts go to the
+right person and the AI never auto-replies in a forward's conversation.
+Forwards stored inside a customer's thread before this change are ignored
+when deciding who that conversation is with.
 
 ## Testing the loop
 
@@ -171,7 +214,9 @@ Bulk: read / unread / star / spam / archive / delete. Keyboard: `j`/`k`
 next & previous, `r` reply, `f` forward, `e` archive the conversation, `s`
 star, `Esc` close. The list refreshes silently every 45 s while the tab is
 visible; the tab title carries the unread count. Deep link:
-`/admin/emails?thread=<thread or email id>`.
+`/admin/emails?thread=<any email id>` opens that message's whole
+conversation (the webhook log links delivery events by our row id; older
+log rows with a Resend id still resolve).
 
 ## Related
 

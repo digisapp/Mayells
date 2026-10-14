@@ -116,6 +116,8 @@ interface Prospect {
   agreedCommissionPercent: number | null;
   agreementSentAt: string | null;
   agreementSignedAt: string | null;
+  // Secret for the consignor's signing page link (never the prospect id).
+  agreementToken: string;
   // Seller-of-record account, minted (or linked) when lots are created.
   userId: string | null;
   notes: string | null;
@@ -478,6 +480,9 @@ function ProspectDetail() {
         if (json.skipped) parts.push(`${json.skipped} declined (no images)`);
         if (json.failed) parts.push(`${json.failed} failed`);
         toast.success(`AI processing complete: ${parts.join(', ')} of ${json.total}`);
+        // A re-run replaces the item's overrides on the server; drop any open
+        // edit so the form reseeds from the fresh row instead of the old values.
+        if (itemIds) closeEdit(itemIds);
         refreshAll();
       } else {
         toast.error(json.error || 'AI processing failed');
@@ -733,11 +738,10 @@ function ProspectDetail() {
               : prev
           );
         }
-        setEditingItems((prev) => {
-          const next = new Set(prev);
-          next.delete(itemId);
-          return next;
-        });
+        // Close the edit and re-sync from the server so the next Override
+        // starts from what was actually saved.
+        closeEdit([itemId]);
+        fetchItems();
       } else {
         toast.error(json.error || 'Failed to update item');
       }
@@ -952,28 +956,62 @@ function ProspectDetail() {
   }
 
   function toggleEdit(itemId: string, item: UploadItem) {
+    if (editingItems.has(itemId)) {
+      closeEdit([itemId]);
+      return;
+    }
+    // Seeded from the row every time it opens, so an abandoned edit or an
+    // earlier AI run's values never resurface (and get saved on Accept).
+    setOverrides((o) => ({
+      ...o,
+      [itemId]: {
+        finalTitle: item.finalTitle || item.aiTitle || '',
+        finalDescription: item.finalDescription || item.aiDescription || '',
+        finalEstimateLow: centsToDollarsInput(item.finalEstimateLow ?? item.aiEstimateLow),
+        finalEstimateHigh: centsToDollarsInput(item.finalEstimateHigh ?? item.aiEstimateHigh),
+        finalReserve: centsToDollarsInput(item.finalReserve ?? item.aiRecommendedReserve),
+        finalCategory: item.finalCategory || item.aiCategory || '',
+        adminNotes: item.adminNotes || '',
+      },
+    }));
+    setEditingItems((prev) => new Set(prev).add(itemId));
+  }
+
+  /** Close the override form and discard its unsaved values. */
+  function closeEdit(itemIds: string[]) {
     setEditingItems((prev) => {
       const next = new Set(prev);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-        if (!overrides[itemId]) {
-          setOverrides((o) => ({
-            ...o,
-            [itemId]: {
-              finalTitle: item.finalTitle || item.aiTitle || '',
-              finalDescription: item.finalDescription || item.aiDescription || '',
-              finalEstimateLow: centsToDollarsInput(item.finalEstimateLow ?? item.aiEstimateLow),
-              finalEstimateHigh: centsToDollarsInput(item.finalEstimateHigh ?? item.aiEstimateHigh),
-              finalReserve: centsToDollarsInput(item.finalReserve ?? item.aiRecommendedReserve),
-              finalCategory: item.finalCategory || item.aiCategory || '',
-              adminNotes: item.adminNotes || '',
-            },
-          }));
-        }
-      }
+      itemIds.forEach((id) => next.delete(id));
       return next;
+    });
+    setOverrides((prev) => {
+      const next = { ...prev };
+      itemIds.forEach((id) => delete next[id]);
+      return next;
+    });
+  }
+
+  function requestRerun(item: UploadItem) {
+    const hasSavedOverrides =
+      !!item.finalTitle ||
+      !!item.finalDescription ||
+      item.finalEstimateLow != null ||
+      item.finalEstimateHigh != null ||
+      item.finalReserve != null ||
+      !!item.finalCategory;
+    if (!hasSavedOverrides && !editingItems.has(item.id)) {
+      runAI([item.id]);
+      return;
+    }
+    setPending({
+      title: 'Re-run AI on this item?',
+      description:
+        'A fresh AI pass replaces this item\'s overrides (title, description, estimates, reserve and category) with new AI suggestions, and discards any unsaved edits.',
+      confirmLabel: 'Re-run AI',
+      // Not awaited: the run takes about a minute and shows its own progress.
+      onConfirm: async () => {
+        runAI([item.id]);
+      },
     });
   }
 
@@ -1062,7 +1100,8 @@ function ProspectDetail() {
 
   const latestLink = [...(prospect.uploadLinks ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const agreementSigned = !!prospect.agreementSignedAt;
-  const lotsSearchHref = `/admin/lots?q=${encodeURIComponent(prospect.fullName)}`;
+  // Lots are filtered by seller-of-record; the account exists once lots are created.
+  const lotsHref = prospect.userId ? `/admin/lots?seller=${prospect.userId}` : null;
 
   // ── Next-action banner ──
 
@@ -1107,9 +1146,11 @@ function ProspectDetail() {
           : 'All accepted items are in the catalog.',
         (
           <>
-            <Link href={lotsSearchHref} className={cn('inline-flex items-center h-8 px-3 rounded-md text-xs font-medium', bannerButton.green)}>
-              <Package className="h-4 w-4 mr-2" /> View lots
-            </Link>
+            {lotsHref && (
+              <Link href={lotsHref} className={cn('inline-flex items-center h-8 px-3 rounded-md text-xs font-medium', bannerButton.green)}>
+                <Package className="h-4 w-4 mr-2" /> View lots
+              </Link>
+            )}
             {hasAcceptedItems && (
               <Button size="sm" variant="outline" onClick={requestCreateLots} disabled={creatingLots}>
                 {creatingLots ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Package className="h-4 w-4 mr-2" />}
@@ -1517,9 +1558,9 @@ function ProspectDetail() {
                               size="sm"
                               variant="ghost"
                               className="h-7 px-2 text-xs"
-                              onClick={() => runAI([item.id])}
+                              onClick={() => requestRerun(item)}
                               disabled={isRerunning || processingAI || media.length === 0}
-                              title={media.length === 0 ? 'No images to analyze' : 'Run AI cataloging and appraisal again'}
+                              title={media.length === 0 ? 'No images to analyze' : 'Run AI cataloging and appraisal again (replaces any overrides)'}
                             >
                               {isRerunning ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <RefreshCw className="h-3 w-3 mr-1" />}
                               Re-run AI
@@ -2059,7 +2100,7 @@ function ProspectDetail() {
                 </Button>
                 {prospect.agreementSentAt && (
                   <a
-                    href={`/consignment-agreement?prospect=${prospect.id}`}
+                    href={`/consignment-agreement?token=${encodeURIComponent(prospect.agreementToken)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
@@ -2143,8 +2184,8 @@ function ProspectDetail() {
                   {creatingLots ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Package className="h-4 w-4 mr-2" />}
                   {auctionId ? 'Create Lots & Assign to Sale' : 'Create Lots'}
                 </Button>
-                {lotCreatedCount > 0 && (
-                  <Link href={lotsSearchHref} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+                {lotCreatedCount > 0 && lotsHref && (
+                  <Link href={lotsHref} className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
                     <ExternalLink className="h-3.5 w-3.5" /> View {lotCreatedCount} lot{lotCreatedCount !== 1 ? 's' : ''}
                   </Link>
                 )}

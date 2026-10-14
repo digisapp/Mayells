@@ -7,6 +7,7 @@ import { BUSINESS } from '@/lib/config';
 import { escapeHtml } from '@/lib/email/escape';
 import { htmlToPlainText, replySubject, sendAdminEmail } from '@/lib/email/admin-inbox';
 import { autoReplySuppressionReason, type HeaderBag } from '@/lib/email/auto-reply-guards';
+import { senderWarningOf } from '@/lib/email/sender-auth';
 import { logger } from '@/lib/logger';
 
 // ─── Categories ──────────────────────────────────────────────────────────────
@@ -146,6 +147,15 @@ export function brandedReplyHtml(draftText: string, originalEmail: {
   `;
 }
 
+/**
+ * The webhook's warning about a sender it could not verify (sender-auth.ts)
+ * stays at the front of whatever summary the AI writes.
+ */
+function withSenderWarning(current: string | null, summary: string): string {
+  const warning = senderWarningOf(current);
+  return warning ? `${warning} ${summary}`.trim() : summary;
+}
+
 // ─── Classify + Draft ────────────────────────────────────────────────────────
 
 export async function classifyAndDraftReply(params: {
@@ -243,7 +253,7 @@ export async function generateAndStoreDraft(
     ...(!email.aiCategory && {
       aiCategory: result.category,
       aiConfidence: result.confidence,
-      aiSummary: result.summary,
+      aiSummary: withSenderWarning(email.aiSummary, result.summary),
     }),
   }).where(eq(emails.id, email.id));
 
@@ -314,13 +324,15 @@ export async function processInboundEmail(emailId: string, opts: { headers?: Hea
       bodyHtml: email.bodyHtml,
     });
 
+    const summary = withSenderWarning(email.aiSummary, result.summary);
+
     // AI classified as spam — mark it
     if (result.category === 'spam') {
       await db.update(emails).set({
         isSpam: true,
         aiCategory: result.category,
         aiConfidence: result.confidence,
-        aiSummary: result.summary,
+        aiSummary: summary,
       }).where(eq(emails.id, emailId));
       return;
     }
@@ -332,7 +344,7 @@ export async function processInboundEmail(emailId: string, opts: { headers?: Hea
       aiDraftedAt: result.draftText ? new Date() : null,
       aiCategory: result.category,
       aiConfidence: result.confidence,
-      aiSummary: result.summary,
+      aiSummary: summary,
     }).where(eq(emails.id, emailId));
 
     // ─── Mail-loop guards ────────────────────────────────────────────────────
@@ -381,6 +393,20 @@ export async function processInboundEmail(emailId: string, opts: { headers?: Hea
     if (Number(recent) > 0) {
       logger.info('AI auto-reply suppressed: we already replied on this thread in the last 24h', { emailId, threadKey });
       return;
+    }
+    // A conversation that starts with a forward (an outbound root that hangs
+    // off another message) is with whoever the operator passed the email to.
+    // Their answers are for the operator, never for the AI.
+    if (threadKey !== emailId) {
+      const [root] = await db
+        .select({ direction: emails.direction, inReplyToId: emails.inReplyToId })
+        .from(emails)
+        .where(eq(emails.id, threadKey))
+        .limit(1);
+      if (root?.direction === 'outbound' && root.inReplyToId) {
+        logger.info('AI auto-reply suppressed: reply to a forward', { emailId, threadKey });
+        return;
+      }
     }
 
     const [fresh] = await db.select().from(emails).where(eq(emails.id, emailId)).limit(1);

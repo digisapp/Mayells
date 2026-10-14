@@ -7,6 +7,8 @@ import { estateVisits, estateVisitItems, users } from '@/db/schema';
 import { eq, sql, and, asc, sum } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { sanitizeStoredImages, storagePathFromPublicUrl } from '@/lib/images/sanitize';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { MAX_MONEY_CENTS } from '@/lib/validation/schemas';
 
 // All fields except status are nullable in the DB — null clears the column.
 const itemPatchSchema = z.object({
@@ -21,13 +23,17 @@ const itemPatchSchema = z.object({
   condition: z.string().max(200).nullable().optional(),
   conditionNotes: z.string().max(5000).nullable().optional(),
   suggestedCategory: z.string().max(200).nullable().optional(),
-  estimateLow: z.number().int().min(0).nullable().optional(),
-  estimateHigh: z.number().int().min(0).nullable().optional(),
+  estimateLow: z.number().int().min(0).max(MAX_MONEY_CENTS, 'Estimate is too large').nullable().optional(),
+  estimateHigh: z.number().int().min(0).max(MAX_MONEY_CENTS, 'Estimate is too large').nullable().optional(),
   confidence: z.number().min(0).max(1).transform(v => String(v)).nullable().optional(),
   reasoning: z.string().max(5000).nullable().optional(),
   marketTrend: z.string().max(1000).nullable().optional(),
   adminNotes: z.string().max(5000).nullable().optional(),
   errorMessage: z.string().max(2000).nullable().optional(),
+});
+
+const itemDeleteSchema = z.object({
+  itemId: z.string().uuid('Valid item ID required'),
 });
 
 const itemsCreateSchema = z.object({
@@ -74,6 +80,7 @@ export async function GET(
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { visitId } = await params;
+    if (!UUID_RE.test(visitId)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
     const [visit] = await db.select().from(estateVisits).where(eq(estateVisits.id, visitId)).limit(1);
     if (!visit) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -105,6 +112,7 @@ export async function POST(
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { visitId } = await params;
+    if (!UUID_RE.test(visitId)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const parsed = itemsCreateSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'imageUrls required' }, { status: 400 });
@@ -165,7 +173,8 @@ export async function PATCH(
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { visitId } = await params;
-    const parsed = itemPatchSchema.safeParse(await req.json());
+    if (!UUID_RE.test(visitId)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const parsed = itemPatchSchema.safeParse(await req.json().catch(() => null));
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
@@ -217,10 +226,12 @@ export async function DELETE(
     if (!admin) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     const { visitId } = await params;
-    const body = await req.json();
-    const { itemId } = body;
-
-    if (!itemId) return NextResponse.json({ error: 'itemId required' }, { status: 400 });
+    if (!UUID_RE.test(visitId)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const parsed = itemDeleteSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'itemId required' }, { status: 400 });
+    }
+    const { itemId } = parsed.data;
 
     const [deleted] = await db
       .delete(estateVisitItems)

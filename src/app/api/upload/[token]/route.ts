@@ -202,7 +202,7 @@ export async function POST(
           .where(eq(sellerProspects.id, link.prospectId));
       }
 
-      return { plan, refused: false as const };
+      return { plan, itemCount: itemCount + plan.insert.length, refused: false as const };
     });
 
     if (outcome.refused) {
@@ -216,7 +216,7 @@ export async function POST(
         { status: 400 }
       );
     }
-    const { plan } = outcome;
+    const { plan, itemCount } = outcome;
 
     // Photos went straight to storage via signed URLs, so EXIF (incl. GPS of
     // the seller's home) is scrubbed here in the background — same paths, so
@@ -268,6 +268,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       itemsUploaded: items.length,
+      // The link's new total, so the page's "items left" stays right.
+      itemCount,
     });
   } catch (error) {
     logger.error('Upload submission error', error);

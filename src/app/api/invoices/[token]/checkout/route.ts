@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClientIp } from '@/lib/request-ip';
 import type Stripe from 'stripe';
-import { stripe } from '@/lib/stripe/config';
+import { stripe, isStripeConfigured } from '@/lib/stripe/config';
+import { storedSessionAction } from '@/lib/stripe/reconcile';
+import { BUSINESS } from '@/lib/config';
 import { db } from '@/db';
 import { invoices, lots, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -59,26 +61,50 @@ export async function POST(
       );
     }
 
+    // No Stripe key (card payments not set up): say so plainly rather than
+    // failing inside the SDK with a 500 "try again".
+    if (!isStripeConfigured()) {
+      return NextResponse.json(
+        {
+          error: `Online card payment isn't available right now. Please contact us at ${BUSINESS.phone} or ${BUSINESS.email} to pay by wire transfer.`,
+        },
+        { status: 503 },
+      );
+    }
+
     // If a Checkout session was already created for this invoice, reuse it
     // rather than minting a second PaymentIntent — the strongest guard against a
     // double-charge from two tabs / a double-click.
+    let replacingSessionId: string | null = null;
     if (invoice.stripeCheckoutSessionId) {
       try {
-        const existing = await stripe.checkout.sessions.retrieve(invoice.stripeCheckoutSessionId);
-        if (existing.status === 'open' && existing.url) {
+        const existing = await stripe.checkout.sessions.retrieve(invoice.stripeCheckoutSessionId, {
+          expand: ['payment_intent'],
+        });
+        const action = storedSessionAction(existing);
+        if (action === 'reuse' && existing.url) {
           return NextResponse.json({ url: existing.url });
         }
-        // 'complete' means the buyer already paid (or the card is being
-        // captured) on that session — the invoice just hasn't flipped to 'paid'
-        // yet because the webhook is in flight. Do NOT create a second session
-        // (that would be a real double charge); tell the client to wait.
-        if (existing.status === 'complete') {
+        // 'complete' with a live payment means the buyer already paid (or the
+        // payment is settling) on that session — the invoice just hasn't
+        // flipped to 'paid' yet because the webhook is in flight. Do NOT create
+        // a second session (that would be a real double charge); tell the
+        // client to wait.
+        if (action === 'processing') {
           return NextResponse.json(
             { processing: true, message: 'Your payment is being processed.' },
             { status: 202 },
           );
         }
-        // Otherwise ('expired') fall through and mint a fresh session.
+        // Expired, or completed but its payment failed afterwards: mint a
+        // fresh session.
+        replacingSessionId = existing.id;
+        if (existing.status === 'complete') {
+          logger.info('Stored checkout session completed but its payment failed — minting a new one', {
+            invoiceId: invoice.id,
+            sessionId: existing.id,
+          });
+        }
       } catch (err) {
         logger.warn('Failed to retrieve stored checkout session — creating a new one', {
           invoiceId: invoice.id,
@@ -107,7 +133,9 @@ export async function POST(
     // derived from the bucket boundary (deterministic), not Date.now().
     const SESSION_WINDOW_SECONDS = 30 * 60;
     const bucket = Math.floor(Date.now() / 1000 / SESSION_WINDOW_SECONDS);
-    const idempotencyKey = `checkout:${invoice.id}:${bucket}`;
+    // A replacement names the session it replaces: within the same bucket the
+    // plain key would hand back that dead session from Stripe's cache.
+    const idempotencyKey = `checkout:${invoice.id}:${bucket}${replacingSessionId ? `:after:${replacingSessionId}` : ''}`;
     // Two buckets out is always 30–60 min from now (satisfies Stripe's 30-min
     // minimum) AND is identical for every request in this bucket, so concurrent
     // first-clicks send matching params under the same idempotency key. The
@@ -117,6 +145,9 @@ export async function POST(
     const session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
+        // Card only: the ledger records these as credit_card, and a delayed
+        // method (ACH) can fail days after the session completes.
+        payment_method_types: ['card'],
         line_items: [
           {
             price_data: {

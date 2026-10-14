@@ -3,11 +3,14 @@ import { z } from 'zod';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
 import { sellerProspects, uploadItems } from '@/db/schema';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { isSentinelEmail } from '@/lib/sellers/shadow';
 import { sendConsignmentAgreementEmail } from '@/lib/email/notifications';
+import { getDefaultCommissionPercent } from '@/lib/settings/commission';
+import { acceptedTotalsSelect } from '@/lib/prospects/totals';
+import { agreementUrlForToken } from '@/lib/prospects/agreement-link';
 
 const agreementSchema = z.object({
   commissionPercent: z.number().int().min(0).max(100).optional(),
@@ -59,11 +62,7 @@ export async function POST(
     // over the AI estimate) — never from the cached counters on the prospect,
     // which can lag behind the last review action.
     const [totals] = await db
-      .select({
-        acceptedCount: sql<number>`count(*)::int`,
-        totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})), 0)::int`,
-        totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})), 0)::int`,
-      })
+      .select(acceptedTotalsSelect())
       .from(uploadItems)
       // Items that already became lots (lots created ahead of the signature)
       // were accepted too and are covered by this agreement.
@@ -73,8 +72,9 @@ export async function POST(
       return NextResponse.json({ error: 'Prospect has no accepted items' }, { status: 400 });
     }
 
-    const commission = commissionPercent ?? prospect.agreedCommissionPercent ?? 35;
-    const signUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com'}/consignment-agreement?prospect=${prospectId}`;
+    // Same default the agreement page and settlement fall back to.
+    const commission = commissionPercent ?? prospect.agreedCommissionPercent ?? (await getDefaultCommissionPercent());
+    const signUrl = agreementUrlForToken(prospect.agreementToken);
 
     // Mark as sent first so the state is consistent if the email lands;
     // rolled back below if Resend rejects the message.

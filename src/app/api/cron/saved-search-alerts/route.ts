@@ -7,6 +7,7 @@ import { sendSavedSearchAlert } from '@/lib/email/notifications';
 import { logger } from '@/lib/logger';
 import { publicLotPath } from '@/lib/lots/urls';
 import { savedSearchHref } from '@/lib/search/saved-search-href';
+import { containsPattern } from '@/lib/db/like';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -27,11 +28,6 @@ function isAuthorized(request: NextRequest): boolean {
   const expected = Buffer.from(`Bearer ${CRON_SECRET}`);
   const provided = Buffer.from(authHeader);
   return provided.length === expected.length && timingSafeEqual(provided, expected);
-}
-
-// Escape ILIKE wildcards so a query like "100%" matches literally.
-function escapeLike(word: string): string {
-  return word.replace(/[\\%_]/g, (m) => `\\${m}`);
 }
 
 function lotUrl(lot: { slug: string | null; id: string; saleType: string }): string {
@@ -76,8 +72,11 @@ export async function GET(request: NextRequest) {
       const haystack = sql`(${lots.title} || ' ' || coalesce(${lots.subtitle}, '') || ' ' || coalesce(${lots.artist}, '') || ' ' || coalesce(${lots.maker}, '') || ' ' || coalesce(${lots.description}, ''))`;
       const conditions: SQL[] = [
         inArray(lots.status, ['for_sale', 'in_auction']),
-        gt(lots.createdAt, search.lastNotifiedAt),
-        ...words.map((w) => sql`${haystack} ILIKE ${'%' + escapeLike(w) + '%'}`),
+        // Listed since the last alert, not created: lots are drafted long
+        // before they go on sale. A never-listed lot (null) never matches.
+        gt(lots.listedAt, search.lastNotifiedAt),
+        // containsPattern escapes wildcards so "100%" matches literally.
+        ...words.map((w) => sql`${haystack} ILIKE ${containsPattern(w)}`),
       ];
       if (search.categoryId) conditions.push(eq(lots.categoryId, search.categoryId));
 
@@ -94,7 +93,7 @@ export async function GET(request: NextRequest) {
         })
         .from(lots)
         .where(and(...conditions))
-        .orderBy(asc(lots.createdAt))
+        .orderBy(asc(lots.listedAt), asc(lots.id))
         .limit(MAX_LOTS_PER_EMAIL);
 
       if (matches.length === 0) continue;

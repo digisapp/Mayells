@@ -17,7 +17,11 @@ interface ClaimedRow {
   image_url: string;
 }
 
-/** Sum completed estimates and move the visit to review. */
+/**
+ * Sum completed estimates and move the visit to review — or back to sent when
+ * the report already went out, so more photos or a re-analysis don't lose
+ * the "Report sent" state (the client's link shows the updated report).
+ */
 async function finalizeVisit(visitId: string) {
   const [totals] = await db
     .select({
@@ -30,7 +34,7 @@ async function finalizeVisit(visitId: string) {
   await db
     .update(estateVisits)
     .set({
-      status: 'review',
+      status: sql`case when ${estateVisits.sentAt} is not null then 'sent'::estate_visit_status else 'review'::estate_visit_status end`,
       totalEstimateLow: Number(totals?.totalLow) || 0,
       totalEstimateHigh: Number(totals?.totalHigh) || 0,
       updatedAt: sql`now()`,

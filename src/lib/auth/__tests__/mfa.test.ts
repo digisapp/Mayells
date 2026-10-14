@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  enrollmentFromFactorsResult,
   hasVerifiedTotpFactor,
   needsMfaChallenge,
   isMfaExemptPath,
@@ -57,5 +58,19 @@ describe('isMfaExemptPath', () => {
     expect(isMfaExemptPath('/admin/lots')).toBe(false);
     expect(isMfaExemptPath('/api/admin/prospects')).toBe(false);
     expect(isMfaExemptPath('/api/lots/abc/bids')).toBe(false);
+  });
+});
+
+describe('enrollmentFromFactorsResult', () => {
+  it('reads a successful lookup', () => {
+    expect(enrollmentFromFactorsResult({ data: { factors: [] }, error: null })).toEqual({ enrolled: false, known: true });
+    expect(
+      enrollmentFromFactorsResult({ data: { factors: [{ factor_type: 'totp', status: 'verified' }] }, error: null }),
+    ).toEqual({ enrolled: true, known: true });
+  });
+
+  it('fails closed when Auth errors or does not answer', () => {
+    expect(enrollmentFromFactorsResult(null)).toEqual({ enrolled: true, known: false });
+    expect(enrollmentFromFactorsResult({ data: null, error: new Error('503') })).toEqual({ enrolled: true, known: false });
   });
 });

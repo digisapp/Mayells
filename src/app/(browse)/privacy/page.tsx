@@ -2,6 +2,7 @@ import { BUSINESS } from '@/lib/config';
 
 export const metadata = {
   title: 'Privacy Policy',
+  alternates: { canonical: '/privacy' },
   description: 'Learn how Mayells collects, uses, and protects your personal information. Your privacy and data security are our priority.',
 };
 

@@ -34,7 +34,12 @@ interface AuctionFormProps {
   initialData?: AuctionFormData;
   /** Locks the schedule + type once bidding has opened (changing them mid-sale is handled separately). */
   locked?: boolean;
-  onSubmit: (data: Record<string, unknown>) => Promise<void>;
+  /**
+   * Saves the form. Resolve with the saved sale as form data (edit page) and
+   * the form shows exactly what the server stored; resolve with nothing and
+   * the submitted values are taken as saved.
+   */
+  onSubmit: (data: Record<string, unknown>) => Promise<AuctionFormData | void>;
   isLoading: boolean;
   submitLabel: string;
   cancelHref: string;
@@ -88,6 +93,11 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
   const [error, setError] = useState('');
   const errorRef = useRef<HTMLDivElement>(null);
   const timeZone = typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
+  // Editing an existing sale: an emptied field must reach the server as null
+  // ("clear it"); omitted would mean "unchanged" and the old value would stay.
+  const editing = !!initialData;
+  const cleared = (field: 'previewStartsAt' | 'biddingStartsAt' | 'biddingEndsAt' | 'saleNumber') =>
+    editing && !form[field] && !!saved[field] ? null : undefined;
 
   const dirty = JSON.stringify(form) !== JSON.stringify(saved);
   useEffect(() => {
@@ -129,19 +139,19 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
 
     try {
       const slug = form.slug || generateSlug(form.title);
-      await onSubmit({
+      const stored = await onSubmit({
         title: form.title,
         subtitle: form.subtitle,
-        saleNumber: form.saleNumber || undefined,
+        saleNumber: form.saleNumber || cleared('saleNumber'),
         description: form.description,
         slug,
         // Always sent: an emptied field must clear the link (and so move the
         // sale's bidding back to mayells.com), not be skipped as "unchanged".
         liveauctioneersUrl: form.liveauctioneersUrl.trim(),
         type: form.type,
-        previewStartsAt: toIsoOrUndefined(form.previewStartsAt),
-        biddingStartsAt: toIsoOrUndefined(form.biddingStartsAt),
-        biddingEndsAt: toIsoOrUndefined(form.biddingEndsAt),
+        previewStartsAt: toIsoOrUndefined(form.previewStartsAt) ?? cleared('previewStartsAt'),
+        biddingStartsAt: toIsoOrUndefined(form.biddingStartsAt) ?? cleared('biddingStartsAt'),
+        biddingEndsAt: toIsoOrUndefined(form.biddingEndsAt) ?? cleared('biddingEndsAt'),
         buyerPremiumPercent: intOrUndefined(form.buyerPremiumPercent),
         antiSnipeEnabled: form.antiSnipeEnabled,
         antiSnipeMinutes: intOrUndefined(form.antiSnipeMinutes),
@@ -149,7 +159,9 @@ export function AuctionForm({ initialData, locked = false, onSubmit, isLoading, 
         lotClosingIntervalSeconds: intOrUndefined(form.lotClosingIntervalSeconds),
         isFeatured: form.isFeatured,
       });
-      setSaved(form);
+      const next = stored ?? form;
+      setForm(next);
+      setSaved(next);
     } catch (err) {
       showError(err instanceof Error && err.message ? err.message : 'Something went wrong');
     }

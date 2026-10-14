@@ -16,6 +16,7 @@ import { invoiceStatusBadge } from '@/components/account/invoice-status';
 import { createClient } from '@/lib/supabase/server';
 import { formatLongDate } from '@/lib/format/dates';
 import { BUSINESS } from '@/lib/config';
+import { isStripeConfigured } from '@/lib/stripe/config';
 import { formatCurrencyWithCents } from '@/types';
 
 export const metadata: Metadata = {
@@ -158,10 +159,25 @@ export default async function InvoicePage({
               <Separator />
               <PaymentProcessingRefresh />
             </>
-          ) : isPayable ? (
+          ) : isPayable && isStripeConfigured() ? (
             <>
               <Separator />
               <PayButton token={token} amountLabel={formatCurrencyWithCents(invoice.totalAmount)} />
+            </>
+          ) : isPayable ? (
+            // Card payments aren't set up: a Pay button would only fail.
+            <>
+              <Separator />
+              <div className="space-y-1 text-sm">
+                <p className="font-medium">Pay by wire transfer</p>
+                <p className="text-muted-foreground">
+                  Online card payment isn&rsquo;t available right now. Email{' '}
+                  <a href={mailto} className="underline underline-offset-4 hover:text-foreground">{BUSINESS.email}</a>
+                  {' '}or call{' '}
+                  <a href={BUSINESS.phoneHref} className="underline underline-offset-4 hover:text-foreground whitespace-nowrap">{BUSINESS.phone}</a>
+                  {' '}and we&rsquo;ll send our wire instructions. Please reference {invoice.invoiceNumber} with your payment.
+                </p>
+              </div>
             </>
           ) : null}
         </CardContent>

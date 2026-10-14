@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
 import { aiSearch } from '@/lib/ai/search';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-ip';
 import { createClient } from '@/lib/supabase/server';
-import { isAdminProfile } from '@/lib/auth/admin';
-import { db } from '@/db';
-import { users } from '@/db/schema';
+import { isAdminUser } from '@/lib/auth/require-admin';
 
 /** Signed-in admin? Anonymous and non-admin sessions get the public path. */
 async function isAdminRequest(): Promise<boolean> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-  const [profile] = await db
-    .select({ role: users.role, isAdmin: users.isAdmin })
-    .from(users)
-    .where(eq(users.id, user.id))
-    .limit(1);
-  return isAdminProfile(profile);
+  return isAdminUser(user?.id);
 }
 
 export async function GET(request: NextRequest) {

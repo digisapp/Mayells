@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { auctions, users, bids } from '@/db/schema';
-import { eq, sql, or } from 'drizzle-orm';
+import { auctions, auctionLots, lots, users, bids } from '@/db/schema';
+import { and, eq, ne, sql, or } from 'drizzle-orm';
 import { auctionUpdateSchema } from '@/lib/validation/schemas';
 import {
   openAuctionLots,
+  markLiveAuctioneersLotsListed,
   forceCloseAuctionLots,
   cancelAuction,
   rescheduleAuctionClose,
@@ -15,7 +16,12 @@ import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { biddingVenue } from '@/lib/bidding/venue';
 import { isPubliclyVisibleAuction, toPublicAuction } from '@/lib/auctions/visibility';
+import { isAdminUser } from '@/lib/auth/require-admin';
+import { isUniqueViolation, SLUG_IN_USE_ERROR } from '@/lib/auctions/db-errors';
+import { clearedDateRefusal, type ClearableDate } from '@/lib/auctions/schedule-rules';
 import { logger } from '@/lib/logger';
+
+const DATE_FIELDS: ClearableDate[] = ['previewStartsAt', 'biddingStartsAt', 'biddingEndsAt'];
 
 export async function GET(
   req: NextRequest,
@@ -47,14 +53,7 @@ export async function GET(
     try {
       const supabase = await createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const [profile] = await db
-          .select({ role: users.role, isAdmin: users.isAdmin })
-          .from(users)
-          .where(eq(users.id, user.id))
-          .limit(1);
-        isAdmin = isAdminProfile(profile);
-      }
+      isAdmin = await isAdminUser(user?.id);
     } catch {
       isAdmin = false;
     }
@@ -99,34 +98,37 @@ export async function PATCH(
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
     }
 
-    // Convert datetime strings to Date objects for timestamp columns
+    // Timestamp columns: an ISO string sets the date, null clears it (the
+    // editor emptied the field), undefined leaves it as it is.
     const updateData: Record<string, unknown> = { ...parsed.data, updatedAt: sql`now()` };
-    if (typeof updateData.previewStartsAt === 'string') {
-      updateData.previewStartsAt = new Date(updateData.previewStartsAt as string);
-    }
-    if (typeof updateData.biddingStartsAt === 'string') {
-      updateData.biddingStartsAt = new Date(updateData.biddingStartsAt as string);
-    }
-    if (typeof updateData.biddingEndsAt === 'string') {
-      updateData.biddingEndsAt = new Date(updateData.biddingEndsAt as string);
+    for (const field of DATE_FIELDS) {
+      const value = parsed.data[field];
+      if (value !== undefined) updateData[field] = value === null ? null : new Date(value);
     }
 
-    // A manual transition to 'open' must run the same lot-opening step the
-    // lifecycle cron performs (lot status, per-lot closingAt, Redis bid state);
-    // a bare status flip would leave every lot unbiddable. openAuctionLots is
-    // idempotent, and runs BEFORE the status flip (mirroring the cron and the
-    // live-start route) so a failure leaves the auction re-openable.
     const [existing] = await db.select().from(auctions).where(eq(auctions.id, auctionId)).limit(1);
     if (!existing) {
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
     }
 
+    const PRE_OPEN = ['draft', 'scheduled', 'preview'];
+    const BIDDING = ['open', 'live'];
+    const now = new Date();
+
     // The LiveAuctioneers link decides where the sale is bid (lib/bidding/
-    // venue.ts). Once bids exist on mayells.com, moving the sale elsewhere
-    // would strand them, so the venue is fixed from the first bid on.
+    // venue.ts). It is fixed once bidding opens — an open mayells.com sale
+    // has biddable lots that a LiveAuctioneers sale must never have, and an
+    // open LiveAuctioneers sale has none to bid on here — and from the first
+    // bid on mayells.com, which moving the sale would strand.
     if (parsed.data.liveauctioneersUrl !== undefined) {
       const nextVenue = biddingVenue({ liveauctioneersUrl: parsed.data.liveauctioneersUrl });
       if (nextVenue !== biddingVenue(existing)) {
+        if (!PRE_OPEN.includes(existing.status)) {
+          return NextResponse.json(
+            { error: `This sale is ${existing.status}, so where it is bid can no longer change.` },
+            { status: 409 },
+          );
+        }
         const [{ n }] = await db
           .select({ n: sql<number>`count(*)::int` })
           .from(bids)
@@ -141,6 +143,11 @@ export async function PATCH(
       // Store "no link" as null rather than an empty string.
       if (!parsed.data.liveauctioneersUrl.trim()) updateData.liveauctioneersUrl = null;
     }
+    const effectiveLaUrl = parsed.data.liveauctioneersUrl !== undefined
+      ? (updateData.liveauctioneersUrl as string | null)
+      : existing.liveauctioneersUrl;
+    const venue = biddingVenue({ liveauctioneersUrl: effectiveLaUrl });
+    const effectiveType = parsed.data.type ?? existing.type;
 
     // Status is a state machine shared with the lifecycle cron and the live
     // console. Only transitions an operator legitimately makes by hand are
@@ -148,9 +155,6 @@ export async function PATCH(
     // dedicated route (live start/end).
     const nextStatus = parsed.data.status;
     const changesStatus = nextStatus !== undefined && nextStatus !== existing.status;
-    const PRE_OPEN = ['draft', 'scheduled', 'preview'];
-    const BIDDING = ['open', 'live'];
-    const now = new Date();
 
     if (changesStatus) {
       if (nextStatus === 'live') {
@@ -161,7 +165,11 @@ export async function PATCH(
       }
       if (nextStatus === 'completed') {
         return NextResponse.json(
-          { error: 'An auction completes automatically once every lot has settled.' },
+          {
+            error: venue === 'liveauctioneers'
+              ? 'A LiveAuctioneers sale completes once every lot has a recorded result.'
+              : 'An auction completes automatically once every lot has settled.',
+          },
           { status: 409 },
         );
       }
@@ -185,6 +193,51 @@ export async function PATCH(
       }
     }
 
+    // A date the sale still runs on can't be emptied (schedule-rules.ts).
+    // Only a real clear is checked: a date that was never set stays allowed.
+    const after = { status: changesStatus ? nextStatus! : existing.status, type: effectiveType };
+    for (const field of DATE_FIELDS) {
+      if (parsed.data[field] !== null || existing[field] === null) continue;
+      const refusal = clearedDateRefusal(after, field);
+      if (refusal) return NextResponse.json({ error: refusal }, { status: 400 });
+    }
+
+    const effectiveEnd = parsed.data.biddingEndsAt !== undefined
+      ? (updateData.biddingEndsAt as Date | null)
+      : existing.biddingEndsAt;
+    const opensBidding = changesStatus && nextStatus === 'open';
+
+    if (opensBidding) {
+      // Opening with a close time already behind us would have the cron end
+      // the sale on its next tick. A live sale with no close time is fine.
+      if (effectiveEnd && effectiveEnd.getTime() <= now.getTime()) {
+        return NextResponse.json(
+          { error: 'This sale\'s bidding close time has already passed. Set a new close time first, then open bidding.' },
+          { status: 400 },
+        );
+      }
+      // A timed auction with no end time can't be opened correctly
+      // (openAuctionLots refuses it) — don't flip it to 'open' with
+      // unbiddable lots. A LiveAuctioneers sale opens no lots here.
+      if (venue === 'mayells' && effectiveType !== 'live' && !effectiveEnd) {
+        return NextResponse.json(
+          { error: 'Set a bidding end date before opening this auction.' },
+          { status: 400 },
+        );
+      }
+    }
+
+    // auctions.slug is unique. Checked before any side effect below so a
+    // taken slug can't leave lots opened under a sale that never flipped.
+    if (parsed.data.slug !== undefined && parsed.data.slug !== existing.slug) {
+      const [taken] = await db
+        .select({ id: auctions.id })
+        .from(auctions)
+        .where(and(eq(auctions.slug, parsed.data.slug), ne(auctions.id, auctionId)))
+        .limit(1);
+      if (taken) return NextResponse.json({ error: SLUG_IN_USE_ERROR }, { status: 409 });
+    }
+
     // Cancelling has its own side effects (release lots, drop Redis state) and
     // refuses once bids exist — handled entirely by the lifecycle helper.
     if (changesStatus && nextStatus === 'cancelled') {
@@ -199,17 +252,18 @@ export async function PATCH(
     // so no further bid can land, then park the sale in 'closing' — the
     // settlement cron picks it up on its next tick exactly like the live-end
     // route. A bare flip to 'closed' would leave lots biddable until their
-    // original staggered close times.
+    // original staggered close times. A LiveAuctioneers sale has nothing to
+    // settle here, so it goes straight to 'closed' and waits for its results.
     if (changesStatus && (nextStatus === 'closing' || nextStatus === 'closed')) {
       await forceCloseAuctionLots(auctionId, now);
-      updateData.status = 'closing';
+      updateData.status = venue === 'liveauctioneers' ? 'closed' : 'closing';
       updateData.actualEndedAt = existing.actualEndedAt ?? now;
     }
 
     // Moving the close time of a sale that is already open must also move the
     // per-lot close times and the Redis close gate, or the site would show a
     // new countdown while bidding still stops at the old time.
-    const newEnd = updateData.biddingEndsAt as Date | undefined;
+    const newEnd = updateData.biddingEndsAt as Date | null | undefined;
     if (
       newEnd &&
       BIDDING.includes(existing.status) &&
@@ -225,32 +279,33 @@ export async function PATCH(
       await rescheduleAuctionClose({ ...existing, ...updateData, biddingEndsAt: newEnd } as typeof existing, newEnd);
     }
 
-    const opensBidding =
-      parsed.data.status === 'open' &&
-      ['draft', 'scheduled', 'preview'].includes(existing.status);
-
-    if (opensBidding) {
-      const effective = {
-        ...existing,
-        biddingEndsAt: (updateData.biddingEndsAt as Date | undefined) ?? existing.biddingEndsAt,
-      };
-      // A timed auction with no end time can't be opened correctly
-      // (openAuctionLots refuses it) — don't flip it to 'open' with
-      // unbiddable lots.
-      if (effective.type !== 'live' && !effective.biddingEndsAt) {
-        return NextResponse.json(
-          { error: 'Set a bidding end date before opening this auction.' },
-          { status: 400 },
-        );
-      }
-      await openAuctionLots(effective);
+    // A manual transition to 'open' must run the same lot-opening step the
+    // lifecycle cron performs (lot status, per-lot closingAt, Redis bid state);
+    // a bare status flip would leave every lot unbiddable. openAuctionLots is
+    // idempotent, and runs BEFORE the status flip (mirroring the cron and the
+    // live-start route) so a failure leaves the auction re-openable. A
+    // LiveAuctioneers sale only changes status: its lots stay approved
+    // (public in an open sale) and take no bids here.
+    if (opensBidding && venue === 'mayells') {
+      await openAuctionLots({ ...existing, type: effectiveType, biddingEndsAt: effectiveEnd, liveauctioneersUrl: effectiveLaUrl });
+    } else if (opensBidding) {
+      await markLiveAuctioneersLotsListed(auctionId, now);
     }
 
-    const [updated] = await db
-      .update(auctions)
-      .set(updateData as typeof auctions.$inferInsert)
-      .where(eq(auctions.id, auctionId))
-      .returning();
+    let updated: typeof auctions.$inferSelect | undefined;
+    try {
+      [updated] = await db
+        .update(auctions)
+        .set(updateData as typeof auctions.$inferInsert)
+        .where(eq(auctions.id, auctionId))
+        .returning();
+    } catch (err) {
+      // Lost a race for the slug since the check above.
+      if (isUniqueViolation(err)) {
+        return NextResponse.json({ error: SLUG_IN_USE_ERROR }, { status: 409 });
+      }
+      throw err;
+    }
 
     if (!updated) {
       return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
@@ -304,11 +359,32 @@ export async function DELETE(
       );
     }
 
-    if (['open', 'live', 'closing'].includes(auction.status)) {
+    if (['open', 'live', 'closing', 'closed'].includes(auction.status)) {
       return NextResponse.json(
-        { error: `Cannot delete an auction that is ${auction.status}` },
+        {
+          error: auction.status === 'closed'
+            ? 'This auction is being settled and cannot be deleted.'
+            : `Cannot delete an auction that is ${auction.status}`,
+        },
         { status: 400 },
       );
+    }
+
+    // A LiveAuctioneers sale takes no bids here, so the check above can't
+    // see its sales; a recorded result makes it a sales record too.
+    if (biddingVenue(auction) === 'liveauctioneers') {
+      const [soldLot] = await db
+        .select({ id: lots.id })
+        .from(auctionLots)
+        .innerJoin(lots, eq(lots.id, auctionLots.lotId))
+        .where(and(eq(auctionLots.auctionId, auctionId), eq(lots.status, 'sold')))
+        .limit(1);
+      if (soldLot) {
+        return NextResponse.json(
+          { error: 'This sale has recorded LiveAuctioneers results and cannot be deleted.' },
+          { status: 409 },
+        );
+      }
     }
 
     await db.delete(auctions).where(eq(auctions.id, auctionId));

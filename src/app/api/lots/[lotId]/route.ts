@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
-import { requireAdminApi } from '@/lib/auth/require-admin';
+import { requireAdminApi, isAdminUser } from '@/lib/auth/require-admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { lots, lotImages, bids, users, invoices, auctionLots, auctions } from '@/db/schema';
+import { lots, lotImages, bids, users, invoices, auctionLots, auctions, uploadItems } from '@/db/schema';
 import { eq, desc, sql, or, and, inArray, ne } from 'drizzle-orm';
 import { lotUpdateSchema } from '@/lib/validation/schemas';
 import { toPublicLot, isPubliclyVisibleLot } from '@/lib/lots/visibility';
-import { getLotPlacements, isLotInPublicAuction } from '@/lib/lots/placement';
+import { getLotPlacements, isLotInPublicAuction, findActivePlacement } from '@/lib/lots/placement';
 import { PUBLIC_AUCTION_STATUSES } from '@/lib/auctions/visibility';
 import { publicLotPath } from '@/lib/lots/urls';
 import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
@@ -74,15 +73,7 @@ export async function GET(
     // and can't see unpublished lots (draft / pending_review / withdrawn) at all.
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    let isAdmin = false;
-    if (user) {
-      const [profile] = await db
-        .select({ role: users.role, isAdmin: users.isAdmin })
-        .from(users)
-        .where(eq(users.id, user.id))
-        .limit(1);
-      isAdmin = isAdminProfile(profile);
-    }
+    const isAdmin = await isAdminUser(user?.id);
 
     if (!isAdmin) {
       // A lot catalogued in a scheduled/preview sale stays `approved` until
@@ -220,7 +211,9 @@ export async function PATCH(
         );
       }
       const effectiveSaleType = fieldUpdates.saleType ?? existing.saleType;
-      const effectiveBuyNow = fieldUpdates.buyNowPrice ?? existing.buyNowPrice;
+      // An explicit null clears the price in this same request (so `??` would
+      // wrongly fall back to the saved one); only an absent field keeps it.
+      const effectiveBuyNow = fieldUpdates.buyNowPrice !== undefined ? fieldUpdates.buyNowPrice : existing.buyNowPrice;
       if (to === 'for_sale') {
         if (effectiveSaleType === 'auction') {
           return NextResponse.json(
@@ -237,9 +230,30 @@ export async function PATCH(
       }
     }
 
+    // A lot placed in an unfinished sale takes its status and sale type from
+    // that sale (catalogued → in_auction → sold/unsold). Changing either by
+    // hand would desync the catalogue, so take it out of the sale first.
+    // Withdrawal is the exception: it detaches the lot itself (below).
+    const withdrawing = changesStatus && nextStatus === 'withdrawn';
+    const changesSaleType = fieldUpdates.saleType !== undefined && fieldUpdates.saleType !== existing.saleType;
+    if ((changesStatus || changesSaleType) && !withdrawing) {
+      const placement = await findActivePlacement(lotId);
+      if (placement) {
+        const settling = placement.auctionStatus === 'closing' || placement.auctionStatus === 'closed';
+        return NextResponse.json(
+          {
+            error: settling
+              ? `This lot is in ${placement.auctionTitle}, which is being settled. Wait for settlement to finish, then try again.`
+              : `This lot is in ${placement.auctionTitle}. Remove it from the sale first.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     // Withdrawal has engine side effects (detach from sale, retract bids,
     // clear Redis). Run it first, then apply any remaining field edits below.
-    if (changesStatus && nextStatus === 'withdrawn') {
+    if (withdrawing) {
       try {
         await withdrawLot(lotId);
       } catch (err) {
@@ -250,7 +264,7 @@ export async function PATCH(
       }
     }
 
-    const setValues = changesStatus && nextStatus !== 'withdrawn'
+    const setValues = changesStatus && !withdrawing
       ? { ...fieldUpdates, status: nextStatus }
       : fieldUpdates;
 
@@ -340,6 +354,14 @@ export async function DELETE(
           .set({ lotCount: sql`greatest(${auctions.lotCount} - 1, 0)`, updatedAt: sql`now()` })
           .where(eq(auctions.id, placement.auctionId));
       }
+
+      // upload_items.lot_id has no foreign key, so a deleted lot would leave
+      // its intake item pointing at nothing: never offered for lot creation
+      // again, and blocking the prospect's deletion. Hand it back as accepted.
+      await tx
+        .update(uploadItems)
+        .set({ lotId: null, auctionId: null, status: 'accepted', updatedAt: new Date() })
+        .where(eq(uploadItems.lotId, lotId));
 
       await tx.delete(lots).where(eq(lots.id, lotId));
       return [...new Set(placements.map((p) => p.auctionSlug))];

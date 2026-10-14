@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { db } from '@/db';
 import { estateVisits } from '@/db/schema';
 import { desc, eq, sql } from 'drizzle-orm';
+import { requireAdminPage } from '@/lib/auth/require-admin';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -39,6 +40,7 @@ export default async function AppraisalsPage({
 }: {
   searchParams: Promise<{ page?: string; status?: string }>;
 }) {
+  await requireAdminPage();
   const { page: pageParam, status: statusParam } = await searchParams;
   const status = (VISIT_STATUSES as readonly string[]).includes(statusParam ?? '')
     ? (statusParam as VisitStatus)

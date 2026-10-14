@@ -4,6 +4,8 @@ import { lots } from '@/db/schema';
 import { eq, or } from 'drizzle-orm';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { loadOgImage } from '@/lib/seo/og-image';
+import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { isLotInPublicAuction } from '@/lib/lots/placement';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
@@ -12,14 +14,25 @@ export const contentType = 'image/png';
 async function getLot(lotId: string) {
   // Slug or UUID; only compare against the uuid column when the param looks
   // like one (a non-UUID cast throws in Postgres and would break the image).
-  // A DB hiccup degrades to the generic branded card rather than a 500.
+  // A DB hiccup degrades to the generic branded card rather than a 500, and
+  // so does a lot the gallery page itself would 404 (same rule as the page).
   try {
     const [lot] = await db
-      .select()
+      .select({
+        id: lots.id,
+        status: lots.status,
+        saleType: lots.saleType,
+        title: lots.title,
+        artist: lots.artist,
+        primaryImageUrl: lots.primaryImageUrl,
+        buyNowPrice: lots.buyNowPrice,
+      })
       .from(lots)
       .where(UUID_RE.test(lotId) ? or(eq(lots.id, lotId), eq(lots.slug, lotId)) : eq(lots.slug, lotId))
       .limit(1);
-    return lot;
+    if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private')) return undefined;
+    const inPublicAuction = lot.status === 'approved' ? await isLotInPublicAuction(lot.id) : false;
+    return isPubliclyVisibleLot(lot.status, inPublicAuction) ? lot : undefined;
   } catch {
     return undefined;
   }

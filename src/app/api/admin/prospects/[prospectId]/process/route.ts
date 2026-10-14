@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
 import { uploadItems, sellerProspects } from '@/db/schema';
-import { eq, and, or, inArray, lt, sql } from 'drizzle-orm';
+import { eq, and, or, inArray, lt } from 'drizzle-orm';
 import { catalogLotFromImages } from '@/lib/ai/cataloging';
 import { appraiseLot } from '@/lib/ai/appraisal';
+import { isVideoUrl } from '@/lib/ai/vision-images';
+import { reviewCountsSelect } from '@/lib/prospects/totals';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 
@@ -14,6 +16,8 @@ export const maxDuration = 120;
 // An item left in 'processing' this long was abandoned by a crashed or
 // timed-out run and is picked up again.
 const STUCK_PROCESSING_MS = 15 * 60 * 1000;
+
+const VIDEO_ONLY_NOTE = 'Video only, so AI cataloging was skipped. Add the title, category and estimate by hand, then accept.';
 
 const bodySchema = z.object({
   // Explicit re-run for specific items (any reviewable status).
@@ -100,6 +104,26 @@ export async function POST(
         continue;
       }
 
+      // Clips only: the vision models read stills, so there is nothing for
+      // them to look at. A new item moves to the review queue with a note,
+      // for the admin to fill in by hand and accept; one already reviewed is
+      // left as it is rather than sent back for an AI pass that can't run.
+      if (item.images.every(isVideoUrl)) {
+        if (item.status === 'uploaded' || item.status === 'processing') {
+          const notes = item.adminNotes ?? '';
+          await db
+            .update(uploadItems)
+            .set({
+              status: 'cataloged',
+              adminNotes: notes.includes(VIDEO_ONLY_NOTE) ? notes : notes ? `${notes}\n${VIDEO_ONLY_NOTE}` : VIDEO_ONLY_NOTE,
+              updatedAt: new Date(),
+            })
+            .where(and(eq(uploadItems.id, item.id), eq(uploadItems.status, item.status)));
+        }
+        skipped++;
+        continue;
+      }
+
       try {
         // Claim atomically: skip the item if another run, or Create lots,
         // changed its status since the list above was read.
@@ -152,6 +176,15 @@ export async function POST(
             aiSuggestedStartingBid: appraisal.suggestedStartingBid,
 
             aiProcessedAt: new Date(),
+            // The admin's overrides were made against the previous result.
+            // Cleared so the card, the totals and Create lots all use the
+            // fresh one.
+            finalTitle: null,
+            finalDescription: null,
+            finalEstimateLow: null,
+            finalEstimateHigh: null,
+            finalReserve: null,
+            finalCategory: null,
             // A re-run returns the item to the review queue so the admin
             // looks at the fresh suggestions before accepting again.
             status: 'cataloged',
@@ -175,12 +208,7 @@ export async function POST(
     // endpoint uses: admin override wins over the AI estimate, declined
     // items don't count toward value but do count as reviewed.
     const [counts] = await db
-      .select({
-        reviewedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'declined', 'lot_created'))::int`,
-        acceptedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'lot_created'))::int`,
-        totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})) filter (where ${uploadItems.status} != 'declined'), 0)::int`,
-        totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})) filter (where ${uploadItems.status} != 'declined'), 0)::int`,
-      })
+      .select(reviewCountsSelect())
       .from(uploadItems)
       .where(eq(uploadItems.prospectId, prospectId));
 

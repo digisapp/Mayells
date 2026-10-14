@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
@@ -158,14 +158,18 @@ export default function AdminUserDetailPage() {
   // Notes
   const [notes, setNotes] = useState('');
   const [notesDirty, setNotesDirty] = useState(false);
+  // Read by load() so a refresh never overwrites notes still being typed.
+  const notesDirtyRef = useRef(false);
+  useEffect(() => { notesDirtyRef.current = notesDirty; }, [notesDirty]);
 
   // Confirmations for privilege-changing / destructive account changes
   const [pending, setPending] = useState<{
     updates: Record<string, unknown>; title: string; description: string; confirmLabel: string; destructive: boolean;
   } | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
+  /** `silent` refreshes in place (no skeleton), e.g. after sending a summary. */
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     fetch(`/api/admin/users/${userId}`)
       .then(async (r) => {
         if (r.status === 404) {
@@ -175,15 +179,14 @@ export default function AdminUserDetailPage() {
         if (!r.ok) throw new Error(await readError(r, 'Failed to load client'));
         const d = await r.json();
         setData(d.data ?? null);
-        setNotes(d.data?.user?.adminNotes ?? '');
-        setNotesDirty(false);
+        if (!notesDirtyRef.current) setNotes(d.data?.user?.adminNotes ?? '');
         setLoadError(null);
       })
       .catch((err: Error) => {
         setLoadError(err.message);
         toast.error(err.message || 'Failed to load client');
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
@@ -268,7 +271,8 @@ export default function AdminUserDetailPage() {
         setShowEmail(false);
         setEmailSubject('');
         setEmailMessage('');
-        load();
+        // Picks up the new email in the Emails tab; unsaved notes are kept.
+        load(true);
       } else {
         toast.error(await readError(res, 'Failed to send email'));
       }
@@ -301,7 +305,7 @@ export default function AdminUserDetailPage() {
         </p>
         {!notFound && (
           <div className="text-center mt-4">
-            <Button variant="outline" size="sm" onClick={load}>Try again</Button>
+            <Button variant="outline" size="sm" onClick={() => load()}>Try again</Button>
           </div>
         )}
       </div>

@@ -17,6 +17,7 @@ const HOME_DESCRIPTION = 'Mayells is a luxury auction house in Palm Beach, Flori
 export const metadata: Metadata = {
   title: { absolute: HOME_TITLE },
   description: HOME_DESCRIPTION,
+  alternates: { canonical: '/' },
   openGraph: {
     title: HOME_TITLE,
     description: HOME_DESCRIPTION,
@@ -35,11 +36,12 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Phone } from 'lucide-react';
 import { db } from '@/db';
 import { auctions, auctionLots, lots } from '@/db/schema';
-import { inArray, desc, eq, and, sql, asc } from 'drizzle-orm';
+import { inArray, desc, eq, and, or, sql, asc } from 'drizzle-orm';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { auctionWithVisibleLotCount } from '@/components/auctions/visible-lot-count';
 import { LotCard } from '@/components/lots/LotCard';
 import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
+import { BIDDING_SALE_STATUSES, takingBidsSql } from '@/lib/auctions/bidding-window';
 import { HeroAppraisalForm } from '@/components/home/HeroAppraisalForm';
 import { ClosingSoonRail, type ClosingSoonItem } from '@/components/home/ClosingSoonRail';
 import { LiveNowBanner } from '@/components/home/LiveNowBanner';
@@ -68,7 +70,8 @@ async function getHomeData() {
         db
           .select(auctionWithVisibleLotCount)
           .from(auctions)
-          .where(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']))
+          // Plus a 'closed' sale whose staggered lot closes are still running.
+          .where(or(inArray(auctions.status, ['live', 'open', 'scheduled', 'preview']), takingBidsSql))
           // Calendar order: sales already bidding, then the next to open.
           .orderBy(sql`${auctions.biddingStartsAt} asc nulls last`, desc(auctions.createdAt))
           .limit(6),
@@ -101,7 +104,10 @@ async function getHomeData() {
           .where(
             and(
               eq(lots.status, 'in_auction'),
-              inArray(auctions.status, ['open', 'live', 'closing']),
+              // 'closed' included: the cron closes the sale at its end time
+              // while staggered lots still take bids; the close-time check
+              // below keeps only lots that are actually open.
+              inArray(auctions.status, [...BIDDING_SALE_STATUSES]),
               sql`${effectiveClose} > now()`,
             ),
           )
@@ -117,7 +123,7 @@ async function getHomeData() {
           .where(
             and(
               eq(lots.status, 'in_auction'),
-              inArray(auctions.status, ['open', 'live', 'closing']),
+              inArray(auctions.status, [...BIDDING_SALE_STATUSES]),
               sql`${effectiveClose} > now()`,
             ),
           ),

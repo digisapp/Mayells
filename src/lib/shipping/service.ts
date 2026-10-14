@@ -17,6 +17,7 @@ import { sendSellerShippingNotification, sendBuyerShippingNotification } from '@
 import { isSentinelEmail } from '@/lib/sellers/shadow';
 import { portalUrl } from '@/lib/sellers/portal';
 import { logger } from '@/lib/logger';
+import { formatShortDate } from '@/lib/format/dates';
 
 const DEFAULT_WHITE_GLOVE_THRESHOLD = 100000;
 
@@ -307,9 +308,8 @@ export async function notifyBuyerShipped(shipmentId: string): Promise<boolean> {
         trackingNumber: shipment.trackingNumber,
         trackingUrl: shipment.trackingUrl,
         carrier: shipment.carrier ?? 'carrier',
-        estimatedDelivery: shipment.estimatedDelivery
-          ? shipment.estimatedDelivery.toLocaleDateString('en-US', { dateStyle: 'medium' })
-          : null,
+        // House timezone, like every other date in our emails.
+        estimatedDelivery: shipment.estimatedDelivery ? formatShortDate(shipment.estimatedDelivery) : null,
       });
       return true;
     } catch (err) {

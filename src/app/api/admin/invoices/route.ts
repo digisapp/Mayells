@@ -4,7 +4,7 @@ import Stripe from 'stripe';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
 import { invoices, payments, auctions } from '@/db/schema';
-import { eq, and, sql, inArray, asc } from 'drizzle-orm';
+import { eq, and, sql, inArray, asc, isNull, isNotNull } from 'drizzle-orm';
 import { processPaidInvoice } from '@/lib/payouts/service';
 import { unwindPaidInvoice, cancelPendingInvoice, expireCheckoutSession } from '@/lib/invoicing/unwind';
 import {
@@ -14,8 +14,10 @@ import {
   invoiceListQuery,
   invoiceCountQuery,
 } from '@/lib/invoicing/admin-query';
-import { stripe } from '@/lib/stripe/config';
+import { stripe, isStripeConfigured } from '@/lib/stripe/config';
+import { cardPaymentOnSession } from '@/lib/stripe/reconcile';
 import { logger } from '@/lib/logger';
+import { formatCurrencyWithCents } from '@/types';
 
 const isoDate = z
   .string()
@@ -46,6 +48,13 @@ const STATUS_TRANSITIONS: Record<string, string[]> = {
 };
 
 const PAGE_SIZE = 50;
+
+/** The invoice is paid either way; a payout that didn't record comes back as a warning. */
+function settlementWarning(settlement: { payoutError: string | null }) {
+  return settlement.payoutError
+    ? { warning: `Marked paid, but the consignor payout couldn't be recorded (${settlement.payoutError}). Retry before paying the consignor.` }
+    : {};
+}
 
 // GET /api/admin/invoices?page=1&status=&auctionId=&q=&sort=
 export async function GET(req: NextRequest) {
@@ -153,6 +162,13 @@ export async function PATCH(req: NextRequest) {
       );
     }
     if (status === existing.status) {
+      // "Mark paid" on a paid invoice retries its settlement (every step is
+      // idempotent) — the admin page offers it when the consignor payout
+      // couldn't be recorded the first time.
+      if (status === 'paid') {
+        const settlement = await processPaidInvoice(id);
+        return NextResponse.json({ data: existing, ...settlementWarning(settlement) });
+      }
       return NextResponse.json({ data: existing });
     }
 
@@ -167,6 +183,43 @@ export async function PATCH(req: NextRequest) {
       case 'paid': {
         if (!method) {
           return NextResponse.json({ error: 'Payment method is required to mark an invoice paid' }, { status: 400 });
+        }
+
+        // The buyer may already have paid by card on the invoice's Checkout
+        // session, with the webhook still in flight (or failed and waiting
+        // for a retry). Recording a wire on top of that would make the card
+        // webhook look like a second payment. Ask Stripe first, and refuse
+        // when it can't answer.
+        if (existing.stripeCheckoutSessionId && isStripeConfigured()) {
+          try {
+            const session = await stripe.checkout.sessions.retrieve(existing.stripeCheckoutSessionId, {
+              expand: ['payment_intent'],
+            });
+            const card = cardPaymentOnSession(session);
+            if (card === 'paid') {
+              return NextResponse.json(
+                { error: 'A card payment for this invoice already completed in Stripe — replay its webhook from /admin/webhooks instead of marking it paid.' },
+                { status: 409 },
+              );
+            }
+            if (card === 'processing') {
+              return NextResponse.json(
+                { error: 'A card payment for this invoice is still processing in Stripe — wait for it to settle or fail before marking it paid.' },
+                { status: 409 },
+              );
+            }
+          } catch (err) {
+            // A session Stripe doesn't know (e.g. from an old key) can't take
+            // a payment; anything else means we couldn't check.
+            const missing = err instanceof Stripe.errors.StripeInvalidRequestError && err.code === 'resource_missing';
+            if (!missing) {
+              logger.error('Mark paid: could not check the Checkout session', err, { invoiceId: id });
+              return NextResponse.json(
+                { error: "Couldn't confirm with Stripe that no card payment is under way for this invoice — try again in a minute." },
+                { status: 502 },
+              );
+            }
+          }
         }
         // A bare YYYY-MM-DD from a date picker parses as UTC midnight, which the
         // house-timezone formatter shows as the previous day (and can drop into
@@ -211,8 +264,9 @@ export async function PATCH(req: NextRequest) {
           .onConflictDoNothing();
 
         // Seller-side settlement (payout, shipment, statement) + buyer receipt.
-        await processPaidInvoice(id, { sendBuyerConfirmation: true });
-        return NextResponse.json({ data: updated });
+        // A payout failure comes back as a warning the page shows with a retry.
+        const settlement = await processPaidInvoice(id, { sendBuyerConfirmation: true });
+        return NextResponse.json({ data: updated, ...settlementWarning(settlement) });
       }
 
       // ---- Cancel an unpaid invoice ---------------------------------------
@@ -269,11 +323,24 @@ export async function PATCH(req: NextRequest) {
 
         // Ledger: flip the recorded payment(s) to refunded; if the invoice was
         // marked paid before the ledger existed, write the refund row itself.
+        // On a hand-paid invoice a card payment held for review is still at
+        // Stripe — only its refund webhook may flip that row.
         const flipped = await db
           .update(payments)
           .set({ status: 'refunded', updatedAt: new Date() })
-          .where(and(eq(payments.invoiceId, id), inArray(payments.status, ['succeeded', 'pending', 'processing'])))
+          .where(and(
+            eq(payments.invoiceId, id),
+            inArray(payments.status, ['succeeded', 'pending', 'processing']),
+            ...(existing.stripePaymentIntentId ? [] : [isNull(payments.stripePaymentIntentId)]),
+          ))
           .returning({ id: payments.id });
+        const [heldCard] = existing.stripePaymentIntentId
+          ? []
+          : await db
+              .select({ amount: payments.amount })
+              .from(payments)
+              .where(and(eq(payments.invoiceId, id), eq(payments.status, 'succeeded'), isNotNull(payments.stripePaymentIntentId)))
+              .limit(1);
         if (flipped.length === 0) {
           await db
             .insert(payments)
@@ -290,7 +357,13 @@ export async function PATCH(req: NextRequest) {
         }
 
         const [updated] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
-        return NextResponse.json({ data: updated, unwind: result });
+        return NextResponse.json({
+          data: updated,
+          unwind: result,
+          ...(heldCard
+            ? { warning: `This invoice also has a card payment of ${formatCurrencyWithCents(heldCard.amount)} held in Stripe — refund it from the Stripe dashboard too.` }
+            : {}),
+        });
       }
 
       // ---- Extend: overdue → pending with a new due date ---------------------

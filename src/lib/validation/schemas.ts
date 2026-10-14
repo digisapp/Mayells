@@ -5,9 +5,10 @@ export const signupSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
   fullName: z.string().min(1, 'Full name is required'),
   // Selling is never self-service (consignment goes through /consign), so
-  // signup no longer asks — everyone starts as a buyer. The field is kept
-  // optional for older clients; shadow-claim preserves seller status anyway.
-  role: z.enum(['buyer', 'seller']).default('buyer'),
+  // everyone starts as a buyer. Older clients may still send a role; it is
+  // accepted and ignored (a self-chosen 'seller' could upload to the public
+  // image bucket). Shadow-claim preserves real seller status.
+  role: z.enum(['buyer', 'seller']).optional().transform(() => 'buyer' as const),
 });
 
 export const loginSchema = z.object({
@@ -22,6 +23,13 @@ export const forgotPasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
+
+// Ceiling for any monetary field stored in an int4 column (cents). int4 maxes
+// at 2,147,483,647; cap well below it ($20,000,000) so a legal higher bid — or
+// a bid + increment tier — can never overflow the column and corrupt the lot.
+export const MAX_MONEY_CENTS = 2_000_000_000;
+
+const money = () => z.number().int().positive().max(MAX_MONEY_CENTS, 'Amount is too large');
 
 const lotBaseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -47,14 +55,14 @@ const lotBaseSchema = z.object({
   // Seller-of-record. Payouts are skipped with a warning at settlement when this
   // is missing, so the editor exposes it; null clears it.
   sellerId: z.string().uuid().nullable().optional(),
-  estimateLow: z.number().int().positive().nullable().optional(),
-  estimateHigh: z.number().int().positive().nullable().optional(),
-  reservePrice: z.number().int().positive().nullable().optional(),
-  startingBid: z.number().int().positive().nullable().optional(),
+  estimateLow: money().nullable().optional(),
+  estimateHigh: money().nullable().optional(),
+  reservePrice: money().nullable().optional(),
+  startingBid: money().nullable().optional(),
   // No .default() on base fields: zod 4 applies defaults inside .partial(), so
   // a status-only PATCH would silently rewrite them. Defaults live on create.
   saleType: z.enum(['auction', 'gallery', 'private']).optional(),
-  buyNowPrice: z.number().int().positive().nullable().optional(),
+  buyNowPrice: money().nullable().optional(),
   isFeatured: z.boolean().optional(),
   isHighlight: z.boolean().optional(),
 });
@@ -90,10 +98,11 @@ const auctionBaseSchema = z.object({
   isFeatured: z.boolean().optional(),
 });
 
-const endsAfterStart = (d: { biddingStartsAt?: string; biddingEndsAt?: string }) =>
+type SaleDates = { previewStartsAt?: string | null; biddingStartsAt?: string | null; biddingEndsAt?: string | null };
+const endsAfterStart = (d: SaleDates) =>
   !d.biddingStartsAt || !d.biddingEndsAt || new Date(d.biddingEndsAt) > new Date(d.biddingStartsAt);
 const endsAfterStartMsg = { message: 'Bidding end must be after bidding start', path: ['biddingEndsAt'] };
-const previewBeforeBidding = (d: { previewStartsAt?: string; biddingStartsAt?: string }) =>
+const previewBeforeBidding = (d: SaleDates) =>
   !d.previewStartsAt || !d.biddingStartsAt || new Date(d.previewStartsAt) <= new Date(d.biddingStartsAt);
 const previewBeforeBiddingMsg = { message: 'Preview must open before bidding opens', path: ['previewStartsAt'] };
 
@@ -106,11 +115,6 @@ export const auctionSchema = auctionBaseSchema
   })
   .refine(endsAfterStart, endsAfterStartMsg)
   .refine(previewBeforeBidding, previewBeforeBiddingMsg);
-
-// Ceiling for any monetary field stored in an int4 column (cents). int4 maxes
-// at 2,147,483,647; cap well below it ($20,000,000) so a legal higher bid — or
-// a bid + increment tier — can never overflow the column and corrupt the lot.
-const MAX_MONEY_CENTS = 2_000_000_000;
 
 export const bidSchema = z.object({
   amount: z.number().int().positive('Bid amount must be positive').max(MAX_MONEY_CENTS),
@@ -128,6 +132,11 @@ export const lotUpdateSchema = lotBaseSchema.partial().extend({
 
 export const auctionUpdateSchema = auctionBaseSchema.partial().extend({
   status: z.enum(['draft', 'scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed', 'cancelled']).optional(),
+  // null clears a value the editor emptied; undefined leaves it unchanged.
+  previewStartsAt: z.string().datetime().nullable().optional(),
+  biddingStartsAt: z.string().datetime().nullable().optional(),
+  biddingEndsAt: z.string().datetime().nullable().optional(),
+  saleNumber: z.string().max(50).nullable().optional(),
   bannerImageUrl: z.string().url().max(2000).or(z.literal('')).optional(),
 })
   .refine(endsAfterStart, endsAfterStartMsg)

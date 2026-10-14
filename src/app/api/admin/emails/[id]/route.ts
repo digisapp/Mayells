@@ -163,6 +163,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid email id' }, { status: 400 });
     }
 
+    // Old root id → new root id when the conversation outlives this message.
+    const reRooted: Record<string, string> = {};
     await db.transaction(async (tx) => {
       const [row] = await tx
         .select({ id: emails.id, inReplyToId: emails.inReplyToId })
@@ -181,13 +183,14 @@ export async function DELETE(
       if (survivor) {
         await tx.update(emails).set({ threadId: survivor.id }).where(and(eq(emails.threadId, id), sql`${emails.id} <> ${id}`));
         await tx.update(emails).set({ inReplyToId: null }).where(eq(emails.id, survivor.id));
+        reRooted[id] = survivor.id;
       }
       await tx.update(emails).set({ inReplyToId: row.inReplyToId ?? null }).where(eq(emails.inReplyToId, id));
       await tx.update(emails).set({ threadId: null }).where(inArray(emails.threadId, [id]));
       await tx.delete(emails).where(eq(emails.id, id));
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, reRooted });
   } catch (error) {
     logger.error('Admin email delete error', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

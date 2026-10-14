@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAdminProfile } from '@/lib/auth/admin';
-import { requireAdminApi } from '@/lib/auth/require-admin';
+import { isAdminUser, requireAdminApi } from '@/lib/auth/require-admin';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
-import { auctionLots, lots, auctions, users, bids } from '@/db/schema';
+import { auctionLots, lots, auctions, users, bids, maxBids } from '@/db/schema';
 import { eq, asc, sql, and, inArray, or, max } from 'drizzle-orm';
 import { z } from 'zod';
 import { assignLotSchema } from '@/lib/validation/schemas';
 import { initializeLotBidState } from '@/lib/bidding/bid-engine';
 import { LIVE_FALLBACK_CLOSE_MS, clearLotBidState } from '@/lib/bidding/lifecycle';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
+import { findActivePlacement } from '@/lib/lots/placement';
 import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
 import { PUBLIC_CATALOGUE_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
@@ -34,13 +36,7 @@ async function callerIsAdmin(): Promise<boolean> {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-    const [profile] = await db
-      .select({ role: users.role, isAdmin: users.isAdmin })
-      .from(users)
-      .where(eq(users.id, user.id))
-      .limit(1);
-    return isAdminProfile(profile);
+    return await isAdminUser(user?.id);
   } catch {
     return false;
   }
@@ -184,6 +180,8 @@ export async function POST(
     // otherwise every bid on it is rejected with STATE_MISSING ("Bidding is
     // not open for this lot"). The cron's open step only runs once, at the
     // scheduled→open transition, so it never covers lots added afterward.
+    // A LiveAuctioneers sale is the exception: its lots take no bids here and
+    // stay approved (public in the open sale).
     //
     // A live-type auction commonly has no biddingEndsAt (openAuctionLots seeds
     // its lots with a 12h fallback close); mirror that here so a lot added
@@ -193,7 +191,7 @@ export async function POST(
     // The new lot goes to the END of the staggered close order: one interval
     // after the latest existing close time, and never before the sale's base
     // close, so it cannot close ahead of lots catalogued before it.
-    const isAuctionLive = auction.status === 'open' || auction.status === 'live';
+    const isAuctionLive = (auction.status === 'open' || auction.status === 'live') && isOnSiteBiddingSale(auction);
     const baseClose = !isAuctionLive
       ? null
       : auction.biddingEndsAt
@@ -217,19 +215,41 @@ export async function POST(
     // numbers: when the client omits one, the next free number is computed in
     // the same statement; when it supplies a stale one (two admins assigning
     // at once), the conflict surfaces as a clear 409 instead of a 500.
-    let auctionLot: typeof auctionLots.$inferSelect;
+    //
+    // A lot belongs to at most one unfinished sale (lib/lots/placement.ts).
+    // The lot row lock serializes two admins placing the same lot in two
+    // sales, so the second sees the first placement and is refused. Status is
+    // re-read under the lock: a withdraw or gallery relist that landed since
+    // the check above must not be catalogued.
+    let placed:
+      | { auctionLot: typeof auctionLots.$inferSelect; heldBy: null; stale: false }
+      | { auctionLot: null; heldBy: NonNullable<Awaited<ReturnType<typeof findActivePlacement>>>; stale: false }
+      | { auctionLot: null; heldBy: null; stale: true };
     try {
-      [auctionLot] = await db
-        .insert(auctionLots)
-        .values({
-          auctionId,
-          lotId: parsed.data.lotId,
-          lotNumber:
-            parsed.data.lotNumber ??
-            sql`(select coalesce(max(${auctionLots.lotNumber}), 0) + 1 from ${auctionLots} where ${auctionLots.auctionId} = ${auctionId})`,
-          closingAt,
-        })
-        .returning();
+      placed = await db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select({ status: lots.status, saleType: lots.saleType })
+          .from(lots)
+          .where(eq(lots.id, parsed.data.lotId))
+          .for('update');
+        if (!locked || locked.status !== 'approved' || locked.saleType !== 'auction') {
+          return { auctionLot: null, heldBy: null, stale: true as const };
+        }
+        const heldBy = await findActivePlacement(parsed.data.lotId, { exceptAuctionId: auctionId, executor: tx });
+        if (heldBy) return { auctionLot: null, heldBy, stale: false as const };
+        const [auctionLot] = await tx
+          .insert(auctionLots)
+          .values({
+            auctionId,
+            lotId: parsed.data.lotId,
+            lotNumber:
+              parsed.data.lotNumber ??
+              sql`(select coalesce(max(${auctionLots.lotNumber}), 0) + 1 from ${auctionLots} where ${auctionLots.auctionId} = ${auctionId})`,
+            closingAt,
+          })
+          .returning();
+        return { auctionLot, heldBy: null, stale: false as const };
+      });
     } catch (err) {
       const constraint = uniqueViolationConstraint(err);
       if (constraint === 'auction_lots_auction_lot_number_unique_idx') {
@@ -243,6 +263,19 @@ export async function POST(
       }
       throw err;
     }
+    if (placed.stale) {
+      return NextResponse.json(
+        { error: 'This lot changed while it was being added (withdrawn, relisted or re-typed). Refresh the list and try again.' },
+        { status: 409 },
+      );
+    }
+    if (placed.heldBy) {
+      return NextResponse.json(
+        { error: `This lot is already in ${placed.heldBy.auctionTitle} (${placed.heldBy.auctionStatus}). Remove it there first.` },
+        { status: 409 },
+      );
+    }
+    const { auctionLot } = placed;
 
     // Only flip the lot into the biddable state when the auction is actually
     // running; otherwise leave it approved until the sale opens.
@@ -330,15 +363,34 @@ export async function DELETE(
 
     await db.delete(auctionLots).where(eq(auctionLots.id, existing.id));
 
-    // Revert lot status and update auction lot count
+    // Release the lot back to approved inventory only when this sale was the
+    // one holding it: a sold lot keeps its result, and a lot that another
+    // unfinished sale also holds keeps that sale's status and bid state.
+    const [lotRow] = await db.select({ status: lots.status }).from(lots).where(eq(lots.id, lotId)).limit(1);
+    const release =
+      !!lotRow &&
+      (lotRow.status === 'approved' || lotRow.status === 'in_auction') &&
+      !(await findActivePlacement(lotId, { exceptAuctionId: auctionId }));
+
     await Promise.all([
-      db.update(lots).set({ status: 'approved', currentBidAmount: 0, currentBidderId: null, bidCount: 0, updatedAt: sql`now()` }).where(eq(lots.id, lotId)),
+      release
+        ? db
+            .update(lots)
+            .set({ status: 'approved', currentBidAmount: 0, currentBidderId: null, bidCount: 0, updatedAt: sql`now()` })
+            .where(and(eq(lots.id, lotId), inArray(lots.status, ['approved', 'in_auction'])))
+        : Promise.resolve(),
+      release
+        ? db
+            .update(maxBids)
+            .set({ isActive: false, updatedAt: sql`now()` })
+            .where(and(eq(maxBids.lotId, lotId), eq(maxBids.isActive, true)))
+        : Promise.resolve(),
       db.update(auctions).set({ lotCount: sql`greatest(${auctions.lotCount} - 1, 0)`, updatedAt: sql`now()` }).where(eq(auctions.id, auctionId)),
     ]);
 
     // A lot pulled from an open sale still has a Redis close gate; drop it so
     // a later placement seeds fresh state.
-    if (auction && (auction.status === 'open' || auction.status === 'live')) {
+    if (release) {
       await clearLotBidState([lotId]);
     }
 

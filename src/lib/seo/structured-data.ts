@@ -51,12 +51,23 @@ export function generateLotJsonLd(lot: {
   status: string;
   saleType: string;
   categoryName?: string | null;
+  /** The sale the lot page sits under, so `url` is that canonical page rather than the /lots redirect. */
+  auctionSlug?: string | null;
 }) {
   const url = `${APP_URL}${publicLotPath(lot)}`;
-  const imageUrls = lot.images?.map(i => i.url) || (lot.primaryImageUrl ? [lot.primaryImageUrl] : []);
+  // An empty gallery ([]) falls back to the primary image too.
+  const imageUrls = lot.images?.length
+    ? lot.images.map(i => i.url)
+    : lot.primaryImageUrl ? [lot.primaryImageUrl] : [];
 
-  const isAvailable = lot.status === 'for_sale' || lot.status === 'in_auction';
   const isSold = lot.status === 'sold';
+  // Biddable / buyable now; an `approved` lot is catalogued in a sale that has
+  // not opened yet (preview), so it is coming, not gone.
+  const availability = lot.status === 'for_sale' || lot.status === 'in_auction'
+    ? 'https://schema.org/InStock'
+    : lot.status === 'approved'
+      ? 'https://schema.org/PreOrder'
+      : 'https://schema.org/SoldOut';
 
   // Condition mapping to Schema.org OfferItemCondition
   const conditionMap: Record<string, string> = {
@@ -100,7 +111,7 @@ export function generateLotJsonLd(lot: {
       '@type': 'Offer',
       price: (lot.buyNowPrice / 100).toFixed(2),
       priceCurrency: 'USD',
-      availability: isAvailable ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+      availability,
       seller: {
         '@type': 'Organization',
         name: 'Mayells',
@@ -112,7 +123,7 @@ export function generateLotJsonLd(lot: {
       lowPrice: lot.estimateLow ? (lot.estimateLow / 100).toFixed(2) : undefined,
       highPrice: lot.estimateHigh ? (lot.estimateHigh / 100).toFixed(2) : undefined,
       priceCurrency: 'USD',
-      availability: isAvailable ? 'https://schema.org/InStock' : 'https://schema.org/SoldOut',
+      availability,
       offerCount: lot.bidCount || 0,
     };
 
@@ -147,6 +158,8 @@ export function generateAuctionJsonLd(auction: {
   slug?: string | null;
   type: string;
   status: string;
+  /** A 'closed' sale whose staggered lot closes are still running (see takingBidsSql). */
+  takingBids?: boolean;
   biddingStartsAt?: Date | null;
   biddingEndsAt?: Date | null;
   coverImageUrl?: string | null;
@@ -154,7 +167,7 @@ export function generateAuctionJsonLd(auction: {
 }) {
   const url = `${APP_URL}/auctions/${auction.slug || auction.id}`;
   const isUpcoming = ['scheduled', 'preview'].includes(auction.status);
-  const isLive = ['open', 'live'].includes(auction.status);
+  const isLive = ['open', 'live'].includes(auction.status) || (auction.status === 'closed' && !!auction.takingBids);
 
   return {
     '@context': 'https://schema.org',
@@ -165,11 +178,12 @@ export function generateAuctionJsonLd(auction: {
     image: auction.coverImageUrl || undefined,
     startDate: auction.biddingStartsAt?.toISOString(),
     endDate: auction.biddingEndsAt?.toISOString(),
-    eventStatus: isLive
-      ? 'https://schema.org/EventMovedOnline'
-      : isUpcoming
-        ? 'https://schema.org/EventScheduled'
-        : 'https://schema.org/EventCancelled',
+    // EventStatusType describes the schedule, not progress: a sale that is
+    // open, live or over still happened as scheduled. Only a cancellation
+    // says otherwise; "online" is the attendance mode below, not a move.
+    eventStatus: auction.status === 'cancelled'
+      ? 'https://schema.org/EventCancelled'
+      : 'https://schema.org/EventScheduled',
     eventAttendanceMode: 'https://schema.org/OnlineEventAttendanceMode',
     location: {
       '@type': 'VirtualLocation',

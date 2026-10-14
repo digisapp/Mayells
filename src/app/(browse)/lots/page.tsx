@@ -5,7 +5,7 @@ export const revalidate = 60;
 import { db } from '@/db';
 import { categories, lots } from '@/db/schema';
 import { asc, desc, eq, sql } from 'drizzle-orm';
-import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
+import { bestAuctionSlugSql, publicSaleStatusFilterSql } from '@/lib/lots/auction-slug';
 import { LotBrowser } from '@/components/lots/LotBrowser';
 import type { BrowseLot, Department } from '@/components/lots/lot-browser';
 
@@ -16,6 +16,7 @@ const LOT_LIMIT = 48;
 export const metadata = {
   title: 'Browse Lots',
   description: 'Browse auction lots at Mayells. Paintings, sculptures, antique furniture, jewelry, watches, designer fashion, and collectibles with expert cataloging.',
+  alternates: { canonical: '/lots' },
   openGraph: {
     title: 'Browse Lots | Mayells',
     description: 'Browse auction lots — paintings, sculptures, antique furniture, jewelry, watches, and collectibles.',
@@ -40,6 +41,7 @@ const closesAtMsSql = sql<number | null>`(
   FROM auction_lots al
   JOIN auctions a ON a.id = al.auction_id
   WHERE al.lot_id = "lots"."id"
+    AND ${publicSaleStatusFilterSql}
   ORDER BY CASE a.status
     WHEN 'live' THEN 0
     WHEN 'open' THEN 0

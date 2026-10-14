@@ -5,9 +5,13 @@ import { signupSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
 import { ensureUserProfile } from '@/lib/auth/profile';
+import { rejectCrossSiteAuthRequest } from '@/lib/auth/same-origin';
 
 export async function POST(req: NextRequest) {
   try {
+    const rejected = rejectCrossSiteAuthRequest(req);
+    if (rejected) return rejected;
+
     const ip = getClientIp(req);
     const { success: ipOk } = await rateLimit(`auth:signup:ip:${ip}`, { maxRequests: 10, windowSeconds: 3600, failClosed: true });
     if (!ipOk) {
@@ -24,7 +28,9 @@ export async function POST(req: NextRequest) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: fullName, role } },
+      // No role in user_metadata: the user can rewrite it, so it never
+      // decides one (every new profile is a buyer, see ensureUserProfile).
+      options: { data: { full_name: fullName } },
     });
 
     if (error) {
@@ -58,7 +64,7 @@ export async function POST(req: NextRequest) {
       // Confirmation is off (or auto-confirmed): they're logged in now, so
       // create the profile immediately. db uses the service-role connection
       // so this works regardless of RLS.
-      await ensureUserProfile({ id: data.user.id, email, fullName, role });
+      await ensureUserProfile({ id: data.user.id, email, fullName });
     }
     return NextResponse.json({ success: true, needsConfirmation, role });
   } catch (error) {

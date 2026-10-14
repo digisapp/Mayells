@@ -3,9 +3,13 @@ import { z } from 'zod';
 import { requireAdminApi } from '@/lib/auth/require-admin';
 import { db } from '@/db';
 import { uploadItems, sellerProspects } from '@/db/schema';
-import { eq, and, asc, sql, inArray } from 'drizzle-orm';
+import { eq, and, asc, inArray } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { MAX_MONEY_CENTS } from '@/lib/validation/schemas';
+import { reviewCountsSelect } from '@/lib/prospects/totals';
+
+const money = () => z.number().int().min(0).max(MAX_MONEY_CENTS, 'Amount is too large');
 
 const itemReviewSchema = z.object({
   items: z.array(z.object({
@@ -15,18 +19,20 @@ const itemReviewSchema = z.object({
     adminNotes: z.string().max(5000).optional(),
     finalTitle: z.string().max(500).optional(),
     finalDescription: z.string().max(10000).nullable().optional(),
-    finalEstimateLow: z.number().int().min(0).optional(),
-    finalEstimateHigh: z.number().int().min(0).optional(),
-    finalReserve: z.number().int().min(0).optional(),
+    finalEstimateLow: money().optional(),
+    finalEstimateHigh: money().optional(),
+    finalReserve: money().optional(),
     finalCategory: z.string().max(200).optional(),
   })).min(1, 'At least one item is required').max(200),
 });
+
+type ItemStatus = (typeof uploadItems.$inferSelect)['status'];
 
 // Which current statuses each action may be applied to. Accept needs the AI
 // pass to have run (or a prior accept being re-saved with overrides); a
 // decline can short-circuit an item that never needs cataloging. Nothing
 // touches an item that has already become a lot.
-const ALLOWED_FROM: Record<'accept' | 'decline' | 'reset', readonly string[]> = {
+const ALLOWED_FROM: Record<'accept' | 'decline' | 'reset', ItemStatus[]> = {
   accept: ['cataloged', 'accepted'],
   decline: ['uploaded', 'cataloged', 'accepted', 'declined'],
   reset: ['accepted', 'declined'],
@@ -37,6 +43,9 @@ const NEXT_STATUS = {
   decline: 'declined',
   reset: 'cataloged',
 } as const;
+
+/** Thrown inside the transaction to roll back and surface a 409. */
+class ItemChangedError extends Error {}
 
 export async function GET(
   _req: NextRequest,
@@ -108,22 +117,46 @@ export async function PATCH(
       }
     }
 
-    for (const item of items) {
-      await db
-        .update(uploadItems)
-        .set({
-          status: NEXT_STATUS[item.action],
-          reviewedAt: item.action === 'reset' ? null : new Date(),
-          updatedAt: new Date(),
-          ...(item.adminNotes !== undefined && { adminNotes: item.adminNotes }),
-          ...(item.finalTitle !== undefined && { finalTitle: item.finalTitle }),
-          ...(item.finalDescription !== undefined && { finalDescription: item.finalDescription }),
-          ...(item.finalEstimateLow !== undefined && { finalEstimateLow: item.finalEstimateLow }),
-          ...(item.finalEstimateHigh !== undefined && { finalEstimateHigh: item.finalEstimateHigh }),
-          ...(item.finalReserve !== undefined && { finalReserve: item.finalReserve }),
-          ...(item.finalCategory !== undefined && { finalCategory: item.finalCategory }),
-        })
-        .where(and(eq(uploadItems.id, item.id), eq(uploadItems.prospectId, prospectId)));
+    // Each write repeats its status check, all in one transaction: the read
+    // above can be stale by now (Create lots, an AI run, or a second admin
+    // may have moved the item on), and writing past them would, say, turn a
+    // lot_created item back into an accepted one that becomes a second lot.
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of items) {
+          const [updated] = await tx
+            .update(uploadItems)
+            .set({
+              status: NEXT_STATUS[item.action],
+              reviewedAt: item.action === 'reset' ? null : new Date(),
+              updatedAt: new Date(),
+              ...(item.adminNotes !== undefined && { adminNotes: item.adminNotes }),
+              ...(item.finalTitle !== undefined && { finalTitle: item.finalTitle }),
+              ...(item.finalDescription !== undefined && { finalDescription: item.finalDescription }),
+              ...(item.finalEstimateLow !== undefined && { finalEstimateLow: item.finalEstimateLow }),
+              ...(item.finalEstimateHigh !== undefined && { finalEstimateHigh: item.finalEstimateHigh }),
+              ...(item.finalReserve !== undefined && { finalReserve: item.finalReserve }),
+              ...(item.finalCategory !== undefined && { finalCategory: item.finalCategory }),
+            })
+            .where(
+              and(
+                eq(uploadItems.id, item.id),
+                eq(uploadItems.prospectId, prospectId),
+                inArray(uploadItems.status, ALLOWED_FROM[item.action]),
+              ),
+            )
+            .returning({ id: uploadItems.id });
+          if (!updated) throw new ItemChangedError();
+        }
+      });
+    } catch (err) {
+      if (err instanceof ItemChangedError) {
+        return NextResponse.json(
+          { error: 'Some of these items changed at the same time (an AI run, Create lots, or another admin). Nothing was saved. Refresh and try again.' },
+          { status: 409 },
+        );
+      }
+      throw err;
     }
 
     // Recount accepted and reviewed items for the prospect.
@@ -131,12 +164,7 @@ export async function PATCH(
     // (a plain Accept sends no final* values), and count every non-declined
     // item so the agreement email never reports "$0 – $0".
     const [counts] = await db
-      .select({
-        reviewedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'declined', 'lot_created'))::int`,
-        acceptedItems: sql<number>`count(*) filter (where ${uploadItems.status} in ('accepted', 'lot_created'))::int`,
-        totalEstimateLow: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})) filter (where ${uploadItems.status} != 'declined'), 0)::int`,
-        totalEstimateHigh: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})) filter (where ${uploadItems.status} != 'declined'), 0)::int`,
-      })
+      .select(reviewCountsSelect())
       .from(uploadItems)
       .where(eq(uploadItems.prospectId, prospectId));
 

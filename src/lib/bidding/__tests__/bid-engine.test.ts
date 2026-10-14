@@ -40,7 +40,7 @@ vi.mock('../verification', () => ({
   checkBidAllowed: vi.fn(() => ({ allowed: true })),
 }));
 
-import { placeBid, initializeLotBidState, reseedLotBidState, parseBidScriptResult, sealLotForSettlement, settlingKeyFor } from '../bid-engine';
+import { placeBid, initializeLotBidState, reseedLotBidState, parseBidScriptResult, sealLotForSettlement, settlingKeyFor, rivalWinsTie } from '../bid-engine';
 import { INCREMENT_TIERS } from '../bid-increments';
 import { checkAndExtendAuction } from '../anti-snipe';
 import { redis } from '@/lib/redis';
@@ -166,6 +166,7 @@ describe('placeBid – Redis validation', () => {
     expect(args[1]).toBe('bidder-1'); // bidder
     expect(args[3]).toBe(JSON.stringify(INCREMENT_TIERS)); // tier table
     expect(args[4]).toBe('5000'); // starting bid floor
+    expect(args[5]).toBe(''); // no tie target: an ordinary bid must clear the price
   });
 
   it('rejects at exactly the close time (half-open window) in the Lua script', async () => {
@@ -366,5 +367,160 @@ describe('initializeLotBidState', () => {
     await initializeLotBidState('lot-1', new Date(), 25_000);
     const [, storedValue] = mockedRedis.set.mock.calls[0];
     expect((storedValue as { amount: number }).amount).toBe(0);
+  });
+});
+
+// A select chain that answers both shapes the engine uses: the rival-max
+// query (where → orderBy → limit) and the leader-max lookup (where → limit).
+function makeFlexSelect(rows: unknown[]) {
+  const limit = vi.fn(async () => rows);
+  return {
+    from: vi.fn(() => ({
+      where: vi.fn(() => ({ orderBy: vi.fn(() => ({ limit })), limit })),
+    })),
+  };
+}
+
+describe('rivalWinsTie – earliest commitment wins a tie', () => {
+  const price = 100_000;
+  const leaderMax = (row: { maxAmount: number; isActive?: boolean; setAt: number }) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockedDb.select.mockImplementationOnce(() => makeFlexSelect([{ isActive: true, ...row, setAt: new Date(row.setAt) }]) as any);
+
+  it('beats a leader who got there with a plain bid (no max)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockedDb.select.mockImplementationOnce(() => makeFlexSelect([]) as any);
+    expect(await rivalWinsTie('lot-1', 'leader', price, new Date(5_000))).toBe(true);
+  });
+
+  it('beats a leader whose old max is below the price (the price came from a plain bid)', async () => {
+    leaderMax({ maxAmount: 50_000, isActive: false, setAt: 1_000 });
+    expect(await rivalWinsTie('lot-1', 'leader', price, new Date(5_000))).toBe(true);
+  });
+
+  it('leaves the lead to a leader whose active max can still answer', async () => {
+    leaderMax({ maxAmount: 150_000, setAt: 9_000 });
+    expect(await rivalWinsTie('lot-1', 'leader', price, new Date(1_000))).toBe(false);
+  });
+
+  it('beats a leader whose higher max was retired (it can no longer answer)', async () => {
+    leaderMax({ maxAmount: 150_000, isActive: false, setAt: 9_000 });
+    expect(await rivalWinsTie('lot-1', 'leader', price, new Date(1_000))).toBe(true);
+  });
+
+  it('equal maxes: the one set first wins', async () => {
+    leaderMax({ maxAmount: price, isActive: false, setAt: 2_000 });
+    expect(await rivalWinsTie('lot-1', 'leader', price, new Date(1_000))).toBe(true);
+    leaderMax({ maxAmount: price, isActive: false, setAt: 1_000 });
+    expect(await rivalWinsTie('lot-1', 'leader', price, new Date(2_000))).toBe(false);
+  });
+
+  it('equal maxes set at the same instant: the leader keeps it', async () => {
+    leaderMax({ maxAmount: price, setAt: 1_000 });
+    expect(await rivalWinsTie('lot-1', 'leader', price, new Date(1_000))).toBe(false);
+  });
+});
+
+describe('placeBid – tie rule in proxy resolution', () => {
+  const price = 100_000;
+  const rivalMax = (setAt: number, maxAmount = price) => ({
+    id: 'max-A',
+    lotId: 'lot-1',
+    bidderId: 'bidder-A',
+    maxAmount,
+    currentProxyBid: 10_000,
+    isActive: true,
+    createdAt: new Date(setAt),
+    updatedAt: new Date(setAt),
+  });
+
+  function queueSelects(...results: unknown[][]) {
+    for (const rows of results) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      mockedDb.select.mockImplementationOnce(() => makeFlexSelect(rows) as any);
+    }
+  }
+
+  function spyOnUpdates() {
+    const setSpy = vi.fn((values: Record<string, unknown>) => {
+      void values;
+      return { where: vi.fn(async () => undefined) };
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    mockedDb.update.mockImplementation(() => ({ set: setSpy }) as any);
+    return setSpy;
+  }
+
+  it('an earlier max equal to a manual bid takes the lead at that price', async () => {
+    // A armed a $1,000 max earlier; B now bids exactly $1,000 by hand.
+    mockedRedis.eval
+      .mockResolvedValueOnce({ ok: true, previousBidderId: 'bidder-A', previousAmount: 10_000 })
+      .mockResolvedValueOnce({ ok: true, previousBidderId: 'bidder-1', previousAmount: price });
+    queueSelects([rivalMax(1_000)], [] /* B holds no max */, [] /* nobody left to answer */);
+    const setSpy = spyOnUpdates();
+
+    const result = await placeBid({ ...baseInput, amount: price });
+
+    expect(result.success).toBe(true);
+    expect(mockedRedis.eval).toHaveBeenCalledTimes(2);
+    const [, , tieArgs] = mockedRedis.eval.mock.calls[1];
+    expect(tieArgs[0]).toBe(String(price)); // at the same price, not an increment above
+    expect(tieArgs[1]).toBe('bidder-A');
+    expect(tieArgs[5]).toBe('bidder-1'); // only from B, compare-and-set
+    // A's max is spent at its ceiling; its set time (tie priority) is untouched.
+    const maxWrite = setSpy.mock.calls.map(([v]) => v).find((v) => 'currentProxyBid' in v);
+    expect(maxWrite).toEqual({ currentProxyBid: price, isActive: false });
+  });
+
+  it('equal maxes: a rival max set before the leader\'s takes the lead', async () => {
+    mockedRedis.eval
+      .mockResolvedValueOnce({ ok: true, previousBidderId: 'bidder-A', previousAmount: 90_000 })
+      .mockResolvedValueOnce({ ok: true, previousBidderId: 'bidder-1', previousAmount: price });
+    queueSelects(
+      [rivalMax(1_000)],
+      [{ maxAmount: price, isActive: true, setAt: new Date(2_000) }],
+      [],
+    );
+    spyOnUpdates();
+
+    await placeBid({ ...baseInput, amount: price, maxBidAmount: price });
+
+    expect(mockedRedis.eval).toHaveBeenCalledTimes(2);
+    expect(mockedRedis.eval.mock.calls[1][2][5]).toBe('bidder-1');
+  });
+
+  it('equal maxes: the leader keeps a tie its own max won by being set first', async () => {
+    mockedRedis.eval.mockResolvedValueOnce({ ok: true, previousBidderId: 'bidder-A', previousAmount: 90_000 });
+    queueSelects([rivalMax(2_000)], [{ maxAmount: price, isActive: false, setAt: new Date(1_000) }]);
+    const setSpy = spyOnUpdates();
+
+    const result = await placeBid({ ...baseInput, amount: price });
+
+    expect(result.success).toBe(true);
+    expect(mockedRedis.eval).toHaveBeenCalledTimes(1); // no counter-bid
+    expect(setSpy.mock.calls.some(([v]) => 'currentProxyBid' in v)).toBe(false);
+  });
+
+  it('a rival max below the price never ties (no tie lookup, no counter-bid)', async () => {
+    mockedRedis.eval.mockResolvedValueOnce({ ok: true, previousBidderId: 'bidder-A', previousAmount: 90_000 });
+    queueSelects([rivalMax(1_000, 95_000)]);
+
+    await placeBid({ ...baseInput, amount: price });
+
+    expect(mockedRedis.eval).toHaveBeenCalledTimes(1);
+    expect(mockedDb.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops quietly when the tie take loses the race (price moved)', async () => {
+    mockedRedis.eval
+      .mockResolvedValueOnce({ ok: true, previousBidderId: 'bidder-A', previousAmount: 10_000 })
+      .mockResolvedValueOnce({ ok: false, error: 'BID_TOO_LOW' });
+    queueSelects([rivalMax(1_000)], []);
+    const setSpy = spyOnUpdates();
+
+    const result = await placeBid({ ...baseInput, amount: price });
+
+    expect(result.success).toBe(true); // the manual bid stands
+    expect(setSpy.mock.calls.some(([v]) => 'currentProxyBid' in v)).toBe(false); // max not spent
   });
 });

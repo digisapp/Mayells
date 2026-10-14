@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { CheckCircle2, FileSignature, Loader2 } from 'lucide-react';
 import { useHideChatLauncher } from '@/components/chat/use-hide-chat-launcher';
 
-export function SignAgreementForm({ prospectId }: { prospectId: string }) {
+export function SignAgreementForm({ token }: { token: string }) {
   const router = useRouter();
   const [signedName, setSignedName] = useState('');
   const [agreed, setAgreed] = useState(false);
@@ -46,7 +46,7 @@ export function SignAgreementForm({ prospectId }: { prospectId: string }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prospectId,
+          token,
           signedName: signedName.trim(),
           agree: true,
         }),

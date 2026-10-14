@@ -25,6 +25,7 @@ import { formatShortDate } from '@/lib/format/dates';
 import { SHIPMENT_STATUS, statusBadge } from '@/lib/admin/status/money';
 import { FilterChip } from '../_components/FilterChips';
 import { Pager } from '../_components/Pager';
+import { parseParcel, parseParcelField } from './parcel';
 
 interface AddressForm {
   name: string;
@@ -153,13 +154,6 @@ function label(s: string): string {
   return s.replace(/_/g, ' ');
 }
 
-function intOrNull(v: string): number | null {
-  const t = v.trim();
-  if (!t) return null;
-  const n = Number.parseInt(t, 10);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
 function addressLine(a: { street: string | null; city: string | null; state: string | null; zip: string | null }): string {
   if (!a.street && !a.zip) return 'No address';
   return [a.street, [a.city, a.state].filter(Boolean).join(', '), a.zip].filter(Boolean).join(' · ');
@@ -273,6 +267,13 @@ export default function AdminShipmentsPage() {
 
   const save = async () => {
     if (!editing || !form) return;
+    // Refuse bad parcel input rather than sending null, which would erase
+    // the stored value ("2.5" or "abc" used to wipe a saved dimension).
+    const parcel = parseParcel(form);
+    if (!parcel.ok) {
+      setSaveError(`${parcel.invalid.join(', ')}: enter a whole number (0 to 100,000), or leave it blank to clear.`);
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -288,11 +289,7 @@ export default function AdminShipmentsPage() {
           trackingUrl: form.trackingUrl.trim(),
           internalNotes: form.internalNotes,
           internalNotesBase: editing.shipment.internalNotes ?? '',
-          weightLbs: intOrNull(form.weightLbs),
-          weightOz: intOrNull(form.weightOz),
-          lengthIn: intOrNull(form.lengthIn),
-          widthIn: intOrNull(form.widthIn),
-          heightIn: intOrNull(form.heightIn),
+          ...parcel.values,
           from: form.from,
           to: form.to,
         }),
@@ -575,13 +572,13 @@ export default function AdminShipmentsPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label id="parcelLabel">Parcel (in / lb / oz)</Label>
+                <Label id="parcelLabel">Parcel (in / lb / oz, whole numbers)</Label>
                 <div className="grid grid-cols-5 gap-2" role="group" aria-labelledby="parcelLabel">
-                  <Input aria-label="Length (inches)" placeholder="L" inputMode="numeric" value={form.lengthIn} onChange={(e) => setForm((f) => (f ? { ...f, lengthIn: e.target.value } : f))} />
-                  <Input aria-label="Width (inches)" placeholder="W" inputMode="numeric" value={form.widthIn} onChange={(e) => setForm((f) => (f ? { ...f, widthIn: e.target.value } : f))} />
-                  <Input aria-label="Height (inches)" placeholder="H" inputMode="numeric" value={form.heightIn} onChange={(e) => setForm((f) => (f ? { ...f, heightIn: e.target.value } : f))} />
-                  <Input aria-label="Weight (pounds)" placeholder="lb" inputMode="numeric" value={form.weightLbs} onChange={(e) => setForm((f) => (f ? { ...f, weightLbs: e.target.value } : f))} />
-                  <Input aria-label="Weight (ounces)" placeholder="oz" inputMode="numeric" value={form.weightOz} onChange={(e) => setForm((f) => (f ? { ...f, weightOz: e.target.value } : f))} />
+                  <Input aria-label="Length (inches)" placeholder="L" inputMode="numeric" aria-invalid={parseParcelField(form.lengthIn) === undefined} value={form.lengthIn} onChange={(e) => setForm((f) => (f ? { ...f, lengthIn: e.target.value } : f))} />
+                  <Input aria-label="Width (inches)" placeholder="W" inputMode="numeric" aria-invalid={parseParcelField(form.widthIn) === undefined} value={form.widthIn} onChange={(e) => setForm((f) => (f ? { ...f, widthIn: e.target.value } : f))} />
+                  <Input aria-label="Height (inches)" placeholder="H" inputMode="numeric" aria-invalid={parseParcelField(form.heightIn) === undefined} value={form.heightIn} onChange={(e) => setForm((f) => (f ? { ...f, heightIn: e.target.value } : f))} />
+                  <Input aria-label="Weight (pounds)" placeholder="lb" inputMode="numeric" aria-invalid={parseParcelField(form.weightLbs) === undefined} value={form.weightLbs} onChange={(e) => setForm((f) => (f ? { ...f, weightLbs: e.target.value } : f))} />
+                  <Input aria-label="Weight (ounces)" placeholder="oz" inputMode="numeric" aria-invalid={parseParcelField(form.weightOz) === undefined} value={form.weightOz} onChange={(e) => setForm((f) => (f ? { ...f, weightOz: e.target.value } : f))} />
                 </div>
               </div>
 

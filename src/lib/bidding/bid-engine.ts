@@ -1,6 +1,6 @@
 import { db } from '@/db';
 import { bids, lots, maxBids, auctionLots } from '@/db/schema';
-import { eq, and, desc, ne, lt, sql } from 'drizzle-orm';
+import { eq, and, or, asc, desc, ne, lt, sql } from 'drizzle-orm';
 import { redis } from '@/lib/redis';
 import { getMinIncrement, INCREMENT_TIERS } from './bid-increments';
 import { checkAndExtendAuction } from './anti-snipe';
@@ -32,6 +32,12 @@ interface PlaceBidInput {
    * resolution — which previously stacked hundreds deep and could time out.
    */
   processProxies?: boolean;
+  /**
+   * Proxy loop only: take the lead at exactly the current price from this
+   * bidder, who must still hold it (the earliest-max tie rule). Omitted for
+   * every ordinary bid, which must clear the current price by an increment.
+   */
+  tieWithBidderId?: string;
 }
 
 interface BidResult {
@@ -82,6 +88,8 @@ export function parseBidScriptResult(raw: unknown): BidScriptResult {
 // ARGV[3] = now (unix seconds)
 // ARGV[4] = JSON array of increment tiers [{threshold, increment}, ...]
 // ARGV[5] = starting bid (cents) — floor for the first bid
+// ARGV[6] = tie target: '' for an ordinary bid, else the bidder this bid
+//           displaces at exactly the current price (see runProxyResolution)
 const BID_LUA_SCRIPT = `
 -- Settlement fence: if the cron has sealed this lot for settlement, reject
 -- immediately so no bid can slip in between the winner SELECT and the demote.
@@ -116,28 +124,38 @@ if current.bidderId == ARGV[2] then
   return cjson.encode({ok=false, error='ALREADY_HIGH_BIDDER'})
 end
 
--- The minimum increment is a function of the CURRENT bid amount (known
--- only here, atomically), not of the incoming bid amount.
-local tiers = cjson.decode(ARGV[4])
-local increment = tiers[1]['increment']
-for i = 1, #tiers do
-  if current.amount >= tiers[i]['threshold'] then
-    increment = tiers[i]['increment']
+local tieWith = ARGV[6] or ''
+if tieWith ~= '' then
+  -- Tie take: an earlier max equal to the current price takes the lead at
+  -- that price, but only from the leader the caller saw (compare-and-set).
+  -- Anything else means the price moved since; the caller stops.
+  if current.bidderId ~= tieWith or current.amount ~= amount then
+    return cjson.encode({ok=false, error='BID_TOO_LOW'})
   end
-end
-
-local minRequired
-if current.amount == 0 then
-  -- First bid: must meet the lot's starting bid (and at least one
-  -- increment off zero).
-  local startingBid = math.max(tonumber(ARGV[5]) or 0, tonumber(current.startingBid or 0))
-  minRequired = math.max(startingBid, current.amount + increment)
 else
-  minRequired = current.amount + increment
-end
+  -- The minimum increment is a function of the CURRENT bid amount (known
+  -- only here, atomically), not of the incoming bid amount.
+  local tiers = cjson.decode(ARGV[4])
+  local increment = tiers[1]['increment']
+  for i = 1, #tiers do
+    if current.amount >= tiers[i]['threshold'] then
+      increment = tiers[i]['increment']
+    end
+  end
 
-if amount < minRequired then
-  return cjson.encode({ok=false, error='BID_TOO_LOW', minRequired=minRequired})
+  local minRequired
+  if current.amount == 0 then
+    -- First bid: must meet the lot's starting bid (and at least one
+    -- increment off zero).
+    local startingBid = math.max(tonumber(ARGV[5]) or 0, tonumber(current.startingBid or 0))
+    minRequired = math.max(startingBid, current.amount + increment)
+  else
+    minRequired = current.amount + increment
+  end
+
+  if amount < minRequired then
+    return cjson.encode({ok=false, error='BID_TOO_LOW', minRequired=minRequired})
+  end
 end
 
 -- Set new high bid atomically
@@ -189,6 +207,7 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
     startingBid = 0,
     antiSnipeSettings,
     processProxies = true,
+    tieWithBidderId,
   } = input;
 
   const now = Math.floor(Date.now() / 1000);
@@ -225,6 +244,7 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
       now.toString(),
       JSON.stringify(INCREMENT_TIERS),
       startingBid.toString(),
+      tieWithBidderId ?? '',
     ],
   );
 
@@ -262,7 +282,9 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
     }).returning();
 
     // Demote previous high bids to 'outbid'. Only demote lower bids so an
-    // interleaved higher write is never demoted by a late lower one.
+    // interleaved higher write is never demoted by a late lower one — plus,
+    // on a tie take, the displaced leader's bid at this same price (settlement
+    // picks the highest ACTIVE bid, so it must not stay active).
     await tx
       .update(bids)
       .set({ status: 'outbid' })
@@ -271,7 +293,9 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
           eq(bids.lotId, lotId),
           eq(bids.status, 'active'),
           ne(bids.id, insertedBid.id),
-          lt(bids.amount, amount),
+          tieWithBidderId
+            ? or(lt(bids.amount, amount), and(eq(bids.amount, amount), eq(bids.bidderId, tieWithBidderId)))
+            : lt(bids.amount, amount),
         ),
       );
 
@@ -285,7 +309,8 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
       .where(eq(lots.id, lotId));
 
     // Denormalized high-bid state only moves upward: a late-arriving lower
-    // write cannot clobber a higher current bid.
+    // write cannot clobber a higher current bid. A tie take moves it sideways,
+    // and only from the leader it displaced.
     await tx
       .update(lots)
       .set({
@@ -293,7 +318,15 @@ export async function placeBid(input: PlaceBidInput): Promise<BidResult> {
         currentBidderId: bidderId,
         updatedAt: new Date(),
       })
-      .where(and(eq(lots.id, lotId), lt(lots.currentBidAmount, amount)));
+      .where(and(
+        eq(lots.id, lotId),
+        tieWithBidderId
+          ? or(
+              lt(lots.currentBidAmount, amount),
+              and(eq(lots.currentBidAmount, amount), eq(lots.currentBidderId, tieWithBidderId)),
+            )
+          : lt(lots.currentBidAmount, amount),
+      ));
 
     return insertedBid;
     });
@@ -400,6 +433,10 @@ const MAX_PROXY_ROUNDS = 120;
  * sides until one side can no longer outbid — same outcome and bid history as
  * the previous recursive version, but with no call-stack growth and a bounded
  * number of rounds so a pathological war can't exhaust the serverless budget.
+ *
+ * Ties go to the earlier commitment (eBay / LiveAuctioneers): a rival whose max
+ * equals the current price takes the lead AT that price when it was set before
+ * the leader committed to it — see `rivalWinsTie`.
  */
 async function runProxyResolution(
   lotId: string,
@@ -413,7 +450,8 @@ async function runProxyResolution(
   let leaderAmount = currentAmount;
 
   for (let round = 0; round < MAX_PROXY_ROUNDS; round++) {
-    // Highest active max from someone OTHER than the current leader.
+    // Highest active max from someone OTHER than the current leader; among
+    // equal maxes, the one set first (updatedAt — see the write below).
     const [topMaxBid] = await db
       .select()
       .from(maxBids)
@@ -424,16 +462,23 @@ async function runProxyResolution(
           ne(maxBids.bidderId, leaderId),
         ),
       )
-      .orderBy(desc(maxBids.maxAmount))
+      .orderBy(desc(maxBids.maxAmount), asc(maxBids.updatedAt), asc(maxBids.id))
       .limit(1);
 
     if (!topMaxBid) return;
 
     const nextIncrement = getMinIncrement(leaderAmount);
-    const proxyBidAmount = Math.min(leaderAmount + nextIncrement, topMaxBid.maxAmount);
+    let proxyBidAmount = Math.min(leaderAmount + nextIncrement, topMaxBid.maxAmount);
+    let tieWithBidderId: string | undefined;
 
-    // The challenger's ceiling can't beat the current price — they stay outbid.
-    if (proxyBidAmount <= leaderAmount) return;
+    if (proxyBidAmount <= leaderAmount) {
+      // The challenger's ceiling can't beat the current price — they stay
+      // outbid, unless it equals the price and was committed first.
+      if (topMaxBid.maxAmount !== leaderAmount) return;
+      if (!(await rivalWinsTie(lotId, leaderId, leaderAmount, topMaxBid.updatedAt))) return;
+      proxyBidAmount = leaderAmount;
+      tieWithBidderId = leaderId;
+    }
 
     // Verification gate for the AUTO-bid too: a max armed before verification
     // was required (or after the holder's card was removed / threshold lowered),
@@ -459,18 +504,21 @@ async function runProxyResolution(
       startingBid,
       antiSnipeSettings,
       processProxies: false, // this loop drives the war — do not recurse
+      tieWithBidderId,
     });
 
     // On failure (concurrent higher bid, closed, sealed for settlement) leave
     // the max record untouched and stop.
     if (!result.success) return;
 
+    // No updatedAt here: on max_bids it records when the bidder last SET the
+    // max (the bids route upsert), which is the max's tie priority. A proxy
+    // counter-bid must not make it look newer.
     await db
       .update(maxBids)
       .set({
         currentProxyBid: proxyBidAmount,
         isActive: proxyBidAmount < topMaxBid.maxAmount,
-        updatedAt: new Date(),
       })
       .where(eq(maxBids.id, topMaxBid.id));
 
@@ -480,6 +528,31 @@ async function runProxyResolution(
   }
 
   logger.warn('Proxy resolution hit round cap — stopping', { lotId, auctionId, rounds: MAX_PROXY_ROUNDS });
+}
+
+/**
+ * Tie rule: a rival max exactly equal to the leader's price takes the lead at
+ * that price when it was committed first.
+ * - Leader's max is that same amount: compare when each max was set.
+ * - Leader got there with a plain bid: the rival's max came first, since a
+ *   max armed later arrives with a bid that must clear the price, so it can't
+ *   equal it.
+ * - Leader still holds a higher max: it can answer, so leave it the lead.
+ */
+export async function rivalWinsTie(
+  lotId: string,
+  leaderId: string,
+  price: number,
+  rivalSetAt: Date | null,
+): Promise<boolean> {
+  const [leaderMax] = await db
+    .select({ maxAmount: maxBids.maxAmount, isActive: maxBids.isActive, setAt: maxBids.updatedAt })
+    .from(maxBids)
+    .where(and(eq(maxBids.lotId, lotId), eq(maxBids.bidderId, leaderId)))
+    .limit(1);
+  if (!leaderMax || leaderMax.maxAmount < price) return true;
+  if (leaderMax.maxAmount > price) return !leaderMax.isActive;
+  return !!rivalSetAt && !!leaderMax.setAt && rivalSetAt.getTime() < leaderMax.setAt.getTime();
 }
 
 // Initialize Redis state for a lot when auction opens.

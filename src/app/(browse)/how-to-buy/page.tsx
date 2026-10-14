@@ -9,6 +9,7 @@ import { serializeJsonLd } from '@/lib/seo/structured-data';
 
 export const metadata = {
   title: 'How to Buy',
+  alternates: { canonical: '/how-to-buy' },
   description: 'Three ways to bid at Mayells auctions: online on mayells.com or LiveAuctioneers (each sale says which), by phone, or with an absentee bid. Free to register.',
 };
 

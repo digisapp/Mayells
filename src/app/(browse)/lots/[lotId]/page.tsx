@@ -3,7 +3,8 @@ export const dynamic = 'force-dynamic';
 import { notFound, redirect } from 'next/navigation';
 import { db } from '@/db';
 import { lots, auctions, auctionLots } from '@/db/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, sql } from 'drizzle-orm';
+import { PUBLIC_AUCTION_STATUSES } from '@/lib/auctions/visibility';
 
 /**
  * Canonical resolver for a bare /lots/{id-or-slug} link.
@@ -25,7 +26,7 @@ export default async function LotRedirectPage({
   const byId = UUID_RE.test(lotId);
 
   const [lot] = await db
-    .select()
+    .select({ id: lots.id, slug: lots.slug, saleType: lots.saleType })
     .from(lots)
     .where(byId ? eq(lots.id, lotId) : eq(lots.slug, lotId))
     .limit(1);
@@ -38,12 +39,16 @@ export default async function LotRedirectPage({
   }
 
   // Otherwise resolve the most relevant auction this lot belongs to, preferring
-  // one that is live/open, then upcoming, then completed.
+  // one that is live/open, then upcoming, then completed. Only public sales:
+  // the redirect would otherwise reveal a draft or cancelled sale's slug.
   const [row] = await db
     .select({ auctionSlug: auctions.slug })
     .from(auctionLots)
     .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
-    .where(eq(auctionLots.lotId, lot.id))
+    .where(and(
+      eq(auctionLots.lotId, lot.id),
+      inArray(auctions.status, [...PUBLIC_AUCTION_STATUSES]),
+    ))
     .orderBy(
       sql`CASE ${auctions.status}
         WHEN 'live' THEN 0

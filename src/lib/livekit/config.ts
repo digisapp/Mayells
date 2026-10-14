@@ -42,7 +42,9 @@ export async function generateToken(options: TokenOptions): Promise<string> {
     roomJoin: true,
     canPublish: isPublisher ?? false,
     canSubscribe: true,
-    canPublishData: true,
+    // Chat and bids go through the app, not LiveKit data packets; viewers
+    // must not be able to push data into the room.
+    canPublishData: isPublisher ?? false,
   });
 
   return await token.toJwt();

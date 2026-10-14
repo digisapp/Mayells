@@ -1,6 +1,7 @@
 import { getTableColumns, sql } from 'drizzle-orm';
 import { auctions } from '@/db/schema';
 import { PUBLIC_CATALOGUE_LOT_STATUSES } from '@/lib/lots/visibility';
+import { takingBidsSql } from '@/lib/auctions/bidding-window';
 
 /**
  * How many lots a visitor will actually find in a sale: its placements whose
@@ -24,8 +25,13 @@ export const visibleLotCountSql = sql<number>`(
     )})
 )`.mapWith(Number);
 
-/** Every auction column plus `visibleLotCount`, for `db.select(...)`. */
+/**
+ * Every auction column plus `visibleLotCount`, and `takingBids` (a 'closed'
+ * sale whose staggered lot closes are still running reads as open), for
+ * `db.select(...)`.
+ */
 export const auctionWithVisibleLotCount = {
   ...getTableColumns(auctions),
   visibleLotCount: visibleLotCountSql,
+  takingBids: takingBidsSql,
 };

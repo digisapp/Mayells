@@ -292,6 +292,13 @@ export default function UploadPage() {
         return;
       }
 
+      // The send moved the link's count, which the items-left line and the
+      // full-link gate read.
+      const sent = await res.json().catch(() => null);
+      if (typeof sent?.itemCount === 'number') {
+        setLinkData((prev) => (prev ? { ...prev, itemCount: sent.itemCount } : prev));
+      }
+
       clearUploadState(token);
       lastSavedRef.current = '';
       reset();
@@ -450,21 +457,23 @@ export default function UploadPage() {
               will look through them and be in touch within one business day.
             </p>
             <p className="mt-4 text-charcoal/65 leading-relaxed">
-              More to show us? You can use this same link again at any time.
+              {atItemLimit ? itemLimitNotice : 'More to show us? You can use this same link again at any time.'}
             </p>
             <div className="mt-8 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setItems([emptyItem()]);
-                  // Step back off the review entry, so the next back-swipe leaves.
-                  if (isReviewEntry(window.history.state)) window.history.back();
-                  else setState('capture');
-                }}
-                className="inline-flex h-12 items-center justify-center rounded-xl bg-charcoal text-white text-[15px] font-medium"
-              >
-                Add more items
-              </button>
+              {!atItemLimit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setItems([emptyItem()]);
+                    // Step back off the review entry, so the next back-swipe leaves.
+                    if (isReviewEntry(window.history.state)) window.history.back();
+                    else setState('capture');
+                  }}
+                  className="inline-flex h-12 items-center justify-center rounded-xl bg-charcoal text-white text-[15px] font-medium"
+                >
+                  Add more items
+                </button>
+              )}
               <a
                 href={BUSINESS.url}
                 className="inline-flex h-12 items-center justify-center rounded-xl border border-charcoal/15 text-[15px] font-medium"

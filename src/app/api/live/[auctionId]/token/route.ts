@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { isAdminProfile } from '@/lib/auth/admin';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { generateToken } from '@/lib/livekit/config';
+import { liveDisplayName, liveViewerIdentity } from '@/lib/bidding/bidder-alias';
 import { logger } from '@/lib/logger';
 
 export async function POST(
@@ -42,16 +43,25 @@ export async function POST(
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
     // Publisher rights for the auctioneer role and for any admin (role OR the
     // is_admin flag — isAdminProfile is the single source of that decision).
-    const isAuctioneer = profile?.role === 'auctioneer' || isAdminProfile(profile);
+    // A suspended auctioneer loses them, as a suspended admin does.
+    const isAuctioneer =
+      (profile?.role === 'auctioneer' && profile.accountStatus === 'active') || isAdminProfile(profile);
 
+    // Every participant sees every other's identity and name. Viewers get an
+    // opaque per-room identity and a public name (display name, paddle or
+    // alias), never their user id or legal name. Staff keep their id so the
+    // auctioneer is recognisable in LiveKit's own tools.
+    const participantName = isAuctioneer
+      ? profile?.displayName?.trim() || 'Mayells'
+      : liveDisplayName(auctionId, user.id, profile);
     const token = await generateToken({
       roomName,
-      participantName: profile?.displayName || profile?.fullName || 'Bidder',
-      participantIdentity: user.id,
+      participantName,
+      participantIdentity: isAuctioneer ? user.id : liveViewerIdentity(auctionId, user.id),
       isPublisher: isAuctioneer,
       metadata: JSON.stringify({
-        role: profile?.role,
-        displayName: profile?.displayName || profile?.fullName,
+        role: isAuctioneer ? (profile?.role === 'auctioneer' ? 'auctioneer' : 'admin') : 'bidder',
+        displayName: participantName,
       }),
     });
 

@@ -15,10 +15,11 @@ import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { LiveLotPanel } from '@/components/lots/LiveLotPanel';
 import { WatchButton } from '@/components/lots/WatchButton';
 import { createClient } from '@/lib/supabase/server';
-import { watchlist, users } from '@/db/schema';
-import { isAdminProfile } from '@/lib/auth/admin';
+import { watchlist } from '@/db/schema';
+import { isAdminUser } from '@/lib/auth/require-admin';
 import { isPubliclyVisibleLot, PUBLIC_CATALOGUE_LOT_STATUSES } from '@/lib/lots/visibility';
 import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
+import { BIDDING_SALE_STATUSES } from '@/lib/auctions/bidding-window';
 import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
 import { isLotInPublicAuction } from '@/lib/lots/placement';
 import { Phone, Mail } from 'lucide-react';
@@ -84,8 +85,12 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   const lot = await getLot(lotId);
   if (!lot) return {};
   // Not in this sale: the page redirects, so there is nothing to describe.
+  // An unpublished lot, or a draft/cancelled sale, gets nothing either: the
+  // page 404s for the public, and metadata can be emitted alongside that 404.
   const placement = await getSalePlacement(auctionId, lot.id);
   if (!placement || !isPubliclyVisibleAuction(placement.auction.status)) return {};
+  // The sale is public and holds this lot, so an `approved` lot is in its catalogue.
+  if (!isPubliclyVisibleLot(lot.status, true)) return {};
 
   const estimateText = formatEstimate(lot.estimateLow, lot.estimateHigh);
   // Mid-sentence: "Est. $5,000+", "Est. up to $2,000".
@@ -171,24 +176,21 @@ export default async function LotDetailPage({
   const toSibling = (row: typeof prevRow | undefined): SiblingLot | null =>
     row ? { href: lotPath(auction.slug, row), lotNumber: row.lotNumber, title: row.title } : null;
 
-  // Watch state + admin status for the signed-in viewer.
+  // Watch state + admin status for the signed-in viewer. isAdminUser checks
+  // the account status too: a suspended admin must not preview drafts.
   let isWatching = false;
   let viewerIsAdmin = false;
   if (viewer) {
-    const [[w], [profile]] = await Promise.all([
+    const [[w], isAdmin] = await Promise.all([
       db
         .select({ id: watchlist.id })
         .from(watchlist)
         .where(and(eq(watchlist.userId, viewer.id), eq(watchlist.lotId, lot.id)))
         .limit(1),
-      db
-        .select({ role: users.role, isAdmin: users.isAdmin })
-        .from(users)
-        .where(eq(users.id, viewer.id))
-        .limit(1),
+      isAdminUser(viewer.id),
     ]);
     isWatching = !!w;
-    viewerIsAdmin = isAdminProfile(profile);
+    viewerIsAdmin = isAdmin;
   }
 
   // Never expose unpublished lots (draft / pending_review / withdrawn / unsold)
@@ -221,7 +223,7 @@ export default async function LotDetailPage({
   const isBiddableOnSite =
     isOnSiteBiddingSale(auction) &&
     lot.status === 'in_auction' &&
-    ['open', 'live', 'closed'].includes(auction.status) &&
+    (BIDDING_SALE_STATUSES as readonly string[]).includes(auction.status) &&
     !!lotCloseAt &&
     lotCloseAt.getTime() > renderNow;
   // Not biddable because it's over (vs. not open yet): drives "Sold for" /
@@ -230,12 +232,14 @@ export default async function LotDetailPage({
   // elapsed time alone doesn't end it while the sale is still in progress —
   // the external bid button must stay up until the house settles the lot.
   const saleInProgress =
-    !!auction.liveauctioneersUrl && ['open', 'live', 'closing'].includes(auction.status);
+    !isOnSiteBiddingSale(auction) && ['open', 'live', 'closing'].includes(auction.status);
   const biddingClosed =
     !isBiddableOnSite &&
     (lot.status === 'sold' ||
       lot.status === 'unsold' ||
       ['completed', 'cancelled'].includes(auction.status) ||
+      // An admin ended the LiveAuctioneers sale early ("Show as ended").
+      (!isOnSiteBiddingSale(auction) && auction.status === 'closed') ||
       (!saleInProgress && !!lotCloseAt && lotCloseAt.getTime() <= renderNow));
   // Formatted here, not in the client panel: server and browser can't then
   // disagree on the text (year cut-off, ICU spacing) and trip hydration.
@@ -251,6 +255,8 @@ export default async function LotDetailPage({
     ...lot,
     images: images.map(i => ({ url: i.url })),
     categoryName: category?.name || null,
+    // Product url is this canonical page, not the /lots redirect.
+    auctionSlug: auction.slug,
   });
 
   const breadcrumbJsonLd = generateBreadcrumbJsonLd([

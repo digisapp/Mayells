@@ -19,6 +19,12 @@ async function requireAdmin() {
 
 const VISIT_STATUSES = ['draft', 'uploading', 'processing', 'review', 'sent', 'archived'] as const;
 
+// The UI sends a date input's YYYY-MM-DD ('' for none); a full ISO timestamp
+// is accepted too. Anything else would make new Date() throw (a 500).
+const visitDateSchema = z
+  .union([z.iso.date(), z.iso.datetime({ offset: true }), z.literal('')], { error: 'Enter a valid visit date' })
+  .optional();
+
 const patchSchema = z.object({
   id: z.string().uuid('Valid visit ID required'),
   clientName: z.string().min(1).max(200).optional(),
@@ -27,7 +33,7 @@ const patchSchema = z.object({
   clientAddress: z.string().max(500).optional(),
   clientCity: z.string().max(100).optional(),
   clientState: z.string().max(100).optional(),
-  visitDate: z.string().optional(),
+  visitDate: visitDateSchema,
   notes: z.string().max(5000).optional(),
   status: z.enum(VISIT_STATUSES).optional(),
 });
@@ -39,7 +45,7 @@ const createSchema = z.object({
   clientAddress: z.string().optional(),
   clientCity: z.string().optional(),
   clientState: z.string().optional(),
-  visitDate: z.string().optional(),
+  visitDate: visitDateSchema,
   notes: z.string().optional(),
 });
 
@@ -51,7 +57,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? 'Validation failed', details: parsed.error.flatten() },
+        { status: 400 },
+      );
     }
 
     const { visitDate, clientEmail, ...rest } = parsed.data;

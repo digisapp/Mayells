@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 
 export const metadata = {
   title: 'About',
+  alternates: { canonical: '/about' },
   description: 'Mayells is a full-service auction house in Palm Beach, Florida and New York specializing in consignment sales of fine art, antiques, jewelry, watches, fashion, and collectibles.',
 };
 

@@ -1,4 +1,4 @@
-import { isOwnAddress } from './addresses';
+import { isOwnAddress, parseEmailAddress } from './addresses';
 import { parseAuthResults, senderAuthenticated } from './sender-auth';
 
 /**
@@ -50,6 +50,11 @@ export function autoReplySuppressionReason(args: {
   if (/bulk|list|junk|auto_reply/.test(precedence)) return `Precedence: ${precedence}`;
   if (h['x-auto-response-suppress'] || h['x-autoreply'] || h['x-autorespond'] || h['list-id'] || h['list-unsubscribe']) {
     return 'automated/list mail headers present';
+  }
+  // The DMARC verdict covers the From header, so only the address it names
+  // may be answered — not one the webhook had to take from Reply-To.
+  if (h['from'] !== undefined && parseEmailAddress(h['from']).email !== from) {
+    return 'reply address is not the From header';
   }
   // From is trivially forged; a reply to a forged From lands on a third
   // party. Only answer a sender whose address passed DMARC (sender-auth.ts).

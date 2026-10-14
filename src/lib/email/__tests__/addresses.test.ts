@@ -2,6 +2,7 @@ import { afterEach, describe, it, expect } from 'vitest';
 import {
   bareAddress,
   decodeEncodedWords,
+  firstValidAddress,
   getAdminFrom,
   getAdminFromAddress,
   getInboundAddress,
@@ -47,6 +48,44 @@ describe('parseEmailAddress', () => {
   it('decodes RFC 2047 names', () => {
     expect(parseEmailAddress('=?UTF-8?B?Sm9zw6kgR2FyY8OtYQ==?= <jose@example.com>').name).toBe('José García');
     expect(parseEmailAddress('=?utf-8?Q?Ren=C3=A9e_Smith?= <renee@example.com>').name).toBe('Renée Smith');
+  });
+
+  it('reads names that carry quotes or brackets of their own', () => {
+    expect(parseEmailAddress('Jane "JJ" Doe <jane@x.com>')).toEqual({ name: 'Jane "JJ" Doe', email: 'jane@x.com' });
+    expect(parseEmailAddress('"John \\"JJ\\" Smith" <j@x.com>')).toEqual({ name: 'John "JJ" Smith', email: 'j@x.com' });
+    expect(parseEmailAddress('"Sales <EU>" <s@x.com>')).toEqual({ name: 'Sales <EU>', email: 's@x.com' });
+    expect(parseEmailAddress('"Doe (Sales)" <Jane@X.com>')).toEqual({ name: 'Doe (Sales)', email: 'jane@x.com' });
+  });
+
+  it('takes the last address, so a name that looks like one cannot stand in for it', () => {
+    expect(parseEmailAddress('"info@mayells.com" <attacker@evil.io>').email).toBe('attacker@evil.io');
+    expect(parseEmailAddress('"<info@mayells.com>" <attacker@evil.io>').email).toBe('attacker@evil.io');
+  });
+
+  it('reads the old comment form and ignores trailing comments', () => {
+    expect(parseEmailAddress('jane@x.com (Jane Doe)')).toEqual({ name: 'Jane Doe', email: 'jane@x.com' });
+    expect(parseEmailAddress('(Jane Doe) jane@x.com')).toEqual({ name: 'Jane Doe', email: 'jane@x.com' });
+    expect(parseEmailAddress('Jane <jane@x.com> (work)')).toEqual({ name: 'Jane', email: 'jane@x.com' });
+  });
+
+  it('does not take an address that is followed by something else', () => {
+    // An address list in one From must never read as its first member (the
+    // send guard calls isOwnAddress on whole From values).
+    expect(parseEmailAddress('"x" <info@mayells.com>, other@evil.io').email).not.toBe('info@mayells.com');
+    expect(isOwnAddress('"x" <info@mayells.com>, other@evil.io')).toBe(false);
+  });
+
+  it('hands back the trimmed input when nothing in it is a valid address', () => {
+    expect(parseEmailAddress('  Not An Address ')).toEqual({ name: null, email: 'not an address' });
+    expect(parseEmailAddress('Jane <jane@localhost>')).toEqual({ name: 'Jane', email: 'jane@localhost' });
+  });
+});
+
+describe('firstValidAddress', () => {
+  it('returns the first candidate that parses to a valid address', () => {
+    expect(firstValidAddress([undefined, 'garbage', 42, 'Jane "JJ" Doe <Jane@X.com>', 'b@y.com'])).toBe('jane@x.com');
+    expect(firstValidAddress(['nope', null])).toBeNull();
+    expect(firstValidAddress([])).toBeNull();
   });
 });
 

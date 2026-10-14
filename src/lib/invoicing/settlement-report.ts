@@ -218,7 +218,9 @@ export async function loadAuctionSettlement(auctionId: string): Promise<Settleme
       report.totals.soldEstimateHigh += lot.estimateHigh ?? 0;
     } else if (lot.status === 'withdrawn') {
       report.lots.withdrawn += 1;
-    } else if (lot.status === 'in_auction') {
+    } else if (lot.status === 'in_auction' || lot.status === 'approved') {
+      // approved = never opened here: a LiveAuctioneers lot awaiting its
+      // recorded result, or one the sale skipped.
       report.lots.open += 1;
     } else {
       // unsold / relisted to gallery / returned

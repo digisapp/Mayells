@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 /**
  * Previous / Next pagination row shared by the admin list pages. Pass
  * callbacks for client-side lists, or hrefs for server-rendered ones.
- * Renders nothing for a single page.
+ * Renders nothing for a single page — unless the admin is past the end (an
+ * action emptied the last page and the list refetched it), which needs a way
+ * back.
  */
 export function Pager({
   page,
@@ -22,9 +24,11 @@ export function Pager({
   /** Replaces the default "Page X of Y" line. */
   summary?: React.ReactNode;
 }) {
-  if (totalPages <= 1) return null;
+  if (totalPages <= 1 && page <= 1) return null;
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
+  const pastEnd = page > Math.max(1, totalPages);
+  const lastPage = Math.max(1, totalPages);
 
   const control = (target: number, enabled: boolean, children: React.ReactNode) =>
     hrefFor && enabled ? (
@@ -46,9 +50,15 @@ export function Pager({
 
   return (
     <nav aria-label="Pagination" className="flex flex-wrap items-center justify-between gap-3 mt-4 text-sm">
-      <p className="text-muted-foreground">{summary ?? <>Page {page} of {totalPages}</>}</p>
+      <p className="text-muted-foreground">
+        {pastEnd
+          ? <>Nothing on page {page} — the list has {lastPage} page{lastPage === 1 ? '' : 's'}.</>
+          : summary ?? <>Page {page} of {totalPages}</>}
+      </p>
       <div className="flex gap-2">
-        {control(page - 1, hasPrev, <><ChevronLeft className="h-3.5 w-3.5" /> Previous</>)}
+        {pastEnd
+          ? control(lastPage, true, <><ChevronLeft className="h-3.5 w-3.5" /> {lastPage === 1 ? 'Go to first page' : 'Go to last page'}</>)
+          : control(page - 1, hasPrev, <><ChevronLeft className="h-3.5 w-3.5" /> Previous</>)}
         {control(page + 1, hasNext, <>Next <ChevronRight className="h-3.5 w-3.5" /></>)}
       </div>
     </nav>

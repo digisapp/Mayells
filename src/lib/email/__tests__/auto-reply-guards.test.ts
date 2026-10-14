@@ -16,6 +16,13 @@ describe('autoReplySuppressionReason', () => {
     expect(autoReplySuppressionReason({ from: 'jane@gmail.com', headers: { 'Authentication-Results': `${PASS['Authentication-Results']} amazonses.com; dmarc=fail` } })).toMatch(/not authenticated/);
   });
 
+  it('only answers the address the From header names (the one DMARC covered)', () => {
+    expect(autoReplySuppressionReason({ from: 'jane@gmail.com', headers: { ...PASS, From: 'Jane "JJ" Doe <Jane@Gmail.com>' } })).toBeNull();
+    // The webhook fell back to Reply-To because it could not read From.
+    expect(autoReplySuppressionReason({ from: 'victim@x.com', headers: { ...PASS, From: 'undisclosed' } })).toMatch(/From header/);
+    expect(autoReplySuppressionReason({ from: 'victim@x.com', headers: { ...PASS, From: 'Jane <jane@gmail.com>' } })).toMatch(/From header/);
+  });
+
   it('never answers our own domains or automated senders', () => {
     expect(autoReplySuppressionReason({ from: 'notifications@mayells.com' })).toMatch(/own domain/);
     expect(autoReplySuppressionReason({ from: 'no-reply@shop.com' })).toMatch(/automated/);

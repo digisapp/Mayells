@@ -10,13 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Trash2, Plus, X, Download, ExternalLink, Radio, Ban, Play, Square, Search, Receipt, AlertCircle, Loader2 } from 'lucide-react';
+import { Trash2, Plus, X, Download, ExternalLink, Radio, Ban, Play, Square, Search, Receipt, AlertCircle, Loader2, Gavel } from 'lucide-react';
 import { PageHeader } from '@/components/admin/PageHeader';
 import { toast } from 'sonner';
 import { formatCurrency } from '@/types';
 import { auctionStatus, lotStatus } from '@/lib/admin/status/sales';
 import { formatShortDateTime } from '@/lib/format/dates';
 import { formatEstimate } from '@/lib/format/estimate';
+import { LA_AWAITING_RESULT_LOT_STATUSES, LA_RESULT_SALE_STATUSES, parseHammerDollars } from '@/lib/auctions/la-results';
+import { biddingVenue } from '@/lib/bidding/venue';
 import AuctionDetailLoading from './loading';
 
 const statusHelp: Record<string, string> = {
@@ -31,6 +33,20 @@ const statusHelp: Record<string, string> = {
   cancelled: 'Cancelled. Its lots were released back to inventory.',
 };
 
+// A sale with a LiveAuctioneers link is bid there: nothing settles here, the
+// admin records each lot's result instead (lib/auctions/la-results.ts).
+const laStatusHelp: Record<string, string> = {
+  scheduled: 'Listed on the site as upcoming, with bidding on LiveAuctioneers. It shows as open automatically at the scheduled time.',
+  open: 'Bidding is on LiveAuctioneers. Record each lot\'s result below as LiveAuctioneers reports it.',
+  live: 'Bidding is on LiveAuctioneers. Record each lot\'s result below as LiveAuctioneers reports it.',
+  closing: 'Bidding has ended on LiveAuctioneers. Record each lot\'s result below.',
+  closed: 'Bidding has ended on LiveAuctioneers. Record each lot\'s result below; the sale completes when every lot has one.',
+  completed: 'Every lot has a result. LiveAuctioneers collects from buyers, so no invoices or payouts are created here.',
+};
+
+const isAwaitingResult = (status: string) =>
+  (LA_AWAITING_RESULT_LOT_STATUSES as readonly string[]).includes(status);
+
 // Format for <input type="datetime-local">, which expects local wall time
 // ("YYYY-MM-DDTHH:mm") — not the UTC time that toISOString() would produce.
 function formatDate(d: string | null) {
@@ -44,6 +60,29 @@ function formatWhen(d: string | null) {
   return d ? formatShortDateTime(d) : '—';
 }
 
+/** The saved sale as Details-tab form values. */
+function toFormData(auction: Record<string, unknown>): AuctionFormData {
+  return {
+    ...defaultAuctionFormData,
+    title: (auction.title as string) || '',
+    subtitle: (auction.subtitle as string) || '',
+    saleNumber: (auction.saleNumber as string) || '',
+    description: (auction.description as string) || '',
+    slug: (auction.slug as string) || '',
+    liveauctioneersUrl: (auction.liveauctioneersUrl as string) || '',
+    type: (auction.type as 'timed' | 'live') || 'timed',
+    previewStartsAt: formatDate(auction.previewStartsAt as string | null),
+    biddingStartsAt: formatDate(auction.biddingStartsAt as string | null),
+    biddingEndsAt: formatDate(auction.biddingEndsAt as string | null),
+    buyerPremiumPercent: (auction.buyerPremiumPercent as number) ?? 25,
+    antiSnipeEnabled: (auction.antiSnipeEnabled as boolean) ?? true,
+    antiSnipeMinutes: (auction.antiSnipeMinutes as number) ?? 2,
+    antiSnipeWindowMinutes: (auction.antiSnipeWindowMinutes as number) ?? 5,
+    lotClosingIntervalSeconds: (auction.lotClosingIntervalSeconds as number) ?? 30,
+    isFeatured: (auction.isFeatured as boolean) ?? false,
+  };
+}
+
 interface AssignedLot {
   id: string;
   title: string;
@@ -51,11 +90,15 @@ interface AssignedLot {
   status: string;
   estimateLow: number | null;
   estimateHigh: number | null;
+  reservePrice: number | null;
+  hammerPrice: number | null;
   currentBidAmount: number;
   bidCount: number;
   primaryImageUrl: string | null;
   closingAt: string | null;
 }
+
+type LaOutcome = 'sold' | 'relist' | 'return';
 
 interface AvailableLot {
   id: string;
@@ -77,6 +120,7 @@ type PendingAction =
   | { kind: 'cancel' }
   | { kind: 'delete' }
   | { kind: 'remove-lot'; lot: AssignedLot }
+  | { kind: 'la-result'; lot: AssignedLot; outcome: LaOutcome; hammerPrice?: number }
   | null;
 
 function EditAuctionContent() {
@@ -98,6 +142,10 @@ function EditAuctionContent() {
   // PATCH (which the API answers with a 409 toast).
   const [busyStatus, setBusyStatus] = useState<string | null>(null);
   const [addingLotId, setAddingLotId] = useState<string | null>(null);
+  // Hammer prices being typed into the LiveAuctioneers results panel, by lot.
+  const [hammerInputs, setHammerInputs] = useState<Record<string, string>>({});
+  // Sold LiveAuctioneers lot whose hammer price is being corrected.
+  const [correctingId, setCorrectingId] = useState<string | null>(null);
   // Unsaved edits on the Details tab. A status change remounts the form (the
   // server may have changed the schedule), so those moves warn first.
   const [detailsDirty, setDetailsDirty] = useState(false);
@@ -129,7 +177,8 @@ function EditAuctionContent() {
   }, [auctionId]);
 
   const loadAvailableLots = useCallback((q: string) => {
-    const params = new URLSearchParams({ status: 'approved', saleType: 'auction', limit: '100' });
+    // unplaced=1: leave out lots another unfinished sale already holds.
+    const params = new URLSearchParams({ status: 'approved', saleType: 'auction', limit: '100', unplaced: '1' });
     if (q.trim()) params.set('q', q.trim());
     fetch(`/api/lots?${params}`)
       .then((r) => r.json())
@@ -153,6 +202,9 @@ function EditAuctionContent() {
   const biddingOpen = status === 'open' || status === 'live';
   const preOpen = ['draft', 'scheduled', 'preview'].includes(status);
   const finished = ['closing', 'closed', 'completed', 'cancelled'].includes(status);
+  const isLaSale = !!auction && biddingVenue(auction) === 'liveauctioneers';
+  // Stays up once the sale completes so a mistyped hammer price can be fixed.
+  const showResults = isLaSale && ((LA_RESULT_SALE_STATUSES as readonly string[]).includes(status) || status === 'completed');
 
   const summary = useMemo(() => {
     const low = assignedLots.reduce((s, l) => s + (l.estimateLow ?? 0), 0);
@@ -161,7 +213,8 @@ function EditAuctionContent() {
     const current = assignedLots.reduce((s, l) => s + (l.currentBidAmount ?? 0), 0);
     const sold = assignedLots.filter((l) => l.status === 'sold').length;
     const withBids = assignedLots.filter((l) => (l.bidCount ?? 0) > 0).length;
-    return { low, high, bids, current, sold, withBids };
+    const awaiting = assignedLots.filter((l) => isAwaitingResult(l.status)).length;
+    return { low, high, bids, current, sold, withBids, awaiting };
   }, [assignedLots]);
 
   if (loadError === 'missing') {
@@ -202,25 +255,7 @@ function EditAuctionContent() {
 
   if (!auction) return <AuctionDetailLoading />;
 
-  const formData: AuctionFormData = {
-    ...defaultAuctionFormData,
-    title: (auction.title as string) || '',
-    subtitle: (auction.subtitle as string) || '',
-    saleNumber: (auction.saleNumber as string) || '',
-    description: (auction.description as string) || '',
-    slug,
-    liveauctioneersUrl: (auction.liveauctioneersUrl as string) || '',
-    type,
-    previewStartsAt: formatDate(auction.previewStartsAt as string | null),
-    biddingStartsAt: formatDate(auction.biddingStartsAt as string | null),
-    biddingEndsAt: formatDate(auction.biddingEndsAt as string | null),
-    buyerPremiumPercent: (auction.buyerPremiumPercent as number) ?? 25,
-    antiSnipeEnabled: (auction.antiSnipeEnabled as boolean) ?? true,
-    antiSnipeMinutes: (auction.antiSnipeMinutes as number) ?? 2,
-    antiSnipeWindowMinutes: (auction.antiSnipeWindowMinutes as number) ?? 5,
-    lotClosingIntervalSeconds: (auction.lotClosingIntervalSeconds as number) ?? 30,
-    isFeatured: (auction.isFeatured as boolean) ?? false,
-  };
+  const formData = toFormData(auction);
 
   /**
    * fetch that toasts a network failure before rethrowing, so confirm-dialog
@@ -287,9 +322,60 @@ function EditAuctionContent() {
       setAuction(result.data);
       toast.success('Auction saved');
       if (biddingOpen) loadAssignedLots();
+      // The form shows what the server stored, not what was typed.
+      return toFormData(result.data);
     } finally {
       setIsLoading(false);
     }
+  }
+
+  /** Ask before recording a LiveAuctioneers result (it can't be undone here). */
+  function requestLaResult(lot: AssignedLot, outcome: LaOutcome) {
+    if (outcome !== 'sold') {
+      setPending({ kind: 'la-result', lot, outcome });
+      return;
+    }
+    const hammerPrice = parseHammerDollars(hammerInputs[lot.id] ?? '');
+    if (hammerPrice === null) {
+      toast.error(`Enter lot ${lot.lotNumber}'s hammer price in dollars, e.g. 1250.`);
+      return;
+    }
+    setPending({ kind: 'la-result', lot, outcome, hammerPrice });
+  }
+
+  async function recordLaResult(lot: AssignedLot, outcome: LaOutcome, hammerPrice?: number) {
+    const res = await fetchOrToast(`/api/admin/auctions/${auctionId}/results`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lotId: lot.id, outcome, hammerPrice }),
+    }, 'the result was not recorded');
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.error(data.error || 'Could not record the result');
+      loadAssignedLots();
+      throw new Error(data.error || 'record result failed');
+    }
+    const recorded = data.data as { outcome: 'sold' | 'relisted' | 'returned'; saleCompleted: boolean; corrected?: boolean };
+    toast.success(
+      recorded.corrected
+        ? `Lot ${lot.lotNumber}'s hammer price corrected to ${formatCurrency(hammerPrice ?? 0)}`
+        : recorded.outcome === 'sold'
+        ? `Lot ${lot.lotNumber} recorded as sold for ${formatCurrency(hammerPrice ?? 0)}`
+        : recorded.outcome === 'relisted'
+          ? `Lot ${lot.lotNumber} relisted in the gallery`
+          : outcome === 'relist'
+            ? `Lot ${lot.lotNumber} has no reserve or low estimate to list at, so it is marked for return to the consignor`
+            : `Lot ${lot.lotNumber} marked for return to the consignor`,
+    );
+    if (recorded.saleCompleted && !recorded.corrected) toast.success('Every lot has a result — the sale is complete');
+    setCorrectingId(null);
+    setHammerInputs((prev) => {
+      const next = { ...prev };
+      delete next[lot.id];
+      return next;
+    });
+    loadAssignedLots();
+    loadAuction();
   }
 
   async function handleDelete() {
@@ -417,17 +503,21 @@ function EditAuctionContent() {
         };
       case 'open':
         return {
-          title: 'Open bidding now?',
-          description: `Every assigned lot (${assignedLots.length}) becomes biddable immediately and the sale appears as open on the site. This ignores the scheduled opening time.${discardNote}`,
-          confirmLabel: 'Open bidding',
+          title: isLaSale ? 'Show this sale as open now?' : 'Open bidding now?',
+          description: isLaSale
+            ? `The sale appears as open on the site, with its ${assignedLots.length} ${assignedLots.length === 1 ? 'lot' : 'lots'} sending bidders to LiveAuctioneers. This ignores the scheduled opening time.${discardNote}`
+            : `Every assigned lot (${assignedLots.length}) becomes biddable immediately and the sale appears as open on the site. This ignores the scheduled opening time.${discardNote}`,
+          confirmLabel: isLaSale ? 'Show as open' : 'Open bidding',
           variant: 'default' as const,
           onConfirm: () => patchStatus('open'),
         };
       case 'end':
         return {
-          title: 'End bidding now?',
-          description: 'Bidding stops on every lot immediately, including lots whose staggered close time is still in the future. Settlement (winners, invoices) runs automatically within a few minutes and cannot be undone.' + discardNote,
-          confirmLabel: 'End bidding',
+          title: isLaSale ? 'Show this sale as ended?' : 'End bidding now?',
+          description: isLaSale
+            ? 'The sale reads as ended on the site and its LiveAuctioneers bid links come down. Do this once the LiveAuctioneers sale is over, then record each lot\'s result. It cannot be reopened.' + discardNote
+            : 'Bidding stops on every lot immediately, including lots whose staggered close time is still in the future. Settlement (winners, invoices) runs automatically within a few minutes and cannot be undone.' + discardNote,
+          confirmLabel: isLaSale ? 'Show as ended' : 'End bidding',
           variant: 'destructive' as const,
           onConfirm: () => patchStatus('closing'),
         };
@@ -459,6 +549,46 @@ function EditAuctionContent() {
           variant: 'destructive' as const,
           onConfirm: () => removeLot(pending.lot),
         };
+      case 'la-result': {
+        const { lot, outcome, hammerPrice } = pending;
+        const completes = summary.awaiting === 1 && isAwaitingResult(lot.status);
+        const tail = completes
+          ? ` This is the last lot awaiting a result, so the sale completes.${discardNote}`
+          : '';
+        const relistPrice = lot.reservePrice || lot.estimateLow;
+        if (outcome === 'sold' && lot.status === 'sold') {
+          return {
+            title: `Correct lot ${lot.lotNumber}'s hammer price to ${formatCurrency(hammerPrice ?? 0)}?`,
+            description: `Replaces the recorded ${lot.hammerPrice ? formatCurrency(lot.hammerPrice) : 'hammer price'}. The site shows the new price straight away.`,
+            confirmLabel: 'Correct price',
+            variant: 'default' as const,
+            onConfirm: () => recordLaResult(lot, outcome, hammerPrice),
+          };
+        }
+        return outcome === 'sold'
+          ? {
+              title: `Record lot ${lot.lotNumber} as sold for ${formatCurrency(hammerPrice ?? 0)}?`,
+              description: `The site shows the lot as sold at this hammer price (before buyer's premium). LiveAuctioneers collects from the buyer, so no invoice is created here. The price can be corrected later; the sale itself can't be undone from this page.${tail}`,
+              confirmLabel: 'Record sale',
+              variant: 'default' as const,
+              onConfirm: () => recordLaResult(lot, outcome, hammerPrice),
+            }
+          : outcome === 'relist'
+            ? {
+                title: `Relist lot ${lot.lotNumber} in the gallery?`,
+                description: `${relistPrice ? `It goes on the gallery for direct sale at ${formatCurrency(relistPrice)} (its ${lot.reservePrice ? 'reserve' : 'low estimate'}).` : 'It has no reserve or low estimate to list at, so it will be marked for return to the consignor instead.'} This can't be undone from this page.${tail}`,
+                confirmLabel: 'Relist',
+                variant: 'default' as const,
+                onConfirm: () => recordLaResult(lot, outcome),
+              }
+            : {
+                title: `Return lot ${lot.lotNumber} to the consignor?`,
+                description: `The lot is marked unsold and comes off the site, and its consignment is marked returned. This can't be undone from this page.${tail}`,
+                confirmLabel: 'Mark for return',
+                variant: 'destructive' as const,
+                onConfirm: () => recordLaResult(lot, outcome),
+              };
+      }
     }
   })();
 
@@ -474,7 +604,7 @@ function EditAuctionContent() {
             )}
           </>
         }
-        description={statusHelp[status]}
+        description={(isLaSale && laStatusHelp[status]) || statusHelp[status]}
         actions={
           <>
             {slug && !['draft', 'cancelled'].includes(status) && (
@@ -482,7 +612,7 @@ function EditAuctionContent() {
                 <a href={`/auctions/${slug}`} target="_blank" rel="noreferrer"><ExternalLink className="h-3.5 w-3.5" /> View on site</a>
               </Button>
             )}
-            {type === 'live' && !finished && (
+            {type === 'live' && !finished && !isLaSale && (
               <Button asChild variant="outline" size="sm" className="gap-1.5">
                 <Link href={`/admin/live/${auctionId}`}><Radio className="h-3.5 w-3.5" /> Live console</Link>
               </Button>
@@ -536,9 +666,9 @@ function EditAuctionContent() {
                 Open preview
               </Button>
             )}
-            {(status === 'scheduled' || status === 'preview') && type === 'timed' && (
+            {(status === 'scheduled' || status === 'preview') && (type === 'timed' || isLaSale) && (
               <Button size="sm" className="gap-1.5" onClick={() => setPending({ kind: 'open' })} disabled={assignedLots.length === 0 || !!busyStatus}>
-                <Play className="h-3.5 w-3.5" /> Open bidding now
+                <Play className="h-3.5 w-3.5" /> {isLaSale ? 'Show as open now' : 'Open bidding now'}
               </Button>
             )}
             {(status === 'scheduled' || status === 'preview') && (
@@ -553,21 +683,125 @@ function EditAuctionContent() {
                 Unpublish (back to draft)
               </Button>
             )}
-            {status === 'open' && (
+            {(status === 'open' || (status === 'live' && isLaSale)) && (
               <Button size="sm" variant="destructive" className="gap-1.5" onClick={() => setPending({ kind: 'end' })} disabled={!!busyStatus}>
-                <Square className="h-3.5 w-3.5" /> End bidding now
+                <Square className="h-3.5 w-3.5" /> {isLaSale ? 'Show as ended' : 'End bidding now'}
               </Button>
             )}
-            {status === 'live' && (
+            {status === 'live' && !isLaSale && (
               <span className="text-sm text-muted-foreground">Live session in progress — end it from the live console.</span>
             )}
-            {(preOpen || (biddingOpen && summary.bids === 0)) && (
+            {(preOpen || (biddingOpen && summary.bids === 0 && !(isLaSale && summary.sold > 0))) && (
               <Button size="sm" variant="ghost" className="gap-1.5 text-red-600 hover:text-red-700 ml-auto" onClick={() => setPending({ kind: 'cancel' })} disabled={!!busyStatus}>
                 <Ban className="h-3.5 w-3.5" /> Cancel auction
               </Button>
             )}
             {status === 'draft' && assignedLots.length === 0 && (
               <p className="basis-full text-xs text-muted-foreground">Add at least one lot before publishing.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {showResults && (
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-sm flex items-center gap-1.5"><Gavel className="h-4 w-4" /> LiveAuctioneers results</CardTitle>
+              <span className="text-xs text-muted-foreground">
+                {summary.awaiting === 0 ? 'Every lot has a result' : `${summary.awaiting} of ${assignedLots.length} awaiting a result`}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Enter each lot&apos;s result as LiveAuctioneers reports it. Sold lots show their hammer price on the site;
+              LiveAuctioneers collects from the buyer, so no invoice is created here. Unsold lots can be relisted in the
+              gallery at their reserve (or low estimate) or returned to the consignor. The sale completes when every lot
+              has a result.
+            </p>
+          </CardHeader>
+          <CardContent>
+            {assignedLots.length === 0 ? (
+              <p className="text-sm text-muted-foreground">This sale has no lots.</p>
+            ) : (
+              <div className="space-y-2">
+                {assignedLots.map((lot) => {
+                  const awaiting = isAwaitingResult(lot.status);
+                  const relistPrice = lot.reservePrice || lot.estimateLow;
+                  return (
+                    <div key={lot.id} className="flex flex-wrap items-center gap-3 p-3 rounded-md border">
+                      <span className="w-12 text-sm font-mono">#{lot.lotNumber}</span>
+                      <div className="flex-1 min-w-[10rem]">
+                        <Link href={`/admin/lots/${lot.id}`} className="font-medium text-sm truncate block hover:underline">{lot.title}</Link>
+                        <div className="text-xs text-muted-foreground">{formatEstimate(lot.estimateLow, lot.estimateHigh) ?? 'No estimate'}</div>
+                      </div>
+                      {lot.status === 'sold' && correctingId === lot.id ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            inputMode="decimal"
+                            placeholder="Hammer $"
+                            className="w-28 h-8 text-sm"
+                            aria-label={`Corrected hammer price for lot ${lot.lotNumber}, in dollars`}
+                            value={hammerInputs[lot.id] ?? ''}
+                            onChange={(e) => setHammerInputs((prev) => ({ ...prev, [lot.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') requestLaResult(lot, 'sold'); }}
+                            autoFocus
+                          />
+                          <Button size="sm" onClick={() => requestLaResult(lot, 'sold')}>Save</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setCorrectingId(null)}>Cancel</Button>
+                        </div>
+                      ) : awaiting ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Input
+                            inputMode="decimal"
+                            placeholder="Hammer $"
+                            className="w-28 h-8 text-sm"
+                            aria-label={`Hammer price for lot ${lot.lotNumber}, in dollars`}
+                            value={hammerInputs[lot.id] ?? ''}
+                            onChange={(e) => setHammerInputs((prev) => ({ ...prev, [lot.id]: e.target.value }))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') requestLaResult(lot, 'sold'); }}
+                          />
+                          <Button size="sm" onClick={() => requestLaResult(lot, 'sold')}>Sold</Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => requestLaResult(lot, 'relist')}
+                            disabled={!relistPrice}
+                            title={relistPrice ? `Relist in the gallery at ${formatCurrency(relistPrice)}` : 'No reserve or low estimate to list it at'}
+                          >
+                            Relist
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700" onClick={() => requestLaResult(lot, 'return')}>
+                            Return
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                          {lot.status === 'sold'
+                            ? `Sold · ${lot.hammerPrice ? formatCurrency(lot.hammerPrice) : 'no hammer price'}`
+                            : lot.status === 'for_sale'
+                              ? 'Relisted in the gallery'
+                              : lot.status === 'unsold'
+                                ? 'Returned to the consignor'
+                                : `Not offered (${lotStatus(lot.status).label.toLowerCase()})`}
+                          {lot.status === 'sold' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => {
+                                setHammerInputs((prev) => ({ ...prev, [lot.id]: lot.hammerPrice ? String(lot.hammerPrice / 100) : '' }));
+                                setCorrectingId(lot.id);
+                              }}
+                            >
+                              Correct price
+                            </Button>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -659,7 +893,8 @@ function EditAuctionContent() {
                           <span>{lotStatus(lot.status).label}</span>
                         </div>
                       </div>
-                      {!finished && (
+                      {/* A recorded result is part of the sale's record. */}
+                      {!finished && lot.status !== 'sold' && !(showResults && !isAwaitingResult(lot.status)) && (
                         <Button variant="ghost" size="sm" onClick={() => setPending({ kind: 'remove-lot', lot })} className="text-red-600 hover:text-red-700" title="Remove from sale" aria-label={`Remove lot ${lot.lotNumber} from sale`}>
                           <X className="h-4 w-4" />
                         </Button>

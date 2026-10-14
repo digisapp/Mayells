@@ -78,6 +78,14 @@ class MayellsApi:
         )
 
     async def post(self, path: str, body: dict, attempts: int = 2, timeout: float | None = None) -> dict | None:
+        data, _ = await self.post_or_refusal(path, body, attempts, timeout)
+        return data
+
+    async def post_or_refusal(
+        self, path: str, body: dict, attempts: int = 2, timeout: float | None = None
+    ) -> tuple[dict | None, str | None]:
+        """Like post, plus the app's message when it refused the request as
+        invalid (400): something the caller can fix, worded for the model."""
         # Only override when asked: timeout=None would disable the session's 15 s limit.
         extra = {"timeout": aiohttp.ClientTimeout(total=timeout)} if timeout else {}
         for attempt in range(attempts):
@@ -85,14 +93,15 @@ class MayellsApi:
                 async with self._http.post(f"{API_URL}/api/voice/agent{path}", json=body, **extra) as res:
                     payload = await res.json(content_type=None)
                     if res.status < 300:
-                        return payload.get("data")
+                        return payload.get("data"), None
                     logger.error("POST %s -> %s %s", path, res.status, payload)
                     if res.status < 500:
-                        return None
+                        error = payload.get("error") if isinstance(payload, dict) else None
+                        return None, error if res.status == 400 and isinstance(error, str) else None
             except Exception:
                 logger.exception("POST %s failed (attempt %d)", path, attempt + 1)
             await asyncio.sleep(0.5)
-        return None
+        return None, None
 
     async def close(self) -> None:
         await self._http.close()
@@ -197,8 +206,11 @@ class MayellsConcierge(Agent):
         if estimated_item_count:
             body["estimatedItemCount"] = estimated_item_count
 
-        result = await self.api.post(f"/calls/{self.call_id}/lead", body)
+        result, refusal = await self.api.post_or_refusal(f"/calls/{self.call_id}/lead", body)
         if result is None:
+            if refusal:
+                # Fixable on the call (e.g. no way to reach them): say what to ask.
+                return f"Not saved yet. {refusal} Then call record_appraisal_request again."
             return "Saving failed. Apologise, and ask them to use the appraisal form at mayells.com or call back shortly."
         if send_upload_link and email:
             if result.get("uploadLinkEmailed"):

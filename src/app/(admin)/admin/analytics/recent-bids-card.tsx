@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { fmt } from './fmt';
+import { formatShortDate } from '@/lib/format/dates';
 
 export interface RecentBid {
   id: string;
@@ -29,7 +30,7 @@ export function RecentBidsCard({ bids }: { bids: RecentBid[] }) {
               <div className="text-right shrink-0">
                 <p className="text-sm font-medium tabular-nums">{fmt(Number(bid.amount))}</p>
                 <p className="text-xs text-muted-foreground">
-                  {new Date(bid.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  {formatShortDate(bid.created_at)}
                 </p>
               </div>
             </div>

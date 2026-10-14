@@ -1,6 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { getModel } from './client';
+import { visionImageParts } from './vision-images';
 
 const appraisalSchema = z.object({
   estimateLow: z.number().int().positive().describe('Low estimate in USD cents'),
@@ -34,10 +35,8 @@ export async function appraiseLot(params: {
   condition?: string;
   provenance?: string;
 }): Promise<AppraisalResult> {
-  const imageContent = params.imageUrls.map((url) => ({
-    type: 'image' as const,
-    image: new URL(url),
-  }));
+  // Videos are dropped here so every caller is safe to pass an item's media.
+  const imageContent = visionImageParts(params.imageUrls);
 
   const metadata = [
     params.title && `Title: ${params.title}`,

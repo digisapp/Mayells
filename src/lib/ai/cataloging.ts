@@ -1,6 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { getModel } from './client';
+import { visionImageParts } from './vision-images';
 
 const catalogSchema = z.object({
   title: z.string().describe('Concise auction lot title (5-15 words)'),
@@ -23,28 +24,11 @@ export type CatalogResult = z.infer<typeof catalogSchema>;
 
 /**
  * Analyze lot images and generate a complete catalog entry.
- * Accepts one or more image URLs.
+ * Accepts one or more image URLs; videos among them are skipped, and a set
+ * with no stills at all throws NoStillImagesError.
  */
-const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.webm', '.avi', '.mkv'];
-
-function isVideoUrl(url: string): boolean {
-  const pathname = new URL(url).pathname.toLowerCase();
-  return VIDEO_EXTENSIONS.some((ext) => pathname.endsWith(ext));
-}
-
 export async function catalogLotFromImages(imageUrls: string[]): Promise<CatalogResult> {
-  // Filter out video URLs — vision AI models only process images
-  const filteredUrls = imageUrls.filter((url) => !isVideoUrl(url));
-  if (filteredUrls.length === 0 && imageUrls.length > 0) {
-    // If only videos were provided, use the original URLs and let the model handle it
-    // This is a fallback — typically there should be at least one image
-  }
-  const urlsToProcess = filteredUrls.length > 0 ? filteredUrls : imageUrls;
-
-  const imageContent = urlsToProcess.map((url) => ({
-    type: 'image' as const,
-    image: new URL(url),
-  }));
+  const imageContent = visionImageParts(imageUrls);
 
   const { object } = await generateObject({
     model: getModel('vision'),

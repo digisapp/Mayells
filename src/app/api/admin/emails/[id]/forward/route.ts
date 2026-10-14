@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/db';
@@ -8,7 +9,7 @@ import { requireAdminApi } from '@/lib/auth/require-admin';
 import { isSentinelEmail } from '@/lib/sellers/shadow';
 import { escapeHtml } from '@/lib/email/escape';
 import { listForwardableAttachments, type ForwardableAttachment } from '@/lib/email/notifications';
-import { ADMIN_FROM_NAME, getAdminFrom, getAdminFromAddress, getInboundAddress } from '@/lib/email/addresses';
+import { ADMIN_FROM_NAME, getAdminFrom, getAdminFromAddress, threadReplyAddress } from '@/lib/email/addresses';
 import { logger } from '@/lib/logger';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,8 +34,9 @@ const forwardSchema = z.object({
  * party. The body (headers block + quoted original) is composed client-side;
  * this route re-attaches the original inbound files as fresh Resend-hosted
  * signed URLs — the same relay the inbound webhook uses for the owner's
- * mailbox, 30 MB cap included — and logs the outbound row under the original
- * so the thread view shows where it went.
+ * mailbox, 30 MB cap included — and logs the outbound row as a conversation
+ * of its own, linked to the original so the original's thread shows where it
+ * went.
  */
 export async function POST(
   req: NextRequest,
@@ -96,14 +98,20 @@ export async function POST(
       })),
     ];
 
+    // A forward is a fresh conversation with the recipient, rooted at the
+    // forward itself. Stored inside the customer's thread it would make the
+    // recipient a participant there: their answer would join the customer's
+    // conversation, and Reply, AI drafts and auto-replies would go to them
+    // with the customer's history. Replies come back tagged with this
+    // conversation; inReplyToId still points at the original, so its thread
+    // can say where it went.
+    const forwardId = randomUUID();
+
     const resend = getResend();
     const sendPayload = {
       from: getAdminFrom(),
       to,
-      // A forward is a fresh conversation with the recipient: replies come
-      // back to the inbox, not to the original sender, and no threading
-      // headers tie it to the customer's message.
-      replyTo: getInboundAddress(),
+      replyTo: threadReplyAddress(forwardId),
       subject,
       html: bodyHtml,
       text: bodyText,
@@ -123,21 +131,16 @@ export async function POST(
       );
     }
 
-    // The forward joins the original's conversation. Stamp a thread root with
-    // its own id (as replies do) so the inbox shows the conversation control,
-    // and count an unopened original as read — it has clearly been handled.
-    const threadId = original.threadId || original.id;
-    const originalUpdates: Record<string, unknown> = {};
-    if (!original.threadId) originalUpdates.threadId = original.id;
+    // An unopened original counts as read — it has clearly been handled.
     if (original.direction === 'inbound' && !original.readAt) {
-      originalUpdates.readAt = new Date();
-      if (original.status === 'received') originalUpdates.status = 'read';
-    }
-    if (Object.keys(originalUpdates).length > 0) {
-      await db.update(emails).set(originalUpdates).where(eq(emails.id, original.id));
+      await db
+        .update(emails)
+        .set({ readAt: new Date(), ...(original.status === 'received' && { status: 'read' as const }) })
+        .where(eq(emails.id, original.id));
     }
 
     const [saved] = await db.insert(emails).values({
+      id: forwardId,
       resendId: sent?.id || null,
       direction: 'outbound',
       status: 'sent',
@@ -148,7 +151,7 @@ export async function POST(
       bodyHtml,
       bodyText,
       inReplyToId: original.id,
-      threadId,
+      threadId: forwardId,
     }).returning();
 
     return NextResponse.json({

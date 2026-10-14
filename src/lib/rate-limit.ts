@@ -29,13 +29,42 @@ end
 return current
 `;
 
+const PEEK_SCRIPT = `
+return tonumber(redis.call('GET', KEYS[1]) or '0')
+`;
+
+/** The fixed window `key` falls in right now; rateLimit and peekRateLimit share it. */
+function currentWindow(key: string, windowSeconds: number) {
+  const now = Math.floor(Date.now() / 1000);
+  const index = Math.floor(now / windowSeconds);
+  return { windowKey: `rate:${key}:${index}`, resetAt: (index + 1) * windowSeconds };
+}
+
+/** Same outage policy as rateLimit: see `failClosed`. */
+function redisErrorResult(key: string, config: RateLimitConfig, resetAt: number, err: unknown): RateLimitResult {
+  // Distinguish "Redis intentionally absent" (local dev — never configured)
+  // from "Redis configured but erroring" (production outage or attack). Only
+  // honor failClosed in the latter case, so a dev box with no Redis can still
+  // log in / bid, while a metered or brute-force-sensitive endpoint is not
+  // left unbounded during a real outage.
+  const shouldFailClosed = config.failClosed && isRedisConfigured;
+  logger.error(
+    `Rate limit Redis error — failing ${shouldFailClosed ? 'closed' : 'open'}`,
+    err,
+    { key },
+  );
+  return {
+    success: !shouldFailClosed,
+    remaining: shouldFailClosed ? 0 : config.maxRequests,
+    resetAt,
+  };
+}
+
 export async function rateLimit(
   key: string,
   config: RateLimitConfig,
 ): Promise<RateLimitResult> {
-  const now = Math.floor(Date.now() / 1000);
-  const windowKey = `rate:${key}:${Math.floor(now / config.windowSeconds)}`;
-  const resetAt = (Math.floor(now / config.windowSeconds) + 1) * config.windowSeconds;
+  const { windowKey, resetAt } = currentWindow(key, config.windowSeconds);
 
   try {
     // INCR + EXPIRE in one atomic script: a crash/timeout between two separate
@@ -53,21 +82,30 @@ export async function rateLimit(
       resetAt,
     };
   } catch (err) {
-    // Distinguish "Redis intentionally absent" (local dev — never configured)
-    // from "Redis configured but erroring" (production outage or attack). Only
-    // honor failClosed in the latter case, so a dev box with no Redis can still
-    // log in / bid, while a metered or brute-force-sensitive endpoint is not
-    // left unbounded during a real outage.
-    const shouldFailClosed = config.failClosed && isRedisConfigured;
-    logger.error(
-      `Rate limit Redis error — failing ${shouldFailClosed ? 'closed' : 'open'}`,
-      err,
-      { key },
-    );
+    return redisErrorResult(key, config, resetAt, err);
+  }
+}
+
+/**
+ * Check a counter without adding to it: `success` while fewer than
+ * `maxRequests` uses are on it this window. Pair with rateLimit() to count
+ * only some outcomes, e.g. peek before a sign-in and count it only if the
+ * password was wrong, so a stranger's guesses can't lock the owner out.
+ */
+export async function peekRateLimit(
+  key: string,
+  config: RateLimitConfig,
+): Promise<RateLimitResult> {
+  const { windowKey, resetAt } = currentWindow(key, config.windowSeconds);
+
+  try {
+    const current = Number(await redis.eval(PEEK_SCRIPT, [windowKey], []));
     return {
-      success: !shouldFailClosed,
-      remaining: shouldFailClosed ? 0 : config.maxRequests,
+      success: current < config.maxRequests,
+      remaining: Math.max(0, config.maxRequests - current),
       resetAt,
     };
+  } catch (err) {
+    return redisErrorResult(key, config, resetAt, err);
   }
 }

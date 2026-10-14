@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { db } from '@/db';
 import { automationSettings, sellerProspects, uploadLinks } from '@/db/schema';
-import { eq, and, lte, or, isNull, notLike } from 'drizzle-orm';
+import { eq, and, lte, or, isNull, isNotNull, ne, notLike, notIlike, asc } from 'drizzle-orm';
 import { sendProspectFollowUpEmail } from '@/lib/email/notifications';
+import { SHADOW_EMAIL_DOMAIN, isSentinelEmail } from '@/lib/sellers/sentinel';
 import { logger } from '@/lib/logger';
 
 // Sequential email sends over a big backlog can exceed the default function
@@ -26,6 +27,15 @@ function isAuthorized(request: NextRequest): boolean {
   const provided = Buffer.from(authHeader);
   return provided.length === expected.length && timingSafeEqual(provided, expected);
 }
+
+// Only prospects we can actually email. Filtered in SQL, not in the loop: an
+// email-less prospect is never stamped, so skipping it in code would let a
+// backlog of them fill every batch and starve the ones we can reach.
+const hasReachableEmail = and(
+  isNotNull(sellerProspects.email),
+  ne(sellerProspects.email, ''),
+  notIlike(sellerProspects.email, `%@${SHADOW_EMAIL_DOMAIN}`),
+);
 
 async function handler(request: NextRequest) {
   if (!isAuthorized(request)) {
@@ -64,12 +74,14 @@ async function handler(request: NextRequest) {
         and(
           eq(sellerProspects.status, 'new'),
           lte(sellerProspects.createdAt, followUpCutoff),
+          hasReachableEmail,
         ),
       )
+      .orderBy(asc(sellerProspects.createdAt))
       .limit(MAX_PER_RUN);
 
     for (const prospect of newProspects) {
-      if (!prospect.email) continue;
+      if (!prospect.email || isSentinelEmail(prospect.email)) continue;
 
       try {
         await sendProspectFollowUpEmail({
@@ -120,8 +132,10 @@ async function handler(request: NextRequest) {
             isNull(sellerProspects.notes),
             notLike(sellerProspects.notes, `%${UPLOAD_FOLLOWUP_MARKER}%`),
           ),
+          hasReachableEmail,
         ),
       )
+      .orderBy(asc(uploadLinks.createdAt))
       .limit(MAX_PER_RUN);
 
     // Deduplicate by prospect ID (a prospect may have multiple upload links)
@@ -129,7 +143,7 @@ async function handler(request: NextRequest) {
 
     for (const row of uploadSentProspects) {
       const prospect = row.prospect;
-      if (!prospect.email || seen.has(prospect.id)) continue;
+      if (!prospect.email || isSentinelEmail(prospect.email) || seen.has(prospect.id)) continue;
       seen.add(prospect.id);
 
       try {

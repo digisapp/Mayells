@@ -3,6 +3,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { logger } from '@/lib/logger';
 import { stripHeifMetadata } from '@/lib/upload/strip-heic-location';
 
+// Kept importable from here for existing callers; lives apart so code that
+// only parses URLs doesn't load sharp.
+export { storagePathFromPublicUrl } from './storage-url';
+
 const BUCKET = 'lot-images';
 
 const FORMAT_MIME: Record<string, string> = {
@@ -141,13 +145,4 @@ function stripHeifForStorage(
       ? 'image/heif'
       : 'image/heic';
   return { buffer: bytes, contentType };
-}
-
-/** Extract the storage path from a lot-images public URL (null if not one). */
-export function storagePathFromPublicUrl(url: string): string | null {
-  const marker = `/storage/v1/object/public/${BUCKET}/`;
-  const idx = url.indexOf(marker);
-  if (idx === -1) return null;
-  const path = url.slice(idx + marker.length).split('?')[0];
-  return path ? decodeURIComponent(path) : null;
 }

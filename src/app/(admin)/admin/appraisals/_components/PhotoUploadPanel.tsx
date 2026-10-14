@@ -95,7 +95,7 @@ export function PhotoUploadPanel({ visitId, onComplete, ctaLabel = 'Upload & Sta
         const { file } = picked[i];
         try {
           // Straight to storage via a signed URL — a 12 MB phone photo would
-          // trip Vercel's request-body cap if it went through /api/upload.
+          // trip Vercel's request-body cap if it went through a Next route.
           const { url } = await uploadImageAsAdmin(file);
           urls.push(url);
         } catch (err) {

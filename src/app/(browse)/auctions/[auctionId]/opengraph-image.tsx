@@ -4,7 +4,9 @@ import { auctions } from '@/db/schema';
 import { eq, or } from 'drizzle-orm';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { loadOgImage } from '@/lib/seo/og-image';
-import { auctionWithVisibleLotCount } from '@/components/auctions/visible-lot-count';
+import { visibleLotCountSql } from '@/components/auctions/visible-lot-count';
+import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
+import { formatLongDate } from '@/lib/format/dates';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
@@ -13,11 +15,18 @@ export const contentType = 'image/png';
 async function getAuction(auctionId: string) {
   // Slug or UUID; only compare against the uuid column when the param looks
   // like one (a non-UUID cast throws in Postgres and would break the image).
-  // A DB hiccup degrades to the generic branded card rather than a 500.
+  // A DB hiccup degrades to the generic branded card rather than a 500, and
+  // so does a draft or cancelled sale (its title and cover are not public).
   try {
     // The same visible-lot count the sale page and its cards show.
     const [auction] = await db
-      .select(auctionWithVisibleLotCount)
+      .select({
+        status: auctions.status,
+        title: auctions.title,
+        coverImageUrl: auctions.coverImageUrl,
+        biddingStartsAt: auctions.biddingStartsAt,
+        visibleLotCount: visibleLotCountSql,
+      })
       .from(auctions)
       .where(
         UUID_RE.test(auctionId)
@@ -25,7 +34,7 @@ async function getAuction(auctionId: string) {
           : eq(auctions.slug, auctionId),
       )
       .limit(1);
-    return auction;
+    return auction && isPubliclyVisibleAuction(auction.status) ? auction : undefined;
   } catch {
     return undefined;
   }
@@ -36,9 +45,8 @@ export default async function OGImage({ params }: { params: Promise<{ auctionId:
   const auction = await getAuction(auctionId);
   const cover = await loadOgImage(auction?.coverImageUrl);
 
-  const dateText = auction?.biddingStartsAt
-    ? new Date(auction.biddingStartsAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-    : null;
+  // House timezone: the server runs in UTC, which puts an evening sale on the next day.
+  const dateText = auction?.biddingStartsAt ? formatLongDate(auction.biddingStartsAt) : null;
 
   return new ImageResponse(
     (

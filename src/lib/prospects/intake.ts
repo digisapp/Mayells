@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sanitizeImageForStorage } from '@/lib/images/sanitize';
 import { chatPhotoPath, unattachedChatPhotos } from '@/lib/upload/resubmission';
+import { expiryFrom, limitChanges, type UploadLinkLimitOptions } from './upload-link-limits';
 
 /** A repeat call or chat inside this window adds to the open prospect instead of starting another. */
 const DEDUPE_DAYS = 90;
@@ -129,11 +130,13 @@ export function uploadUrlForToken(token: string): string {
  * matters: the seller may already hold the first URL, and two live tokens
  * for one consignment is one more to expire later. A fresh lead moves to
  * `upload_sent`; one further along is never dragged back up the funnel.
+ *
+ * Limits the admin passes apply to a reused link too, updated in place so
+ * the URL the seller already has keeps working: an expiry counts from now
+ * (a resend renews it), and null clears a limit. Left out, a limit stays as
+ * it is.
  */
-export async function getOrCreateUploadLink(
-  prospectId: string,
-  options: { maxItems?: number | null; expiresInDays?: number | null } = {},
-) {
+export async function getOrCreateUploadLink(prospectId: string, options: UploadLinkLimitOptions = {}) {
   const now = new Date();
   const [existing] = await db
     .select()
@@ -149,19 +152,20 @@ export async function getOrCreateUploadLink(
     .limit(1);
 
   let link = existing;
-  if (!link) {
-    let expiresAt: Date | null = null;
-    if (options.expiresInDays) {
-      expiresAt = new Date(now);
-      expiresAt.setDate(expiresAt.getDate() + options.expiresInDays);
+  if (link) {
+    const changes = limitChanges(link, options, now);
+    if (changes) {
+      const [updated] = await db.update(uploadLinks).set(changes).where(eq(uploadLinks.id, link.id)).returning();
+      if (updated) link = updated;
     }
+  } else {
     [link] = await db
       .insert(uploadLinks)
       .values({
         prospectId,
         token: crypto.randomUUID(),
         maxItems: options.maxItems ?? null,
-        expiresAt,
+        expiresAt: expiryFrom(now, options.expiresInDays),
       })
       .returning();
   }

@@ -55,9 +55,18 @@ export async function generateInvoiceForWonLot(
 ) {
   const { auctionId, lotId, buyerId, hammerPrice } = params;
 
-  // Idempotency: if a live invoice already exists for this lot, return it
+  // Idempotency: a replay of this same settlement gets back the invoice it
+  // already made. Any other live invoice on the lot (another sale, a
+  // different winner, a gallery purchase) means the lot is already owed by
+  // someone else — never hand that bill to this buyer. Throwing rolls the
+  // lot's settlement back; the cron reports it and retries on later runs.
   const existing = await findLiveInvoiceForLot(executor, lotId);
-  if (existing) return existing;
+  if (existing) {
+    if (existing.auctionId === auctionId && existing.buyerId === buyerId) return existing;
+    throw new Error(
+      `Lot ${lotId} already has live invoice ${existing.invoiceNumber} for another sale or buyer — resolve that invoice before this sale can settle the lot`,
+    );
+  }
 
   // Get auction for buyer premium percentage
   const [auction] = await executor

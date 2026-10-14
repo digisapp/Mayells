@@ -2,16 +2,14 @@ import { db } from '@/db';
 import { users } from '@/db/schema';
 import { claimShadowUserByEmail } from '@/lib/sellers/shadow';
 
-export type SignupRole = 'buyer' | 'seller';
-
-/** Narrow untrusted auth metadata (user_metadata.role) to a signup role. */
-export function roleFromMetadata(value: unknown): SignupRole {
-  return value === 'seller' ? 'seller' : 'buyer';
-}
-
 /**
  * Ensure a profile row exists for an authenticated Supabase user, claiming any
  * shadow seller row that holds the same email.
+ *
+ * A new profile is always a buyer. user_metadata is self-written at signup
+ * (older sign-ups could pick 'seller'), so it never decides the role; real
+ * seller status only arrives by claiming a shadow row. An existing row is
+ * left exactly as it is.
  *
  * Only call this once the person has PROVEN they control the email address —
  * after the confirmation-link callback or a successful password sign-in.
@@ -23,15 +21,14 @@ export async function ensureUserProfile(params: {
   id: string;
   email: string;
   fullName?: string | null;
-  role?: SignupRole;
 }): Promise<void> {
-  const { id, email, fullName, role } = params;
+  const { id, email, fullName } = params;
   try {
     // onConflictDoNothing keeps this idempotent across logins and tolerates a
     // DB trigger that may already provision the profile from auth.users.
     await db
       .insert(users)
-      .values({ id, email, fullName: fullName ?? null, role: role ?? 'buyer' })
+      .values({ id, email, fullName: fullName ?? null, role: 'buyer' })
       .onConflictDoNothing({ target: users.id });
   } catch (insertError) {
     // A unique-email conflict means a shadow seller row (a prospect consignor
@@ -42,7 +39,7 @@ export async function ensureUserProfile(params: {
       authUserId: id,
       email,
       fullName,
-      role,
+      role: 'buyer',
     }).catch(() => false);
     if (!claimed) throw insertError;
   }

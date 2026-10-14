@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { stripImageMetadata, sanitizeImageForStorage, storagePathFromPublicUrl } from '../sanitize';
+import { stripImageMetadata, sanitizeImageForStorage } from '../sanitize';
 
 async function jpegWithExif(): Promise<Buffer> {
   return sharp({
@@ -79,30 +79,5 @@ describe('sanitizeImageForStorage', () => {
 
   it('rejects bytes it cannot read', async () => {
     expect(await sanitizeImageForStorage(Buffer.from('not an image'))).toBeNull();
-  });
-});
-
-describe('storagePathFromPublicUrl', () => {
-  it('extracts the path from a lot-images public URL', () => {
-    expect(
-      storagePathFromPublicUrl(
-        'https://abc.supabase.co/storage/v1/object/public/lot-images/uploads/p1/123-x.jpg',
-      ),
-    ).toBe('uploads/p1/123-x.jpg');
-  });
-
-  it('returns null for URLs outside the bucket', () => {
-    expect(storagePathFromPublicUrl('https://example.com/photo.jpg')).toBeNull();
-    expect(
-      storagePathFromPublicUrl('https://abc.supabase.co/storage/v1/object/public/other/x.jpg'),
-    ).toBeNull();
-  });
-
-  it('drops query strings and decodes the path', () => {
-    expect(
-      storagePathFromPublicUrl(
-        'https://abc.supabase.co/storage/v1/object/public/lot-images/a%20b.jpg?width=100',
-      ),
-    ).toBe('a b.jpg');
   });
 });

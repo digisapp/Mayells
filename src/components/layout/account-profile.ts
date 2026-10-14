@@ -56,7 +56,7 @@ export function loadProfile(): Promise<AccountProfile | null> {
       if (!res.ok) return UNKNOWN;
       const { user } = await res.json();
       return user
-        ? { email: user.email ?? '', fullName: user.fullName ?? null, isAdmin: user.isAdmin === true || user.role === 'admin' }
+        ? { email: user.email ?? '', fullName: user.fullName ?? null, isAdmin: user.isAdmin === true }
         : UNKNOWN;
     })
     .catch(() => UNKNOWN);

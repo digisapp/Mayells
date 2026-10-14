@@ -5,16 +5,21 @@ import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { resetPasswordSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
+import { isAdminProfile } from '@/lib/auth/admin';
+import { rejectCrossSiteAuthRequest } from '@/lib/auth/same-origin';
 
 /**
  * Set a new password for the currently authenticated user. Reached from the
  * recovery-link flow: the emailed link runs through /api/auth/callback, which
- * exchanges the one-time code for a session, so by the time the user submits
- * this form they are signed in. No extra token is needed — possession of the
- * session IS the proof they clicked the emailed link.
+ * trades its one-time code or token hash for a session, so by the time the
+ * user submits this form they are signed in. No extra token is needed —
+ * possession of the session IS the proof they clicked the emailed link.
  */
 export async function POST(req: NextRequest) {
   try {
+    const rejected = rejectCrossSiteAuthRequest(req);
+    if (rejected) return rejected;
+
     const body = await req.json();
     const parsed = resetPasswordSchema.safeParse(body);
     if (!parsed.success) {
@@ -39,17 +44,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Same role-aware redirect contract as /api/auth/login, so the client
-    // can send admins to /admin instead of the homepage.
+    // can send admins to /admin instead of the homepage (never a suspended one).
     let role = 'buyer';
     try {
       const [profile] = await db
-        .select({ role: users.role, isAdmin: users.isAdmin })
+        .select({ role: users.role, isAdmin: users.isAdmin, accountStatus: users.accountStatus })
         .from(users)
         .where(eq(users.id, user.id))
         .limit(1);
-      if (profile?.isAdmin) {
+      if (isAdminProfile(profile)) {
         role = 'admin';
-      } else if (profile?.role) {
+      } else if (profile?.role && profile.role !== 'admin') {
         role = profile.role;
       }
     } catch {

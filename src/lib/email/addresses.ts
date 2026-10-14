@@ -104,12 +104,45 @@ export function threadReplyAddress(threadId: string, inboundAddress: string = ge
   return `${inboundAddress.slice(0, at)}+${threadId.toLowerCase()}@${inboundAddress.slice(at + 1)}`;
 }
 
-/** Bare address (+ display name) from `"Name" <a@b>`, `Name <a@b>`, `<a@b>` or `a@b`. */
+/** `"John \"JJ\" Smith"` → `John "JJ" Smith`; an unquoted phrase is kept as written. */
+function unquoteDisplayName(raw: string): string | null {
+  const s = raw.trim();
+  const quoted = s.match(/^"((?:[^"\\]|\\.)*)"$/);
+  return (quoted ? quoted[1].replace(/\\(.)/g, '$1') : s).trim() || null;
+}
+
+/**
+ * Bare address (+ display name) from `"Name" <a@b>`, `Name <a@b>`, `<a@b>`,
+ * `a@b (Name)` or `a@b`. The address is the LAST `<…@…>` group, so a name
+ * holding quotes or brackets of its own (`Jane "JJ" Doe <a@b>`,
+ * `"Sales <EU>" <a@b>`) still yields it. When no form gives a valid address
+ * the input comes back trimmed and lowercased, for callers that only compare.
+ */
 export function parseEmailAddress(raw: string | null | undefined): { name: string | null; email: string } {
   const s = decodeEncodedWords((raw || '').trim());
-  const m = s.match(/^"?([^"<]*?)"?\s*<([^<>\s]+@[^<>\s]+)>$/);
-  if (m) return { name: m[1].trim() || null, email: m[2].trim().toLowerCase() };
-  return { name: null, email: s.replace(/^<|>$/g, '').trim().toLowerCase() };
+
+  // Anchored at the end (trailing comments allowed): an address followed by
+  // anything else is not this form, so `"x" <a@ours>, b@theirs` never reads as ours.
+  const angle = s.match(/<([^<>\s]+@[^<>\s]+)>\s*(?:\([^()]*\)\s*)*$/);
+  const angled = angle ? { name: unquoteDisplayName(s.slice(0, angle.index)), email: angle[1].trim().toLowerCase() } : null;
+  if (angled && isValidEmail(angled.email)) return angled;
+
+  // Old-style `a@b (Name)`: comments are not part of the address.
+  const comments: string[] = [];
+  const bare = s.replace(/\(([^()]*)\)/g, (_m, inner: string) => { comments.push(inner.trim()); return ''; }).trim().toLowerCase();
+  if (isValidEmail(bare)) return { name: comments.find(Boolean) || null, email: bare };
+
+  return angled ?? { name: null, email: s.replace(/^<|>$/g, '').trim().toLowerCase() };
+}
+
+/** The first candidate that holds a valid address (any form parseEmailAddress reads), or null. */
+export function firstValidAddress(candidates: ReadonlyArray<unknown>): string | null {
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const { email } = parseEmailAddress(candidate);
+    if (isValidEmail(email)) return email;
+  }
+  return null;
 }
 
 /**

@@ -8,10 +8,13 @@ import Link from 'next/link';
 import { AuctionCard } from '@/components/auctions/AuctionCard';
 import { auctionWithVisibleLotCount } from '@/components/auctions/visible-lot-count';
 import { Button } from '@/components/ui/button';
+import { PUBLIC_AUCTION_STATUSES } from '@/lib/auctions/visibility';
+import { salePhase } from '@/lib/auctions/bidding-window';
 
 export const metadata = {
   title: 'Auctions',
   description: 'Browse upcoming and current auctions at Mayells. Fine art, antiques, jewelry, watches, fashion, and collectibles.',
+  alternates: { canonical: '/auctions' },
   openGraph: {
     title: 'Auctions | Mayells',
     description: 'Browse upcoming, live, and past auctions for fine art, antiques, jewelry, and collectibles.',
@@ -31,17 +34,19 @@ export default async function AuctionsPage() {
     // Include 'completed' — settlement flips every finished auction to
     // 'completed', so omitting it made the entire past-sale archive vanish
     // within one cron tick of an auction ending.
-    .where(inArray(auctions.status, ['scheduled', 'preview', 'open', 'live', 'closing', 'closed', 'completed']))
+    .where(inArray(auctions.status, [...PUBLIC_AUCTION_STATUSES]))
     .orderBy(desc(auctions.biddingStartsAt))
     // Bound the archive: open/upcoming sales are always few, so the cap only
     // trims the oldest past sales once the archive grows beyond ~100 entries.
     .limit(100);
 
-  // 'closing' is still taking bids (staggered lot closes), so it belongs with
-  // the open sales, as on the home page.
-  const openAuctions = allAuctions.filter((a) => a.status === 'open' || a.status === 'live' || a.status === 'closing');
-  const upcomingAuctions = allAuctions.filter((a) => a.status === 'scheduled' || a.status === 'preview');
-  const pastAuctions = allAuctions.filter((a) => a.status === 'closed' || a.status === 'completed');
+  // A 'closed' sale whose staggered lot closes are still running is taking
+  // bids, so it sits with the open sales; 'closing' (ended early, every lot
+  // already closed) is past.
+  const phaseOf = (a: (typeof allAuctions)[number]) => salePhase(a.status, a.takingBids);
+  const openAuctions = allAuctions.filter((a) => phaseOf(a) === 'bidding');
+  const upcomingAuctions = allAuctions.filter((a) => phaseOf(a) === 'upcoming');
+  const pastAuctions = allAuctions.filter((a) => phaseOf(a) === 'past');
   // The first row of whichever section renders first is above the fold.
   const firstSection = openAuctions.length > 0 ? openAuctions : upcomingAuctions.length > 0 ? upcomingAuctions : pastAuctions;
 

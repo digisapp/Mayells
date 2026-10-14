@@ -275,6 +275,30 @@ export default function AdminInvoicesPage() {
     }
   }
 
+  /**
+   * Mark-paid answers with `warning` when the invoice is paid but the
+   * consignor payout couldn't be recorded; offer the (idempotent) retry.
+   */
+  function reportSettlement(inv: InvoiceRow, body: Record<string, unknown> | null, success: string) {
+    if (typeof body?.warning === 'string' && body.warning) {
+      toast.warning(body.warning, {
+        duration: 30_000,
+        action: { label: 'Retry', onClick: () => void retrySettlement(inv) },
+      });
+    } else {
+      toast.success(success);
+    }
+  }
+
+  async function retrySettlement(inv: InvoiceRow) {
+    try {
+      const body = await patchInvoice(inv.id, { status: 'paid' });
+      reportSettlement(inv, body, `${inv.invoiceNumber}: consignor payout recorded`);
+    } catch {
+      // patchInvoice has already shown the error.
+    }
+  }
+
   async function copyPayLink(inv: InvoiceRow) {
     const url = `${window.location.origin}/invoices/${inv.accessToken}`;
     try {
@@ -474,7 +498,7 @@ export default function AdminInvoicesPage() {
                       {invoice.amountMismatch && (
                         <Badge
                           className="bg-red-100 text-red-800"
-                          title="A successful payment was for a different amount than the invoice total — see notes"
+                          title="Payments don't match the invoice (a different amount, or more than one successful payment) — see notes"
                         >
                           Reconcile
                         </Badge>
@@ -573,8 +597,8 @@ export default function AdminInvoicesPage() {
         confirmLabel="Mark paid"
         onConfirm={async () => {
           if (!pending) return;
-          await patchInvoice(pending.invoice.id, { status: 'paid', method, reference: reference || undefined, paidAt: paidAt ? new Date(`${paidAt}T12:00:00`).toISOString() : undefined });
-          toast.success(`${pending.invoice.invoiceNumber} marked paid`);
+          const body = await patchInvoice(pending.invoice.id, { status: 'paid', method, reference: reference || undefined, paidAt: paidAt ? new Date(`${paidAt}T12:00:00`).toISOString() : undefined });
+          reportSettlement(pending.invoice, body, `${pending.invoice.invoiceNumber} marked paid`);
         }}
         description={pending && (
           <div className="space-y-3 text-sm">
@@ -614,6 +638,12 @@ export default function AdminInvoicesPage() {
         confirmLabel={pending?.invoice.status === 'overdue' ? 'Extend' : 'Save'}
         onConfirm={async () => {
           if (!pending) return;
+          // An empty date input would make `new Date(...)` invalid and throw a
+          // RangeError on toISOString — say so and keep the dialog open.
+          if (!dueDate) {
+            toast.error('Choose a new due date first');
+            throw new Error('No due date');
+          }
           const payload = pending.invoice.status === 'overdue'
             ? { status: 'pending', dueDate: new Date(`${dueDate}T23:59:59`).toISOString() }
             : { dueDate: new Date(`${dueDate}T23:59:59`).toISOString() };
@@ -675,6 +705,11 @@ export default function AdminInvoicesPage() {
           const body = await patchInvoice(pending.invoice.id, { status: 'refunded', reason: reason || undefined });
           if (body && (body.data as { status?: string } | undefined)?.status === 'refunded') {
             toast.success(`${pending.invoice.invoiceNumber} refunded — sale unwound`);
+            // The item had already shipped: the lot is held off sale, not relisted.
+            if ((body.unwind as { lot?: string } | undefined)?.lot === 'held') {
+              toast.warning(`${pending.invoice.lotTitle} was NOT relisted — its shipment had already left. It is held as unsold until the item is recovered (see invoice notes).`, { duration: 30_000 });
+            }
+            if (typeof body.warning === 'string' && body.warning) toast.warning(body.warning, { duration: 30_000 });
           }
         }}
         description={pending && (

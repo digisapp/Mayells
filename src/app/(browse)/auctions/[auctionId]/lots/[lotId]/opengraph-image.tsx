@@ -1,34 +1,56 @@
 import { ImageResponse } from 'next/og';
 import { db } from '@/db';
-import { lots } from '@/db/schema';
-import { eq, or } from 'drizzle-orm';
+import { lots, auctions, auctionLots } from '@/db/schema';
+import { and, eq, or } from 'drizzle-orm';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { loadOgImage } from '@/lib/seo/og-image';
 import { formatEstimate } from '@/lib/format/estimate';
+import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
 
 export const runtime = 'nodejs';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
-async function getLot(lotId: string) {
-  // Slug or UUID; only compare against the uuid column when the param looks
-  // like one (a non-UUID cast throws in Postgres and would break the image).
-  // A DB hiccup degrades to the generic branded card rather than a 500.
+/**
+ * The lot as placed in the sale the URL names, only when the public may see
+ * both (the same rule as the lot page). Anything else — an unpublished lot, a
+ * draft or cancelled sale, a lot not in that sale, a DB hiccup — gets the
+ * generic branded card rather than a 500 or a leaked title and photo.
+ */
+async function getLot(auctionId: string, lotId: string) {
   try {
-    const [lot] = await db
-      .select()
-      .from(lots)
-      .where(UUID_RE.test(lotId) ? or(eq(lots.id, lotId), eq(lots.slug, lotId)) : eq(lots.slug, lotId))
+    const [row] = await db
+      .select({
+        status: lots.status,
+        title: lots.title,
+        artist: lots.artist,
+        primaryImageUrl: lots.primaryImageUrl,
+        estimateLow: lots.estimateLow,
+        estimateHigh: lots.estimateHigh,
+        auctionStatus: auctions.status,
+      })
+      .from(auctionLots)
+      .innerJoin(lots, eq(lots.id, auctionLots.lotId))
+      .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
+      // Slug or UUID; only compare against the uuid column when the param
+      // looks like one (a non-UUID cast throws in Postgres).
+      .where(and(
+        UUID_RE.test(lotId) ? or(eq(lots.id, lotId), eq(lots.slug, lotId)) : eq(lots.slug, lotId),
+        UUID_RE.test(auctionId) ? or(eq(auctions.id, auctionId), eq(auctions.slug, auctionId)) : eq(auctions.slug, auctionId),
+      ))
       .limit(1);
-    return lot;
+    if (!row || !isPubliclyVisibleAuction(row.auctionStatus)) return undefined;
+    // The sale is public and holds the lot, so an `approved` lot is in its catalogue.
+    return isPubliclyVisibleLot(row.status, true) ? row : undefined;
   } catch {
     return undefined;
   }
 }
 
-export default async function OGImage({ params }: { params: Promise<{ lotId: string }> }) {
-  const { lotId } = await params;
-  const lot = await getLot(lotId);
+export default async function OGImage({ params }: { params: Promise<{ auctionId: string; lotId: string }> }) {
+  const { auctionId, lotId } = await params;
+  const lot = await getLot(auctionId, lotId);
   const cover = await loadOgImage(lot?.primaryImageUrl);
 
   // The site-wide estimate format, low- or high-only included.

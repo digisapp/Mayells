@@ -1,6 +1,6 @@
 import { db } from '@/db';
 import { invoices, payments, lots, users, shipments } from '@/db/schema';
-import { eq, and, inArray, isNull, isNotNull, lt, sql } from 'drizzle-orm';
+import { eq, and, inArray, isNull, isNotNull, lt, ne, sql } from 'drizzle-orm';
 import { processPaidInvoice } from '@/lib/payouts/service';
 import { unwindPaidInvoice, stampNote } from '@/lib/invoicing/unwind';
 import {
@@ -11,6 +11,7 @@ import {
 } from '@/lib/shipping/address';
 import Stripe from 'stripe';
 import { stripe } from '@/lib/stripe/config';
+import { strayPaymentAction } from '@/lib/stripe/reconcile';
 import { logger } from '@/lib/logger';
 import { ensurePaddleNumber } from '@/lib/bidding/verification';
 import { formatCurrencyWithCents } from '@/types';
@@ -415,8 +416,9 @@ async function handlePaymentIntentSucceeded(
     // (or a crash) between the two would otherwise be invisible forever:
     // every later redelivery lands here. Retry the refund — it is idempotent
     // on the intent, and Stripe answers `charge_already_refunded` if it did
-    // go through.
-    if (invoice.stripePaymentIntentId !== paymentIntent.id) {
+    // go through. A charge held for an admin (card on a hand-marked-paid
+    // invoice) stays held.
+    if (strayPaymentAction(invoice, paymentIntent.id) === 'refund') {
       await autoRefundStrayPayment(paymentIntent, invoiceId);
     }
     // Self-heal: if a prior delivery marked the invoice paid but crashed before
@@ -441,6 +443,12 @@ async function handlePaymentIntentSucceeded(
     return result;
   }
 
+  const action = strayPaymentAction(invoice, paymentIntent.id);
+  if (action === 'hold') {
+    await holdCardPaymentOnManuallyPaidInvoice(invoice, paymentIntent, chargeId);
+    return result;
+  }
+
   logger.error('STRAY PAYMENT: new successful charge on a non-payable invoice — auto-refunding', undefined, {
     invoiceId,
     invoiceStatus: invoice.status,
@@ -452,10 +460,52 @@ async function handlePaymentIntentSucceeded(
 
   // A cancelled/refunded invoice can't be paid, and a paid invoice was paid by
   // a different intent (double charge) — either way the buyer gets it back.
-  if (invoice.stripePaymentIntentId !== paymentIntent.id) {
+  if (action === 'refund') {
     await autoRefundStrayPayment(paymentIntent, invoiceId);
   }
   return result;
+}
+
+/**
+ * A card payment landed on an invoice an admin had already marked paid by
+ * hand (the card webhook was late, retried, or replayed). It is not a
+ * duplicate we may refund on our own: the manual record may be the mistake
+ * (the buyer really paid by card), or the buyer paid twice. Record the charge
+ * so it is never invisible, note the invoice, and leave the decision to an
+ * admin. The note is written only when the charge is first recorded, so a
+ * redelivery doesn't repeat it.
+ */
+async function holdCardPaymentOnManuallyPaidInvoice(
+  invoice: { id: string; buyerId: string },
+  paymentIntent: Stripe.PaymentIntent,
+  chargeId: string | null,
+) {
+  const [manual] = await db
+    .select({ method: payments.method, reference: payments.reference })
+    .from(payments)
+    .where(and(eq(payments.invoiceId, invoice.id), eq(payments.status, 'succeeded'), ne(payments.method, 'credit_card')))
+    .limit(1);
+
+  logger.error('CARD PAYMENT on an invoice already marked paid by hand — NOT auto-refunded, an admin must reconcile', undefined, {
+    invoiceId: invoice.id,
+    paymentIntentId: paymentIntent.id,
+    amount: paymentIntent.amount,
+    manualMethod: manual?.method ?? null,
+    manualReference: manual?.reference ?? null,
+  });
+
+  const recorded = await upsertSucceededPayment(paymentIntent, invoice.buyerId, chargeId);
+  if (recorded !== 'inserted') return;
+
+  const manualLabel = manual ? `${manual.method}${manual.reference ? ` ${manual.reference}` : ''}` : 'manual';
+  const note = stampNote(
+    'ATTENTION',
+    `card payment of ${formatCharged(paymentIntent)} (${paymentIntent.id}) arrived after this invoice was marked paid by hand (${manualLabel}). Not refunded automatically — decide which payment stands and return the other (a card refund is issued from the Stripe dashboard)`,
+  );
+  await db
+    .update(invoices)
+    .set({ notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note})`, updatedAt: new Date() })
+    .where(eq(invoices.id, invoice.id));
 }
 
 /**
@@ -478,8 +528,10 @@ async function settlePaidInvoice(
   await captureShippingAddressForInvoice(invoice, paymentIntent.id);
 
   // Seller-side settlement: record the payout, create the shipment, send the
-  // seller statement + buyer confirmation. Internally guarded — never throws.
-  await processPaidInvoice(invoice.id, opts);
+  // seller statement + buyer confirmation. Strict: if the payout couldn't be
+  // recorded it throws after the other steps ran, so the webhook answers 5xx
+  // and Stripe redelivers — the redelivery re-runs this idempotently.
+  await processPaidInvoice(invoice.id, { ...opts, strict: true });
 }
 
 /**
@@ -585,9 +637,43 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent): Promise
     });
   }
 
+  if (invoiceId) await releaseFailedCheckoutSession(invoiceId, paymentIntent.id);
+
   return invoiceId
     ? { status: 'success', relatedType: 'invoice', relatedId: invoiceId }
     : { status: 'success' };
+}
+
+/**
+ * A payment that fails AFTER its Checkout session completed (a delayed
+ * method such as ACH) leaves that session `complete` for good, and the pay
+ * route would answer "being processed" forever. Forget the stored session so
+ * the buyer's next click mints a fresh one. A card declined on Stripe's page
+ * leaves the session `open` (the buyer retries there), so that one is kept.
+ * Best-effort: the pay route also detects the dead session on its own.
+ */
+async function releaseFailedCheckoutSession(invoiceId: string, paymentIntentId: string) {
+  try {
+    const [invoice] = await db
+      .select({ sessionId: invoices.stripeCheckoutSessionId })
+      .from(invoices)
+      .where(and(eq(invoices.id, invoiceId), inArray(invoices.status, ['pending', 'overdue'])))
+      .limit(1);
+    if (!invoice?.sessionId) return;
+    const session = await stripe.checkout.sessions.retrieve(invoice.sessionId);
+    const sessionIntent = typeof session.payment_intent === 'string' ? session.payment_intent : session.payment_intent?.id;
+    if (session.status === 'open' || sessionIntent !== paymentIntentId) return;
+    await db
+      .update(invoices)
+      .set({ stripeCheckoutSessionId: null, updatedAt: new Date() })
+      .where(and(eq(invoices.id, invoiceId), eq(invoices.stripeCheckoutSessionId, invoice.sessionId)));
+  } catch (err) {
+    logger.warn('Could not release the checkout session of a failed payment', {
+      invoiceId,
+      paymentIntentId,
+      err: String(err),
+    });
+  }
 }
 
 async function handleChargeRefunded(charge: Stripe.Charge): Promise<HandlerResult> {

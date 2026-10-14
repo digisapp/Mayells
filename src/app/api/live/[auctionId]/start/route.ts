@@ -7,6 +7,8 @@ import { eq, sql } from 'drizzle-orm';
 import { createAuctionRoom } from '@/lib/livekit/config';
 import { openAuctionLots } from '@/lib/bidding/lifecycle';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
+import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { logger } from '@/lib/logger';
 
 export async function POST(
@@ -15,6 +17,9 @@ export async function POST(
 ) {
   try {
     const { auctionId } = await params;
+    if (!UUID_RE.test(auctionId)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -42,6 +47,15 @@ export async function POST(
     if (auction.type !== 'live') {
       return NextResponse.json(
         { error: 'This is a timed sale; it opens on its schedule or via Open bidding now' },
+        { status: 409 },
+      );
+    }
+
+    // A LiveAuctioneers sale is run (and its room hosted) there. Refuse before
+    // a LiveKit room is created or the sale flips to 'live'.
+    if (!isOnSiteBiddingSale(auction)) {
+      return NextResponse.json(
+        { error: 'This sale is bid on LiveAuctioneers; it has no live session on mayells.com.' },
         { status: 409 },
       );
     }

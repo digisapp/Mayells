@@ -3,7 +3,8 @@ import { getClientIp } from '@/lib/request-ip';
 import { createClient } from '@/lib/supabase/server';
 import { forgotPasswordSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
-import { rateLimit } from '@/lib/rate-limit';
+import { allowAuthEmail, AUTH_EMAIL_RETRY_AFTER } from '@/lib/auth/attempt-limits';
+import { rejectCrossSiteAuthRequest } from '@/lib/auth/same-origin';
 
 // Answers the same whether or not the address has an unconfirmed account,
 // so this can't be used to find out which emails are registered.
@@ -18,6 +19,9 @@ const GENERIC_OK = {
  */
 export async function POST(req: NextRequest) {
   try {
+    const rejected = rejectCrossSiteAuthRequest(req);
+    if (rejected) return rejected;
+
     const ip = getClientIp(req);
 
     // Same shape as the reset request: just an email.
@@ -27,15 +31,12 @@ export async function POST(req: NextRequest) {
     }
     const email = parsed.data.email.toLowerCase();
 
-    // Every call sends a real email: tight limits, closed if Redis is down.
-    const [{ success: ipOk }, { success: emailOk }] = await Promise.all([
-      rateLimit(`auth:resend:ip:${ip}`, { maxRequests: 10, windowSeconds: 3600, failClosed: true }),
-      rateLimit(`auth:resend:email:${email}`, { maxRequests: 3, windowSeconds: 3600, failClosed: true }),
-    ]);
-    if (!ipOk || !emailOk) {
+    // Every call sends a real email: tight limits, closed if Redis is down,
+    // keyed so a stranger can't use up the owner's allowance.
+    if (!(await allowAuthEmail('resend', ip, email))) {
       return NextResponse.json(
         { error: 'Too many requests. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': '3600' } },
+        { status: 429, headers: { 'Retry-After': AUTH_EMAIL_RETRY_AFTER } },
       );
     }
 

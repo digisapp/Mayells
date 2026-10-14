@@ -162,7 +162,11 @@ export async function POST(req: NextRequest) {
   }
 
   // A conversation's first message: the admin Analytics page counts chats.
-  if (messages.filter((m) => (m as { role?: unknown }).role === 'user').length === 1) {
+  // Only a fresh send of it: Retry and regenerate resend that same message
+  // (trigger 'regenerate-message'), and would count the chat again.
+  const roles = messages.map((m) => (m as { role?: unknown }).role);
+  const freshSend = (body?.trigger === undefined || body.trigger === 'submit-message') && roles.at(-1) === 'user';
+  if (freshSend && roles.filter((role) => role === 'user').length === 1) {
     after(() => recordSiteEvent(req, { type: 'chat', path: null }).catch((err) => logger.error('Chat event insert failed', err)));
   }
 

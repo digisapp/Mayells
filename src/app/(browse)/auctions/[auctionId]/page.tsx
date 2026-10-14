@@ -10,6 +10,8 @@ import { auctions, auctionLots, lots } from '@/db/schema';
 import type { Lot } from '@/db/schema/lots';
 import { eq, asc, or, and, inArray } from 'drizzle-orm';
 import { PUBLIC_CATALOGUE_LOT_STATUSES, publicLotColumns } from '@/lib/lots/visibility';
+import { isPubliclyVisibleAuction } from '@/lib/auctions/visibility';
+import { lastLotCloseSql, salePhase } from '@/lib/auctions/bidding-window';
 import { auctionWithVisibleLotCount } from '@/components/auctions/visible-lot-count';
 import { Badge } from '@/components/ui/badge';
 import { LotGrid } from '@/components/lots/LotGrid';
@@ -27,28 +29,35 @@ const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Reader-facing names for the sale status (the raw enum read "scheduled").
+// Every public status; a 'closed' sale still taking bids reads "Lots Closing".
 const STATUS_LABELS: Record<string, string> = {
   scheduled: 'Upcoming',
   preview: 'Preview',
   open: 'Bidding Open',
   live: 'Live Now',
-  closing: 'Closing',
+  // Ended early: every lot is already closed, settlement is pending.
+  closing: 'Closed',
   closed: 'Closed',
   completed: 'Closed',
 };
 
-// Sale states before bidding opens, and after it has finished.
-const NOT_YET_OPEN = ['draft', 'scheduled', 'preview'];
-const FINISHED = ['closed', 'completed', 'cancelled'];
+// No sale is rendered at build time; each is rendered on its first request
+// and then cached (ISR) — an empty list is what enables that here.
+export async function generateStaticParams() {
+  return [];
+}
 
 // cache(): generateMetadata and the page body share one lookup per request.
 // Single query instead of a slug-then-id serial fallback (the id comparison is
 // only attempted for UUID-shaped params — a non-UUID string would make the
 // uuid-column cast throw). visibleLotCount is the grid's own filter, so the
 // meta description, JSON-LD and the /auctions cards all quote the same number.
+// Draft and cancelled sales are not public: they resolve to nothing, so the
+// page 404s and the metadata stays generic (admins preview in the admin UI;
+// this page is ISR, so it never reads the session).
 const getAuction = cache(async (auctionId: string) => {
   const [auction] = await db
-    .select(auctionWithVisibleLotCount)
+    .select({ ...auctionWithVisibleLotCount, lastLotCloseAt: lastLotCloseSql })
     .from(auctions)
     .where(
       UUID_RE.test(auctionId)
@@ -56,7 +65,7 @@ const getAuction = cache(async (auctionId: string) => {
         : eq(auctions.slug, auctionId),
     )
     .limit(1);
-  return auction;
+  return auction && isPubliclyVisibleAuction(auction.status) ? auction : undefined;
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ auctionId: string }> }): Promise<Metadata> {
@@ -64,7 +73,8 @@ export async function generateMetadata({ params }: { params: Promise<{ auctionId
   const auction = await getAuction(auctionId);
   if (!auction) return {};
 
-  const title = `${auction.title} | Mayells`;
+  // The root template adds " | Mayells".
+  const title = auction.title;
   const count = auction.visibleLotCount;
   const description = auction.description?.slice(0, 160)
     || (count > 0
@@ -140,14 +150,19 @@ export default async function AuctionDetailPage({
     slug: auction.slug,
     type: auction.type,
     status: auction.status,
+    takingBids: auction.takingBids,
     biddingStartsAt: auction.biddingStartsAt ? new Date(auction.biddingStartsAt) : null,
     biddingEndsAt: auction.biddingEndsAt ? new Date(auction.biddingEndsAt) : null,
     coverImageUrl: auction.coverImageUrl,
     lotCount: visibleLotCount,
   });
 
-  const notYetOpen = NOT_YET_OPEN.includes(auction.status);
-  const finished = FINISHED.includes(auction.status);
+  // The cron marks a sale 'closed' at biddingEndsAt while its staggered lot
+  // closes run on (and still take bids); that sale is still open here.
+  const phase = salePhase(auction.status, auction.takingBids);
+  const notYetOpen = phase === 'upcoming';
+  const finished = phase === 'past';
+  const lotsClosing = auction.status === 'closed' && phase === 'bidding';
   const venue = biddingVenue(auction);
   const endedAt = auction.actualEndedAt ?? auction.biddingEndsAt;
 
@@ -167,8 +182,8 @@ export default async function AuctionDetailPage({
       {/* Header */}
       <div className="mt-6 sm:mt-8 mb-8 sm:mb-10">
         <div className="flex items-center gap-3 mb-4">
-          <Badge variant={auction.status === 'open' || auction.status === 'live' ? 'default' : 'secondary'}>
-            {STATUS_LABELS[auction.status] ?? auction.status}
+          <Badge variant={phase === 'bidding' ? 'default' : 'secondary'}>
+            {lotsClosing ? 'Lots Closing' : (STATUS_LABELS[auction.status] ?? auction.status)}
           </Badge>
           {auction.saleNumber && (
             <span className="text-sm text-muted-foreground">Sale {auction.saleNumber}</span>
@@ -199,7 +214,26 @@ export default async function AuctionDetailPage({
               <dd className="text-foreground">{formatSaleMoment(auction.biddingStartsAt)}</dd>
             </div>
           )}
-          {auction.biddingEndsAt && !finished && (
+          {/* Past the sale's end, lots are still closing one after another:
+              count down to the last of them instead. */}
+          {lotsClosing && auction.lastLotCloseAt && (
+            <div className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4" aria-hidden />
+              <dt>Last lot closes</dt>
+              <dd className="text-foreground">
+                {formatSaleMoment(auction.lastLotCloseAt)}{' '}
+                <AuctionCountdown
+                  endsAt={new Date(auction.lastLotCloseAt)}
+                  variant="compact"
+                  showIcon={false}
+                  prefix="(in "
+                  suffix=")"
+                  expiredLabel="(closing now)"
+                />
+              </dd>
+            </div>
+          )}
+          {auction.biddingEndsAt && !finished && !lotsClosing && (
             <div className="flex items-center gap-1.5">
               <Clock className="h-4 w-4" aria-hidden />
               <dt>Closes</dt>

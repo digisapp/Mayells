@@ -24,7 +24,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 // cache(): generateMetadata and the page body share one lookup per request;
 // single OR-query instead of a serial slug→id fallback (id compare only for
-// UUID-shaped params so the uuid cast can't throw).
+// UUID-shaped params so the uuid cast can't throw). Resolves only a lot the
+// public may see here, so the 404 and the metadata can't disagree.
 const getLot = cache(async (lotId: string) => {
   const [lot] = await db
     .select()
@@ -35,7 +36,12 @@ const getLot = cache(async (lotId: string) => {
         : eq(lots.slug, lotId),
     )
     .limit(1);
-  return lot;
+  // Gallery detail serves both gallery fixed-price lots and private-sale lots
+  // (which render an inquiry panel) — LotCard links both here.
+  if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private')) return undefined;
+  // An `approved` lot is only visible while catalogued in a public sale.
+  const inPublicAuction = lot.status === 'approved' ? await isLotInPublicAuction(lot.id) : false;
+  return isPubliclyVisibleLot(lot.status, inPublicAuction) ? lot : undefined;
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ lotId: string }> }): Promise<Metadata> {
@@ -44,7 +50,8 @@ export async function generateMetadata({ params }: { params: Promise<{ lotId: st
   if (!lot) return {};
 
   const price = lot.buyNowPrice ? formatCurrency(lot.buyNowPrice) : undefined;
-  const title = `${lot.title}${price ? ` — ${price}` : ''} | Mayells Gallery`;
+  // The root template adds " | Mayells".
+  const title = `${lot.title}${price ? ` — ${price}` : ''}`;
   const description = lot.description?.slice(0, 160) || `${lot.title} available at Mayells Gallery.`;
 
   const canonicalUrl = `${BASE_URL}/gallery/${lot.slug || lot.id}`;
@@ -77,12 +84,7 @@ export default async function GalleryDetailPage({
   const { lotId } = await params;
 
   const lot = await getLot(lotId);
-  // Gallery detail serves both gallery fixed-price lots and private-sale lots
-  // (which render an "Inquire for Price" panel) — LotCard links both here.
-  if (!lot || (lot.saleType !== 'gallery' && lot.saleType !== 'private')) notFound();
-  // An `approved` lot is only visible while catalogued in a public sale.
-  const inPublicAuction = lot.status === 'approved' ? await isLotInPublicAuction(lot.id) : false;
-  if (!isPubliclyVisibleLot(lot.status, inPublicAuction)) notFound();
+  if (!lot) notFound();
 
   void track('gallery_item_viewed', { lotId: lot.id, status: lot.status });
 
@@ -154,10 +156,12 @@ export default async function GalleryDetailPage({
             under the title so the purchase CTA never requires scrolling past
             the full catalog entry */}
         <div className="lg:row-span-2">
-          {lot.status === 'for_sale' && lot.buyNowPrice ? (
+          {/* A private sale may be offered without a published price: the
+              same panel, as a price inquiry (the card reads "Inquire for Price"). */}
+          {lot.status === 'for_sale' && (lot.buyNowPrice || lot.saleType === 'private') ? (
             <BuyNowPanel
               title={lot.title}
-              buyNowPrice={lot.buyNowPrice}
+              buyNowPrice={lot.buyNowPrice || null}
               estimateLow={lot.estimateLow}
               estimateHigh={lot.estimateHigh}
             />

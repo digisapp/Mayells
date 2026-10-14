@@ -38,7 +38,7 @@ interface PayoutRow {
   };
   seller: { id: string; fullName: string | null; email: string };
   lot: { id: string; title: string };
-  invoice: { id: string; invoiceNumber: string; status: string };
+  invoice: { id: string; invoiceNumber: string; status: string; disputedAt: string | null };
   auction: { id: string; title: string } | null;
 }
 
@@ -136,6 +136,8 @@ export default function AdminPayoutsPage() {
   const [reference, setReference] = useState('');
   const [paidAt, setPaidAt] = useState(() => todayInHouseTz());
   const [notes, setNotes] = useState('');
+  // Paying a consignor while the buyer's chargeback is open needs an explicit tick.
+  const [overrideDispute, setOverrideDispute] = useState(false);
 
   const buildParams = useCallback((page: number, f: Filters) => {
     const params = new URLSearchParams({ page: String(page) });
@@ -218,6 +220,7 @@ export default function AdminPayoutsPage() {
     setReference('');
     setPaidAt(todayInHouseTz());
     setNotes('');
+    setOverrideDispute(false);
     setPending(action);
   }
 
@@ -241,6 +244,7 @@ export default function AdminPayoutsPage() {
         reference: reference || undefined,
         notes: notes || undefined,
         paidAt: paidAt ? new Date(`${paidAt}T12:00:00`).toISOString() : undefined,
+        overrideDispute: row.invoice.disputedAt ? overrideDispute : undefined,
       }),
     });
     const body = await readBody(res);
@@ -410,6 +414,8 @@ export default function AdminPayoutsPage() {
               {groups.map(({ seller, rows: sellerRows }) => {
                 const pendingRows = sellerRows.filter((r) => r.payout.status === 'pending' && r.invoice.status === 'paid');
                 const pendingNet = pendingRows.reduce((sum, r) => sum + r.payout.netAmount, 0);
+                // "Mark all paid" never sweeps up a payout whose buyer has an open dispute.
+                const bulkRows = pendingRows.filter((r) => !r.invoice.disputedAt);
                 const paidNet = sellerRows.filter((r) => r.payout.status === 'paid').reduce((sum, r) => sum + r.payout.netAmount, 0);
                 return [
                   <tr key={`group-${seller.id}`} className="bg-muted/10 border-b border-border/40">
@@ -424,9 +430,9 @@ export default function AdminPayoutsPage() {
                       {paidNet > 0 && <div className="text-muted-foreground tabular-nums">{formatCurrencyWithCents(paidNet)} paid</div>}
                     </td>
                     <td colSpan={2} className="px-4 py-2 text-right">
-                      {pendingRows.length > 1 && (
-                        <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => openAction({ kind: 'bulk', seller, rows: pendingRows })}>
-                          Mark all {pendingRows.length} paid
+                      {bulkRows.length > 1 && (
+                        <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => openAction({ kind: 'bulk', seller, rows: bulkRows })}>
+                          Mark all {bulkRows.length} paid
                         </Button>
                       )}
                     </td>
@@ -434,9 +440,19 @@ export default function AdminPayoutsPage() {
                   ...sellerRows.map(({ payout, lot, invoice, auction }) => (
                     <tr key={payout.id} className="border-b border-border/30 hover:bg-muted/10">
                       <td className="px-4 py-3">
-                        <Badge className={statusBadge(PAYOUT_STATUS, payout.status).className}>
-                          {statusBadge(PAYOUT_STATUS, payout.status).label}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge className={statusBadge(PAYOUT_STATUS, payout.status).className}>
+                            {statusBadge(PAYOUT_STATUS, payout.status).label}
+                          </Badge>
+                          {invoice.disputedAt && (
+                            <Badge
+                              className="bg-red-100 text-red-800"
+                              title={`Buyer chargeback opened ${formatShortDate(invoice.disputedAt)} — wait for the outcome before paying`}
+                            >
+                              Disputed
+                            </Badge>
+                          )}
+                        </div>
                         {payout.status === 'pending' && invoice.status !== 'paid' && (
                           <div className="text-[11px] text-red-600 mt-1">invoice {invoice.status}</div>
                         )}
@@ -523,6 +539,18 @@ export default function AdminPayoutsPage() {
               <strong>{sellerLabel(pending.row.seller)}</strong> for <em>{pending.row.lot.title}</em>.
               The consignor receives a &ldquo;payment sent&rdquo; email.
             </p>
+            {pending.row.invoice.disputedAt && (
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-red-800 space-y-2">
+                <p>
+                  The buyer opened a chargeback on this sale on {formatShortDate(pending.row.invoice.disputedAt)}. If the
+                  bank rules for the buyer, the sale is unwound and this money must be clawed back from the consignor.
+                </p>
+                <label className="flex items-center gap-2 text-xs font-medium">
+                  <input type="checkbox" checked={overrideDispute} onChange={(e) => setOverrideDispute(e.target.checked)} />
+                  Pay the consignor anyway
+                </label>
+              </div>
+            )}
             {dialogFields}
           </div>
         )}

@@ -3,7 +3,8 @@ import { getClientIp } from '@/lib/request-ip';
 import { createClient } from '@/lib/supabase/server';
 import { forgotPasswordSchema } from '@/lib/validation/schemas';
 import { logger } from '@/lib/logger';
-import { rateLimit } from '@/lib/rate-limit';
+import { allowAuthEmail, AUTH_EMAIL_RETRY_AFTER } from '@/lib/auth/attempt-limits';
+import { rejectCrossSiteAuthRequest } from '@/lib/auth/same-origin';
 
 // Reset links must point at OUR canonical origin, never the request's Host
 // header — deriving it from the request enables password-reset poisoning
@@ -19,6 +20,9 @@ const GENERIC_OK = {
 
 export async function POST(req: NextRequest) {
   try {
+    const rejected = rejectCrossSiteAuthRequest(req);
+    if (rejected) return rejected;
+
     const ip = getClientIp(req);
 
     const body = await req.json();
@@ -32,21 +36,19 @@ export async function POST(req: NextRequest) {
     const email = parsed.data.email.toLowerCase();
 
     // Tighter than login: each request sends a real email, so this is both a
-    // spam vector and metered Resend spend. Fail closed on Redis outage.
-    const [{ success: ipOk }, { success: emailOk }] = await Promise.all([
-      rateLimit(`auth:forgot:ip:${ip}`, { maxRequests: 10, windowSeconds: 3600, failClosed: true }),
-      rateLimit(`auth:forgot:email:${email}`, { maxRequests: 3, windowSeconds: 3600, failClosed: true }),
-    ]);
-    if (!ipOk || !emailOk) {
+    // spam vector and metered Resend spend. Keyed so a stranger can't use up
+    // the owner's allowance (see attempt-limits.ts). Fail closed on Redis outage.
+    if (!(await allowAuthEmail('forgot', ip, email))) {
       return NextResponse.json(
         { error: 'Too many reset requests. Please try again later.' },
-        { status: 429, headers: { 'Retry-After': '3600' } },
+        { status: 429, headers: { 'Retry-After': AUTH_EMAIL_RETRY_AFTER } },
       );
     }
 
     const supabase = await createClient();
-    // Recovery link → Supabase verifies → /api/auth/callback exchanges the
-    // code for a session → lands on /reset-password with the user signed in.
+    // Recovery link → /api/auth/callback verifies it (token_hash template) or
+    // exchanges the code (Supabase's default link, which goes via redirectTo)
+    // → lands on /reset-password with the user signed in.
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${BASE_URL}/api/auth/callback?next=/reset-password`,
     });

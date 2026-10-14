@@ -8,7 +8,7 @@ vi.mock('../logger', () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
 }));
 
-import { rateLimit } from '../rate-limit';
+import { peekRateLimit, rateLimit } from '../rate-limit';
 import { redis } from '../redis';
 
 const mockedEval = vi.mocked(redis.eval);
@@ -50,5 +50,36 @@ describe('rateLimit', () => {
     const res = await rateLimit('k', { maxRequests: 5, windowSeconds: 60, failClosed: true });
     expect(res.success).toBe(false);
     expect(res.remaining).toBe(0);
+  });
+});
+
+describe('peekRateLimit', () => {
+  beforeEach(() => {
+    mockedEval.mockReset();
+  });
+
+  it('reads the same window key rateLimit counts in, without incrementing', async () => {
+    mockedEval.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+    await rateLimit('fail:a@b.com', { maxRequests: 5, windowSeconds: 900 });
+    await peekRateLimit('fail:a@b.com', { maxRequests: 5, windowSeconds: 900 });
+    const [[countScript, countKeys], [peekScript, peekKeys]] = mockedEval.mock.calls;
+    expect(peekKeys).toEqual(countKeys);
+    expect(String(countScript)).toContain('INCRBY');
+    expect(String(peekScript)).toContain('GET');
+    expect(String(peekScript)).not.toContain('INCR');
+  });
+
+  it('allows while fewer than maxRequests are on the counter', async () => {
+    mockedEval.mockResolvedValueOnce(4);
+    expect((await peekRateLimit('k', { maxRequests: 5, windowSeconds: 60 })).success).toBe(true);
+    mockedEval.mockResolvedValueOnce(5);
+    expect((await peekRateLimit('k', { maxRequests: 5, windowSeconds: 60 })).success).toBe(false);
+  });
+
+  it('keeps the fail-open / fail-closed policy', async () => {
+    mockedEval.mockRejectedValueOnce(new Error('ECONNRESET'));
+    expect((await peekRateLimit('k', { maxRequests: 5, windowSeconds: 60 })).success).toBe(true);
+    mockedEval.mockRejectedValueOnce(new Error('ECONNRESET'));
+    expect((await peekRateLimit('k', { maxRequests: 5, windowSeconds: 60, failClosed: true })).success).toBe(false);
   });
 });

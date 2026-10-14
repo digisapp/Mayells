@@ -18,6 +18,7 @@ import {
   type EmailDetail,
   type EmailRow,
   type FolderCounts,
+  type ForwardNote,
   type InboxFolder,
   type InboxStatus,
   type OutgoingAttachment,
@@ -51,6 +52,8 @@ export interface PendingDelete {
   threadIds: string[];
   /** How many messages go, for the confirmation copy. */
   messages: number;
+  /** Asked from the Spam folder: only the spam messages of those conversations go. */
+  spamOnly: boolean;
 }
 
 const SEARCH_DEBOUNCE_MS = 300;
@@ -125,6 +128,8 @@ export function useAdminInbox() {
   // ── Detail (one conversation) ──
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [thread, setThread] = useState<EmailRow[]>([]);
+  /** Where messages of the open conversation were forwarded (each forward is its own conversation). */
+  const [threadForwards, setThreadForwards] = useState<ForwardNote[]>([]);
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadError, setThreadError] = useState<string | null>(null);
   const [details, setDetails] = useState<Record<string, EmailDetail>>({});
@@ -158,11 +163,15 @@ export function useAdminInbox() {
   }, [search]);
 
   // Only the newest list request may land: switching folders quickly must
-  // not let a slower, older response overwrite the current view.
+  // not let a slower, older response overwrite the current view. The
+  // spinner belongs to the newest non-silent request, so a silent poll that
+  // overtakes it cannot leave it spinning.
   const listRequestRef = useRef(0);
+  const loadingRequestRef = useRef(0);
   const fetchEmails = useCallback(async (opts: { silent?: boolean } = {}) => {
     const requestId = ++listRequestRef.current;
     if (!opts.silent) {
+      loadingRequestRef.current = requestId;
       setLoading(true);
       setError(null);
     }
@@ -182,7 +191,7 @@ export function useAdminInbox() {
       if (requestId !== listRequestRef.current) return;
       if (!opts.silent) setError(err instanceof Error ? err.message : 'Failed to load emails');
     } finally {
-      if (requestId === listRequestRef.current && !opts.silent) setLoading(false);
+      if (!opts.silent && requestId === loadingRequestRef.current) setLoading(false);
     }
   }, [folder, page, debouncedSearch, category]);
 
@@ -256,10 +265,13 @@ export function useAdminInbox() {
     setThread((prev) => prev.map((e) => (set.has(e.id) ? { ...e, ...patch } : e)));
   }, []);
 
-  /** Patch (or drop) every list row and thread message in the given conversations. */
-  const applyLocalByThread = useCallback((keys: string[], patch: Partial<EmailRow>, removeFromList = false) => {
+  /**
+   * Patch (or drop) every list row and thread message in the given
+   * conversations — only their spam messages when `spamOnly`.
+   */
+  const applyLocalByThread = useCallback((keys: string[], patch: Partial<EmailRow>, removeFromList = false, spamOnly = false) => {
     const set = new Set(keys);
-    const hit = (e: EmailRow) => set.has(threadKeyOf(e));
+    const hit = (e: EmailRow) => set.has(threadKeyOf(e)) && (!spamOnly || e.isSpam);
     setEmails((prev) => removeFromList ? prev.filter((e) => !hit(e)) : prev.map((e) => (hit(e) ? { ...e, ...patch } : e)));
     setThread((prev) => prev.map((e) => (hit(e) ? { ...e, ...patch } : e)));
   }, []);
@@ -356,6 +368,7 @@ export function useAdminInbox() {
       if (latestThreadRef.current !== key) return;
       const rows: EmailRow[] = d.data ?? [];
       setThread(rows);
+      setThreadForwards(Array.isArray(d.forwards) ? d.forwards : []);
       // A deep link may name a root that was since deleted and re-rooted:
       // land on the newest message rather than nothing.
       if (!rows.some((r) => r.id === email.id)) setSelectedId(rows.length > 0 ? rows[rows.length - 1].id : null);
@@ -383,6 +396,7 @@ export function useAdminInbox() {
     latestThreadRef.current = null;
     setSelectedId(null);
     setThread([]);
+    setThreadForwards([]);
     setThreadError(null);
     if (searchParams.get('thread')) router.replace('/admin/emails', { scroll: false });
   }, [router, searchParams]);
@@ -452,15 +466,23 @@ export function useAdminInbox() {
     }
   }, [emails, thread, folder, selectedKey, applyLocalByThread, bumpCounts, closeDetail, fetchEmails]);
 
-  /** Archive (or restore) whole conversations, as the list shows them. */
+  /**
+   * Archive (or restore) whole conversations, as the list shows them. In the
+   * Spam folder only their spam messages: a customer's out-of-office can be
+   * all that put a real conversation there.
+   */
   const setArchivedThreads = useCallback(async (keys: string[], archived: boolean) => {
     if (keys.length === 0) return false;
+    const spamOnly = folder === 'spam';
     try {
-      const res = await fetch('/api/admin/emails', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ threadIds: keys, archived }) });
+      const res = await fetch('/api/admin/emails', {
+        method: 'PATCH', headers: JSON_HEADERS,
+        body: JSON.stringify({ threadIds: keys, archived, ...(spamOnly && { folder }) }),
+      });
       if (!res.ok) throw new Error(await readError(res, 'Failed to update emails'));
       const now = new Date().toISOString();
       const leavesFolder = (folder === 'archived') !== archived;
-      applyLocalByThread(keys, { archivedAt: archived ? now : null }, leavesFolder);
+      applyLocalByThread(keys, { archivedAt: archived ? now : null }, leavesFolder, spamOnly);
       bumpCounts({ archived: archived ? keys.length : -keys.length });
       if (leavesFolder && selectedKey && keys.includes(selectedKey)) closeDetail();
       const n = keys.length;
@@ -480,41 +502,56 @@ export function useAdminInbox() {
 
   // Deletes always confirm first (the page renders the dialog).
   const requestDelete = useCallback((ids: string[]) => {
-    if (ids.length) setPendingDelete({ ids, threadIds: [], messages: ids.length });
+    if (ids.length) setPendingDelete({ ids, threadIds: [], messages: ids.length, spamOnly: false });
   }, []);
-  /** Delete whole conversations (every message in each). */
+  /** Delete whole conversations (every message in each; in Spam, every spam message in each). */
   const requestDeleteThreads = useCallback((rows: EmailRow[]) => {
     if (rows.length === 0) return;
-    const keys = Array.from(new Set(rows.map(threadKeyOf)));
-    const messages = rows.reduce((n, r) => n + Math.max(1, r.threadCount), 0);
-    setPendingDelete({ ids: [], threadIds: keys, messages });
-  }, []);
+    const spamOnly = folder === 'spam';
+    // Every row of a conversation carries that conversation's totals (the
+    // thread view passes all of them), so count each conversation once.
+    const perKey = new Map<string, number>();
+    for (const r of rows) {
+      const n = Math.max(1, spamOnly ? r.threadSpam : r.threadCount);
+      perKey.set(threadKeyOf(r), Math.max(perKey.get(threadKeyOf(r)) ?? 0, n));
+    }
+    const messages = Array.from(perKey.values()).reduce((sum, n) => sum + n, 0);
+    setPendingDelete({ ids: [], threadIds: Array.from(perKey.keys()), messages, spamOnly });
+  }, [folder]);
   const cancelDelete = useCallback(() => setPendingDelete(null), []);
   const confirmDelete = useCallback(async () => {
     const pending = pendingDelete;
     if (!pending || (pending.ids.length === 0 && pending.threadIds.length === 0)) return;
-    const { ids, threadIds } = pending;
+    const { ids, threadIds, spamOnly } = pending;
     setBulkActing(true);
     try {
-      const res = await fetch('/api/admin/emails', { method: 'DELETE', headers: JSON_HEADERS, body: JSON.stringify({ ids, threadIds }) });
+      const res = await fetch('/api/admin/emails', {
+        method: 'DELETE', headers: JSON_HEADERS,
+        body: JSON.stringify({ ids, threadIds, ...(spamOnly && { folder: 'spam' }) }),
+      });
       if (!res.ok) throw new Error(await readError(res, 'Delete failed'));
+      // A conversation whose root went lives on under its oldest survivor:
+      // carry the new key, or reopening (and every later action) would ask
+      // for the deleted root and find nothing.
+      const { reRooted = {} }: { reRooted?: Record<string, string> } = await res.json().catch(() => ({}));
+      const reroot = (e: EmailRow): EmailRow => (e.threadId && reRooted[e.threadId] ? { ...e, threadId: reRooted[e.threadId] } : e);
       const keySet = new Set(threadIds);
-      setEmails((prev) => prev.filter((e) => !ids.includes(e.id) && !keySet.has(threadKeyOf(e))));
+      setEmails((prev) => prev.filter((e) => !ids.includes(e.id) && !keySet.has(threadKeyOf(e))).map(reroot));
       setSelectedIds(new Set());
       setPendingDelete(null);
       toast.success(threadIds.length > 0
-        ? (threadIds.length === 1 ? 'Conversation deleted' : `${threadIds.length} conversations deleted`)
+        ? (spamOnly ? 'Spam deleted' : threadIds.length === 1 ? 'Conversation deleted' : `${threadIds.length} conversations deleted`)
         : (ids.length === 1 ? 'Email deleted' : `${ids.length} emails deleted`));
       void refreshAdminBadges();
       if (selectedKey && keySet.has(selectedKey)) {
         closeDetail();
       } else if (selectedId && ids.includes(selectedId)) {
         // The conversation may live on without this message.
-        const rest = thread.filter((e) => !ids.includes(e.id));
+        const rest = thread.filter((e) => !ids.includes(e.id)).map(reroot);
         if (rest.length > 0) void openConversation(rest[rest.length - 1], { markRead: false });
         else closeDetail();
       } else if (selectedId) {
-        setThread((prev) => prev.filter((e) => !ids.includes(e.id)));
+        setThread((prev) => prev.filter((e) => !ids.includes(e.id)).map(reroot));
       }
       void fetchEmails({ silent: true });
     } catch (err) {
@@ -544,9 +581,10 @@ export function useAdminInbox() {
     const rows = emails.filter((e) => selectedIds.has(e.id));
     if (rows.length === 0) return;
     if (action === 'delete') { requestDeleteThreads(rows); return; }
+    // In the Spam folder a conversation action reaches only its spam messages.
     const target = BULK_ON_ROW_ONLY.has(action)
       ? { ids: rows.map((r) => r.id) }
-      : { threadIds: Array.from(new Set(rows.map(threadKeyOf))) };
+      : { threadIds: Array.from(new Set(rows.map(threadKeyOf))), ...(folder === 'spam' && { folder }) };
     setBulkActing(true);
     try {
       const res = await fetch('/api/admin/emails', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ ...target, ...BULK_BODY[action] }) });
@@ -562,7 +600,7 @@ export function useAdminInbox() {
     } finally {
       setBulkActing(false);
     }
-  }, [emails, selectedIds, selectedKey, requestDeleteThreads, closeDetail, fetchEmails]);
+  }, [emails, selectedIds, selectedKey, folder, requestDeleteThreads, closeDetail, fetchEmails]);
 
   // ── Compose ──
   const openCompose = useCallback(() => {
@@ -670,13 +708,13 @@ export function useAdminInbox() {
         toast.success(skipped > 0
           ? `Forwarded to ${to} — ${skipped} attachment${skipped === 1 ? ' was' : 's were'} too large to include`
           : `Forwarded to ${to}`);
-        // The server counts an unopened original as read and roots its thread.
+        // The server counts an unopened original as read. The forward is a
+        // conversation of its own; reopening shows where the original went.
         applyLocal([forwardOf.id], {
           readAt: forwardOf.readAt ?? new Date().toISOString(),
           status: forwardOf.status === 'received' ? 'read' : forwardOf.status,
-          threadId: forwardOf.threadId ?? forwardOf.id,
         });
-        if (selectedId) void openConversation(forwardOf.threadId ? forwardOf : { ...forwardOf, threadId: forwardOf.id }, { markRead: false });
+        if (selectedId) void openConversation(forwardOf, { markRead: false });
       } else if (mode === 'reply' && replyTo) {
         toast.success(`Reply sent to ${to}`);
         applyLocal([replyTo.id], { status: 'replied', readAt: replyTo.readAt ?? new Date().toISOString(), threadId: replyTo.threadId ?? replyTo.id });
@@ -816,7 +854,7 @@ export function useAdminInbox() {
     folder, setFolder, category, setCategory, categories,
     emails, loading, error, search, setSearch, page, setPage, pagination, counts,
     refresh: () => fetchEmails(),
-    selectedId, selectedEmail, thread, threadLoading, threadError, details, detailFailed, loadDetail,
+    selectedId, selectedEmail, thread, threadForwards, threadLoading, threadError, details, detailFailed, loadDetail,
     selectEmail, closeDetail, reopen: () => selectedEmail && openConversation(selectedEmail, { markRead: false }),
     toggleStar, markUnread, setSpam, archiveOne, requestDelete, requestDeleteThreads, cancelDelete, confirmDelete, pendingDelete,
     setProspectStatus,

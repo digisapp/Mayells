@@ -15,11 +15,18 @@ import { CategoryBadge, StatusBadge } from './badges';
 import { EmailAttachments } from './Attachments';
 import { ProspectCard } from './ProspectCard';
 import { formatFullDate } from './dates';
-import { CATEGORY_LABELS, isForwardOf, readError, splitQuotedText, type EmailDetail, type EmailLinks, type EmailRow } from './types';
+import {
+  CATEGORY_LABELS, isForwardOf, readError, splitQuotedText,
+  type EmailDetail, type EmailLinks, type EmailRow, type ForwardNote,
+} from './types';
 
 interface Props {
   email: EmailRow;
   thread: EmailRow[];
+  /** Where messages of this conversation were forwarded. */
+  forwards: ForwardNote[];
+  /** Opened from the Spam folder: archive and delete reach only the spam messages. */
+  spamOnly: boolean;
   loading: boolean;
   error: string | null;
   details: Record<string, EmailDetail>;
@@ -203,7 +210,7 @@ function Message({
   failed: boolean;
   isLast: boolean;
   isForward: boolean;
-  forwards: EmailRow[];
+  forwards: Array<Pick<ForwardNote, 'id' | 'toEmail' | 'createdAt'>>;
   /** The prospect card above the thread already links the prospect. */
   hasProspectCard: boolean;
   onReply: (email: EmailRow) => void;
@@ -266,7 +273,7 @@ function Message({
 }
 
 export function EmailDetailView({
-  email, thread, loading, error, details, detailFailed, sending,
+  email, thread, forwards, spamOnly, loading, error, details, detailFailed, sending,
   onBack, onRetry, onReply, onForward, onToggleStar, onMarkUnread, onSetSpam, onArchive, onDelete, onDeleteConversation,
   onSendAiDraft, onEditAiDraft, onDrafted, onSetProspectStatus,
 }: Props) {
@@ -277,18 +284,26 @@ export function EmailDetailView({
   // so the first loaded detail that knows them is enough.
   const prospect = messages.map((m) => details[m.id]?.prospect).find(Boolean) ?? null;
   const conversationLabel = messages.length > 1 ? 'conversation' : 'email';
+  // What archive and delete reach: from the Spam folder, only the spam in a
+  // conversation that also holds real mail.
+  const actionLabel = spamOnly && messages.some((m) => !m.isSpam) ? 'the spam in this conversation' : conversationLabel;
   const hasDraft = !!detail?.aiDraftText;
   const canUseDraft = inbound && hasDraft && !email.aiAutoSent && email.status !== 'replied';
   const canOfferDraft = inbound && detail && !hasDraft && !email.aiAutoSent && email.status !== 'replied';
 
   // Forwards hang off the message they forwarded (inReplyToId) but are not
-  // replies — group them so each original can say where it went.
+  // replies — group them so each original can say where it went. Older ones
+  // sit in the thread itself; newer ones are conversations of their own.
   const byId = new Map(messages.map((m) => [m.id, m]));
-  const forwardsByParent = new Map<string, EmailRow[]>();
+  const forwardsByParent = new Map<string, Array<Pick<ForwardNote, 'id' | 'toEmail' | 'createdAt'>>>();
+  const noteForward = (parentId: string, f: Pick<ForwardNote, 'id' | 'toEmail' | 'createdAt'>) => {
+    forwardsByParent.set(parentId, [...(forwardsByParent.get(parentId) ?? []), f]);
+  };
   for (const m of messages) {
-    if (m.inReplyToId && isForwardOf(m, byId.get(m.inReplyToId))) {
-      forwardsByParent.set(m.inReplyToId, [...(forwardsByParent.get(m.inReplyToId) ?? []), m]);
-    }
+    if (m.inReplyToId && isForwardOf(m, byId.get(m.inReplyToId))) noteForward(m.inReplyToId, m);
+  }
+  for (const f of forwards) {
+    if (f.inReplyToId) noteForward(f.inReplyToId, f);
   }
 
   return (
@@ -327,8 +342,8 @@ export function EmailDetailView({
             size="icon-sm"
             variant="ghost"
             onClick={() => onArchive(email)}
-            aria-label={email.archivedAt ? `Restore ${conversationLabel}` : `Archive ${conversationLabel}`}
-            title={email.archivedAt ? `Restore ${conversationLabel}` : `Archive ${conversationLabel} (e)`}
+            aria-label={email.archivedAt ? `Restore ${actionLabel}` : `Archive ${actionLabel}`}
+            title={email.archivedAt ? `Restore ${actionLabel}` : `Archive ${actionLabel} (e)`}
           >
             {email.archivedAt ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
           </Button>
@@ -337,8 +352,8 @@ export function EmailDetailView({
             variant="ghost"
             className="hover:text-red-600"
             onClick={() => onDeleteConversation(messages)}
-            aria-label={`Delete ${conversationLabel}`}
-            title={`Delete ${conversationLabel}`}
+            aria-label={`Delete ${actionLabel}`}
+            title={`Delete ${actionLabel}`}
           >
             <Trash2 className="h-4 w-4" />
           </Button>

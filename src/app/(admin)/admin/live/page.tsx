@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import { db } from '@/db';
 import { auctions } from '@/db/schema';
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { requireAdminPage } from '@/lib/auth/require-admin';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ function formatWhen(d: Date | null) {
 }
 
 export default async function AdminLivePage() {
+  await requireAdminPage();
   // The console is for auctioneer-led sales: live-format auctions awaiting
   // their session, plus anything currently broadcasting. Timed sales open and
   // settle on their own schedule and never belong here.

@@ -69,6 +69,20 @@ export async function relistUnsoldLot(
   }
 
   // No price to relist at — mark as unsold, return to seller.
+  return returnUnsoldLot(lot, now, executor);
+}
+
+/**
+ * The return path on its own: the lot goes `unsold` (off every public
+ * surface) and its consignment is marked returned to the seller. Also used
+ * when an admin chooses to return an unsold LiveAuctioneers lot instead of
+ * relisting it.
+ */
+export async function returnUnsoldLot(
+  lot: RelistableLot,
+  now: Date,
+  executor: Executor = db,
+): Promise<'returned'> {
   await executor.update(lots).set({
     status: 'unsold',
     currentBidAmount: 0,

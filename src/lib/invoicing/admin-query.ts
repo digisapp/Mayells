@@ -86,14 +86,19 @@ export const invoiceListColumns = {
   refundedAmount: invoices.refundedAmount,
   // Open (or lost) chargeback — "Disputed" pill.
   disputedAt: invoices.disputedAt,
-  // A succeeded payment whose amount differs from the invoice total (Stripe
-  // charged more/less than we invoiced) — "Reconcile" pill.
-  amountMismatch: sql<boolean>`exists (
+  // "Reconcile" pill: a succeeded payment whose amount differs from the
+  // invoice total (Stripe charged more/less than we invoiced), or more than
+  // one succeeded payment (a card charge held on an invoice already marked
+  // paid by hand, or a double charge whose auto-refund didn't go through).
+  amountMismatch: sql<boolean>`(exists (
     select 1 from ${payments}
     where ${payments.invoiceId} = ${invoices.id}
       and ${payments.status} = 'succeeded'
       and ${payments.amount} <> ${invoices.totalAmount}
-  )`,
+  ) or (
+    select count(*) from "payments" p
+    where p.invoice_id = "invoices"."id" and p.status = 'succeeded'
+  ) > 1)`,
   buyerId: invoices.buyerId,
   buyerName: users.fullName,
   buyerEmail: users.email,

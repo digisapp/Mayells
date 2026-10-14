@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isAdminProfile } from '@/lib/auth/admin';
-import { requireAdminApi } from '@/lib/auth/require-admin';
+import { requireAdminApi, isAdminUser } from '@/lib/auth/require-admin';
 import { db } from '@/db';
-import { lots, users } from '@/db/schema';
-import { eq, desc, asc, and, ilike, sql, inArray, isNull } from 'drizzle-orm';
+import { lots, auctionLots, auctions } from '@/db/schema';
+import { eq, desc, asc, and, ilike, sql, inArray, isNull, notExists } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
 import { lotSchema } from '@/lib/validation/schemas';
 import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { ACTIVE_SALE_STATUSES } from '@/lib/lots/placement';
+import { containsPattern } from '@/lib/db/like';
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,14 +47,7 @@ export async function GET(req: NextRequest) {
     try {
       const supabase = await createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const [profile] = await db
-          .select({ role: users.role, isAdmin: users.isAdmin })
-          .from(users)
-          .where(eq(users.id, user.id))
-          .limit(1);
-        isAdmin = isAdminProfile(profile);
-      }
+      isAdmin = await isAdminUser(user?.id);
     } catch {
       isAdmin = false;
     }
@@ -89,10 +83,28 @@ export async function GET(req: NextRequest) {
       if (searchParams.get('missingSeller') === '1') {
         conditions.push(isNull(lots.sellerId));
       }
+      // The auction editor's "available lots": not already held by another
+      // unfinished sale (a lot belongs to at most one). The outer reference is
+      // spelled out: in some positions an interpolated column renders
+      // unqualified and silently binds to the subquery's own table.
+      if (searchParams.get('unplaced') === '1') {
+        conditions.push(
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(auctionLots)
+              .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
+              .where(and(
+                sql`${auctionLots.lotId} = "lots"."id"`,
+                inArray(auctions.status, [...ACTIVE_SALE_STATUSES]),
+              )),
+          ),
+        );
+      }
     }
     if (search) {
       const trimmed = search.slice(0, 200); // Cap search length
-      conditions.push(ilike(lots.title, `%${trimmed}%`));
+      conditions.push(ilike(lots.title, containsPattern(trimmed)));
     }
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
@@ -109,21 +121,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const orderBy = sort === 'price_asc'
-      ? asc(lots.currentBidAmount)
+    // The figure a card leads with: gallery price, else the live bid (0 means
+    // none yet), else the low estimate. Unpriced lots sort last either way.
+    const displayPrice = sql`COALESCE(${lots.buyNowPrice}, NULLIF(${lots.currentBidAmount}, 0), ${lots.estimateLow})`;
+    const primaryOrder = sort === 'price_asc'
+      ? sql`${displayPrice} ASC NULLS LAST`
       : sort === 'price_desc'
-        ? desc(lots.currentBidAmount)
+        ? sql`${displayPrice} DESC NULLS LAST`
         : sort === 'ending_soon'
           // Correlated subquery: earliest upcoming closing time across any auction this lot is in
           ? sql`(SELECT MIN(closing_at) FROM auction_lots WHERE lot_id = lots.id AND closing_at > now()) NULLS LAST`
           : sort === 'oldest' && isAdmin
             ? asc(lots.createdAt)
             : desc(lots.createdAt);
+    // Equal prices (and lots created in one batch, which share created_at)
+    // need a stable tiebreak, or offset pages overlap and skip lots.
+    const orderBy = [primaryOrder, asc(lots.id)];
 
     const where = conditions.length > 0 ? and(...conditions) : undefined;
 
     const [result, countResult] = await Promise.all([
-      db.select().from(lots).where(where).orderBy(orderBy).limit(limit).offset(offset),
+      db.select().from(lots).where(where).orderBy(...orderBy).limit(limit).offset(offset),
       db.select({ count: sql<number>`count(*)` }).from(lots).where(where),
     ]);
 

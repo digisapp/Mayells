@@ -3,6 +3,7 @@ import { BUSINESS } from '@/lib/config';
 
 export const metadata = {
   title: 'Terms of Service',
+  alternates: { canonical: '/terms' },
   description:
     'Terms of Service and Conditions of Sale for Mayells: where sales are bid, buyer’s premium, payment, collection and consignment.',
 };

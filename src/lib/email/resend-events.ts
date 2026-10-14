@@ -41,7 +41,9 @@ export async function handleResendEvent(event: ResendEvent): Promise<ResendEvent
   // notifications.ts) have no inbox row to stamp — say so rather than report
   // a success.
   if (updated.length === 0) return { status: 'ignored' };
-  return { status: 'success', relatedType: 'email', relatedId: emailId };
+  // Our row's id, not Resend's: the webhook log links it to the inbox
+  // conversation (/admin/emails?thread=<id>).
+  return { status: 'success', relatedType: 'email', relatedId: updated[0].id };
 }
 
 // failed/suppressed mean Resend never delivered the message; the inbox shows

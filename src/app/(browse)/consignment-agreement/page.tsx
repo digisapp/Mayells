@@ -1,28 +1,34 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, Mail } from 'lucide-react';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { ArrowRight, CheckCircle2, Info, Mail } from 'lucide-react';
+import { and, eq, inArray } from 'drizzle-orm';
 import { BUSINESS } from '@/lib/config';
 import { db } from '@/db';
 import { sellerProspects, uploadItems, type SellerProspect } from '@/db/schema';
 import { formatCurrency } from '@/types';
 import { logger } from '@/lib/logger';
 import { getDefaultCommissionPercent } from '@/lib/settings/commission';
+import { formatLongDate } from '@/lib/format/dates';
+import { acceptedTotalsSelect } from '@/lib/prospects/totals';
 import { SignAgreementForm } from './SignAgreementForm';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+type AgreementSearchParams = Promise<{ token?: string; prospect?: string }>;
+
 // Shared between generateMetadata and the page render (React dedupes within
-// one request) so the personalized lookup runs once.
-const loadProspect = cache(async (prospectParam: string | undefined): Promise<SellerProspect | null> => {
-  if (!prospectParam || !UUID_RE.test(prospectParam)) return null;
+// one request) so the personalized lookup runs once. Keyed by the agreement
+// token only: the prospect id is in the consignor's public photo URLs, so it
+// can't open their agreement.
+const loadProspect = cache(async (tokenParam: string | undefined): Promise<SellerProspect | null> => {
+  if (!tokenParam || !UUID_RE.test(tokenParam)) return null;
   try {
     const [row] = await db
       .select()
       .from(sellerProspects)
-      .where(eq(sellerProspects.id, prospectParam))
+      .where(eq(sellerProspects.agreementToken, tokenParam))
       .limit(1);
     return row ?? null;
   } catch (error) {
@@ -34,36 +40,51 @@ const loadProspect = cache(async (prospectParam: string | undefined): Promise<Se
 export async function generateMetadata({
   searchParams,
 }: {
-  searchParams: Promise<{ prospect?: string }>;
+  searchParams: AgreementSearchParams;
 }): Promise<Metadata> {
-  const { prospect: prospectParam } = await searchParams;
-  const prospect = await loadProspect(prospectParam);
+  const { token: tokenParam, prospect: legacyParam } = await searchParams;
+  const prospect = await loadProspect(tokenParam);
   const commission = prospect?.agreedCommissionPercent ?? (await getDefaultCommissionPercent());
   return {
     title: 'Consignment Agreement',
     description: `Mayells consignment terms: ${commission}% seller commission, payment within 35 business days, 90-day consignment period. View our full agreement.`,
     alternates: { canonical: `${BASE_URL}/consignment-agreement` },
-    // A personalized signing link is private to its consignor.
-    ...(prospect ? { robots: { index: false, follow: false } } : {}),
+    // A signing link is private to its consignor, and a dead one is not a
+    // page to index either.
+    ...(tokenParam || legacyParam ? { robots: { index: false, follow: false } } : {}),
   };
 }
 
 export default async function ConsignmentAgreementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ prospect?: string }>;
+  searchParams: AgreementSearchParams;
 }) {
-  const { prospect: prospectParam } = await searchParams;
+  const { token: tokenParam, prospect: legacyParam } = await searchParams;
 
   // Personalized signing mode: the agreement email links here with
-  // ?prospect=<uuid>. Anything invalid falls back to the plain terms page.
-  const prospect = await loadProspect(prospectParam);
+  // ?token=<agreementToken>. Anything invalid falls back to the plain terms
+  // page.
+  const prospect = await loadProspect(tokenParam);
 
   // Only prospects that were actually sent an agreement get the signing UI.
   const agreementOffered = prospect != null && prospect.agreementSentAt != null;
   const alreadySigned = agreementOffered && prospect!.agreementSignedAt != null;
   const canSign = agreementOffered && !alreadySigned;
   const commission = prospect?.agreedCommissionPercent ?? (await getDefaultCommissionPercent());
+
+  // A link that opens nothing: the old ?prospect=<id> form (retired, since
+  // that id is public), or a token with no agreement on offer. The visitor
+  // gets the plain terms plus a way forward, never anyone's details.
+  const deadLinkNotice = agreementOffered
+    ? null
+    : legacyParam
+      ? 'This signing link has been replaced.'
+      : tokenParam
+        ? prospect
+          ? 'This agreement is not ready to sign yet.'
+          : 'This signing link is not valid.'
+        : null;
 
   // The summary is computed from the accepted items themselves (items that
   // have since become lots were accepted too) — never from the prospect's
@@ -76,14 +97,10 @@ export default async function ConsignmentAgreementPage({
   if (agreementOffered) {
     try {
       const [row] = await db
-        .select({
-          count: sql<number>`count(*)::int`,
-          low: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateLow}, ${uploadItems.aiEstimateLow})), 0)::int`,
-          high: sql<number>`coalesce(sum(coalesce(${uploadItems.finalEstimateHigh}, ${uploadItems.aiEstimateHigh})), 0)::int`,
-        })
+        .select(acceptedTotalsSelect())
         .from(uploadItems)
         .where(and(eq(uploadItems.prospectId, prospect!.id), inArray(uploadItems.status, ['accepted', 'lot_created'])));
-      if (row) accepted = { count: row.count, low: row.low, high: row.high };
+      if (row) accepted = { count: row.acceptedCount, low: row.totalEstimateLow, high: row.totalEstimateHigh };
     } catch (error) {
       logger.error('Consignment agreement totals lookup failed', error);
     }
@@ -142,14 +159,26 @@ export default async function ConsignmentAgreementPage({
               <div className="flex items-center gap-2 mt-4 text-green-700">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <p className="text-sm font-medium">
-                  Signed on {prospect!.agreementSignedAt!.toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
+                  Signed on {formatLongDate(prospect!.agreementSignedAt!)}
                 </p>
               </div>
             )}
+          </div>
+        </section>
+      )}
+
+      {/* Dead signing link */}
+      {deadLinkNotice && (
+        <section className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 md:pt-24">
+          <div role="status" className="flex items-start gap-3 border border-champagne/40 bg-secondary/30 rounded-xl p-6">
+            <Info className="h-5 w-5 text-champagne shrink-0 mt-0.5" />
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {deadLinkNotice} Please use the most recent link in your email, or call us at{' '}
+              <a href={BUSINESS.phoneHref} className="underline text-foreground">
+                {BUSINESS.phone}
+              </a>
+              . The standard terms are below.
+            </p>
           </div>
         </section>
       )}
@@ -250,7 +279,7 @@ export default async function ConsignmentAgreementPage({
           </div>
 
           {/* Sign form (unsigned prospects with an agreement on offer) */}
-          {canSign && <SignAgreementForm prospectId={prospect!.id} />}
+          {canSign && <SignAgreementForm token={prospect!.agreementToken} />}
 
           {/* Already-signed confirmation */}
           {alreadySigned && (

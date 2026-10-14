@@ -33,11 +33,18 @@ export function AdminMfaChallengeForm() {
     (async () => {
       const { data, error } = await supabase.auth.mfa.listFactors();
       if (cancelled) return;
+      if (error) {
+        // Stay put and say so: sending them to sign-in would bring a
+        // signed-in admin straight back here, round and round.
+        setError('We couldn’t load your two-factor details. Reload the page to try again, or sign out.');
+        return;
+      }
       const totp = (data?.totp ?? []).find((f) => f.status === 'verified');
-      if (error || !totp) {
-        // No factor to challenge (or no session): the middleware will route
-        // this account to the right place.
-        router.replace(error ? `/admin/login${next !== '/admin' ? `?next=${encodeURIComponent(next)}` : ''}` : next);
+      if (!totp) {
+        // No factor to challenge (removed since sign-in, say): the middleware
+        // checks factors fresh from Auth, so the admin page won't send them
+        // back here.
+        router.replace(next);
         return;
       }
       setFactorId(totp.id);

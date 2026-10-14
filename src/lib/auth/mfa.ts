@@ -23,6 +23,19 @@ export function hasVerifiedTotpFactor(factors: FactorLike[] | null | undefined):
 }
 
 /**
+ * Read an Auth admin `mfa.listFactors` result. `known` is false when Auth
+ * answered with an error or not at all (null): the account is then counted
+ * as enrolled (fail closed, so an aal1 session is refused rather than waved
+ * through) and the caller must not cache the answer.
+ */
+export function enrollmentFromFactorsResult(
+  result: { data: { factors?: FactorLike[] | null } | null; error: unknown } | null | undefined,
+): { enrolled: boolean; known: boolean } {
+  if (!result || result.error || !result.data) return { enrolled: true, known: false };
+  return { enrolled: hasVerifiedTotpFactor(result.data.factors), known: true };
+}
+
+/**
  * Whether the current session must complete an MFA challenge before it may
  * act. Only sessions on accounts that HAVE enrolled a factor are gated, and
  * only while they are still at aal1.

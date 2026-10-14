@@ -127,10 +127,16 @@ export async function claimShadowUserByEmail(params: {
   return db.transaction(async (tx) => {
 
     // Free the email, keep the row as an inert tombstone (deleting it could
-    // trip FK references we don't know about).
+    // trip FK references we don't know about). The portal token moves to the
+    // real account — every statement and payout email already sent carries
+    // it — so the tombstone gets a fresh one first (portal_token is unique).
     await tx
       .update(users)
-      .set({ email: `claimed-${shadow.id}@${SHADOW_EMAIL_DOMAIN}`, updatedAt: new Date() })
+      .set({
+        email: `claimed-${shadow.id}@${SHADOW_EMAIL_DOMAIN}`,
+        portalToken: randomUUID(),
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, shadow.id));
 
     await tx.insert(users).values({
@@ -147,6 +153,7 @@ export async function claimShadowUserByEmail(params: {
       shippingState: shadow.shippingState,
       shippingZip: shadow.shippingZip,
       shippingCountry: shadow.shippingCountry,
+      portalToken: shadow.portalToken,
     });
 
     // Re-point every seller-side reference a shadow row can hold.

@@ -23,6 +23,21 @@ async function loadAdminProfile(): Promise<AdminProfile | null> {
   return profile && isAdminProfile(profile) ? profile : null;
 }
 
+/**
+ * For public routes that show admins more (drafts, reserves, bidder rows):
+ * the full admin predicate, account status included, for a known user id.
+ * Never select just role/isAdmin for this — a suspended admin would pass.
+ */
+export async function isAdminUser(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const [profile] = await db
+    .select({ role: users.role, isAdmin: users.isAdmin, accountStatus: users.accountStatus })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return isAdminProfile(profile);
+}
+
 /** For server components: redirects to the admin login when not an admin. */
 export async function requireAdminPage(): Promise<AdminProfile> {
   const profile = await loadAdminProfile();

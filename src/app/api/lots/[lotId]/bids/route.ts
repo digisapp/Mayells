@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse, after } from 'next/server';
-import { createHash } from 'crypto';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { lots, auctions, auctionLots, bids, maxBids } from '@/db/schema';
@@ -11,6 +10,10 @@ import { notifyOutbid, computeOutbidRecipients } from '@/lib/bidding/notify-outb
 import { getBidderVerification, checkBidAllowed } from '@/lib/bidding/verification';
 import { UUID_RE, biddableAuctionOrder } from '@/lib/bidding/lot-resolution';
 import { isOnSiteBiddingSale } from '@/lib/bidding/venue';
+import { publicBidderLabel } from '@/lib/bidding/bidder-alias';
+import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
+import { isLotInPublicAuction } from '@/lib/lots/placement';
+import { isAdminUser } from '@/lib/auth/require-admin';
 import { rateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-ip';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
@@ -143,8 +146,10 @@ export async function POST(
     // leave the user's proxy armed, and it could later win the lot on their
     // behalf without a single confirmed bid. The write itself is an upsert on
     // max_bids_lot_bidder_unique_idx so two concurrent first-time maxes from
-    // the same bidder can't 23505 into a 500.
-    let priorMax: { id: string; maxAmount: number; isActive: boolean } | null = null;
+    // the same bidder can't 23505 into a 500. updatedAt is the moment the max
+    // was set: equal maxes are won by the earlier one (bid-engine tie rule),
+    // so a rollback restores it too.
+    let priorMax: { id: string; maxAmount: number; isActive: boolean; updatedAt: Date | null } | null = null;
     let insertedMaxId: string | null = null;
     if (maxBidAmount !== undefined) {
       const [existing] = await db
@@ -154,14 +159,20 @@ export async function POST(
         .limit(1);
 
       if (existing) {
-        priorMax = { id: existing.id, maxAmount: existing.maxAmount, isActive: existing.isActive };
+        priorMax = {
+          id: existing.id,
+          maxAmount: existing.maxAmount,
+          isActive: existing.isActive,
+          updatedAt: existing.updatedAt,
+        };
       }
+      const setAt = new Date();
       const [written] = await db
         .insert(maxBids)
-        .values({ lotId: lot.id, bidderId: user.id, maxAmount: maxBidAmount })
+        .values({ lotId: lot.id, bidderId: user.id, maxAmount: maxBidAmount, updatedAt: setAt })
         .onConflictDoUpdate({
           target: [maxBids.lotId, maxBids.bidderId],
-          set: { maxAmount: maxBidAmount, isActive: true, updatedAt: new Date() },
+          set: { maxAmount: maxBidAmount, isActive: true, updatedAt: setAt },
         })
         .returning({ id: maxBids.id });
       if (!existing) {
@@ -174,7 +185,11 @@ export async function POST(
         if (priorMax) {
           await db
             .update(maxBids)
-            .set({ maxAmount: priorMax.maxAmount, isActive: priorMax.isActive, updatedAt: new Date() })
+            .set({
+              maxAmount: priorMax.maxAmount,
+              isActive: priorMax.isActive,
+              updatedAt: priorMax.updatedAt ?? new Date(),
+            })
             .where(eq(maxBids.id, priorMax.id));
         } else if (insertedMaxId) {
           await db.delete(maxBids).where(eq(maxBids.id, insertedMaxId));
@@ -216,21 +231,48 @@ export async function POST(
 
     let result = await attemptBid();
 
-    // Self-heal: Postgres says this lot is live (status and close time were
-    // validated above) but Redis holds no gate state — the store was flushed
-    // or evicted mid-auction, or an open was never repaired. Rebuild the gate
-    // from the authoritative row (NX, never clobbering live state) and retry
-    // once, instead of turning every bidder away with "not open".
-    if (!result.success && result.error === 'STATE_MISSING' && closingAt) {
-      const reseeded = await reseedLotBidState(lot.id, {
-        closeTime: closingAt,
-        startingBid: lot.startingBid ?? 0,
-        currentBidAmount: lot.currentBidAmount,
-        currentBidderId: lot.currentBidderId,
-      });
-      if (reseeded) {
-        logger.warn('Rebuilt missing Redis bid state from Postgres', { lotId: lot.id, auctionId: auction.id });
-        result = await attemptBid();
+    // Self-heal: Postgres says this lot is live but Redis holds no gate state
+    // — the store was flushed or evicted mid-auction, or an open was never
+    // repaired. Rebuild the gate from the authoritative row (NX, never
+    // clobbering live state) and retry once, instead of turning every bidder
+    // away with "not open". The row read at the top of this request may be
+    // stale by now: settlement deletes these keys right after it sells the
+    // lot, so reseeding from that snapshot would reopen a settled lot. Re-read
+    // it and reseed only while it is still in_auction with a future close.
+    if (!result.success && result.error === 'STATE_MISSING') {
+      const [fresh] = await db
+        .select({
+          status: lots.status,
+          startingBid: lots.startingBid,
+          currentBidAmount: lots.currentBidAmount,
+          currentBidderId: lots.currentBidderId,
+          closingAt: auctionLots.closingAt,
+          biddingEndsAt: auctions.biddingEndsAt,
+          auctionStatus: auctions.status,
+        })
+        .from(auctionLots)
+        .innerJoin(lots, eq(lots.id, auctionLots.lotId))
+        .innerJoin(auctions, eq(auctions.id, auctionLots.auctionId))
+        .where(eq(auctionLots.id, auctionLot.id))
+        .limit(1);
+      const freshClose = fresh ? fresh.closingAt ?? fresh.biddingEndsAt : null;
+      // Anything else (settled, withdrawn, sale ended) falls through to the
+      // "not open for bidding" answer below, which also disarms the max.
+      if (fresh && fresh.status === 'in_auction' && biddableAuctionStatuses.includes(fresh.auctionStatus) && freshClose) {
+        if (freshClose.getTime() <= Date.now()) {
+          result = { success: false, error: 'AUCTION_CLOSED' };
+        } else {
+          const reseeded = await reseedLotBidState(lot.id, {
+            closeTime: freshClose,
+            startingBid: fresh.startingBid ?? 0,
+            currentBidAmount: fresh.currentBidAmount,
+            currentBidderId: fresh.currentBidderId,
+          });
+          if (reseeded) {
+            logger.warn('Rebuilt missing Redis bid state from Postgres', { lotId: lot.id, auctionId: auction.id });
+            result = await attemptBid();
+          }
+        }
       }
     }
 
@@ -375,6 +417,17 @@ export async function GET(
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
     }
 
+    // Same visibility as the lot page: an unpublished lot's bid history is as
+    // private as the lot itself. Admins see every lot.
+    const inPublicAuction = row.lot.status === 'approved' ? await isLotInPublicAuction(row.lot.id) : false;
+    if (!isPubliclyVisibleLot(row.lot.status, inPublicAuction)) {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!(await isAdminUser(user?.id))) {
+        return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
+      }
+    }
+
     const history = await db
       .select({
         amount: bids.amount,
@@ -388,17 +441,15 @@ export async function GET(
       .orderBy(desc(bids.createdAt))
       .limit(50);
 
-    // Public-safe shape: anonymize bidders, never expose ids, max bids,
-    // ip, or user agent.
+    // Public-safe shape: anonymize bidders (keyed per lot, so a label can't
+    // be recomputed from a user id), never expose ids, max bids, ip, or user
+    // agent.
     const data = history.map((bid) => ({
       amount: bid.amount,
       createdAt: bid.createdAt,
       bidType: bid.bidType,
       status: bid.status,
-      bidder: `Bidder ${createHash('sha256')
-        .update(`${row.lot.id}:${bid.bidderId}`)
-        .digest('hex')
-        .slice(0, 6)}`,
+      bidder: publicBidderLabel(row.lot.id, bid.bidderId),
     }));
 
     return NextResponse.json({ data });

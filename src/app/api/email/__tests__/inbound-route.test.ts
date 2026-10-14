@@ -202,6 +202,132 @@ describe('POST /api/email/inbound', () => {
     expect(afterCalls).toHaveLength(0);
   });
 
+  it('keeps an out-of-office on its own, out of the conversation it answers', async () => {
+    // Before: threaded by the plus tag and flagged spam, which put the whole
+    // customer conversation in the Spam folder.
+    selectResults.push([]); // findUserByEmail
+    const res = await POST(request(received({
+      subject: 'Automatic reply: Rolex',
+      to: [`info+${THREAD}@mayells.com`],
+      received_for: [`info+${THREAD}@mayells.com`],
+    })) as never);
+    expect(res.status).toBe(200);
+    expect(inserted[0]).toMatchObject({ isSpam: true, threadId: null, inReplyToId: null });
+    expect(selectResults).toHaveLength(0);
+    expect(afterCalls).toHaveLength(0);
+  });
+
+  it('keeps a sender that failed DMARC out of every conversation, warns, and still files it', async () => {
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: 'jane@gmail.com', to: [`info+${THREAD}@mayells.com`], cc: null, bcc: null, received_for: [`info+${THREAD}@mayells.com`],
+        subject: 'Re: Rolex', html: null, text: 'Please wire the deposit', message_id: '<m2@spoof>',
+        headers: {
+          from: 'Jane <jane@gmail.com>',
+          'in-reply-to': '<snd_1@resend.dev>',
+          'authentication-results': 'amazonses.com; spf=fail smtp.mailfrom=spoof.test; dmarc=fail header.from=gmail.com;',
+        },
+        attachments: [],
+      },
+      error: null,
+    });
+    selectResults.push([]); // findUserByEmail
+    const res = await POST(request(received({ to: [`info+${THREAD}@mayells.com`], received_for: [`info+${THREAD}@mayells.com`], subject: 'Re: Rolex' })) as never);
+    expect(res.status).toBe(200);
+    expect(inserted[0]).toMatchObject({ fromEmail: 'jane@gmail.com', isSpam: false, threadId: null, inReplyToId: null });
+    expect(String(inserted[0].aiSummary)).toMatch(/^Unverified sender: this message failed DMARC/);
+    // No thread lookup at all; the forward to the owner and the AI pass still run.
+    expect(selectResults).toHaveLength(0);
+    expect(afterCalls).toHaveLength(1);
+  });
+
+  it('still threads a sender whose domain has no DMARC policy', async () => {
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: 'jane@small-gallery.com', to: [`info+${THREAD}@mayells.com`], cc: null, bcc: null, received_for: [`info+${THREAD}@mayells.com`],
+        subject: 'Re: Rolex', html: null, text: 'Tuesday works', message_id: '<m3@small>',
+        headers: { from: 'jane@small-gallery.com', 'authentication-results': 'amazonses.com; spf=pass smtp.mailfrom=small-gallery.com; dmarc=none;' },
+        attachments: [],
+      },
+      error: null,
+    });
+    selectResults.push([{ id: 'root-1' }], [{ id: THREAD, direction: 'outbound', fromEmail: 'info@mayells.com', toEmail: 'jane@small-gallery.com' }], []);
+    await POST(request(received({ from: 'jane@small-gallery.com', to: [`info+${THREAD}@mayells.com`], received_for: [`info+${THREAD}@mayells.com`] })) as never);
+    expect(inserted[0]).toMatchObject({ threadId: THREAD, inReplyToId: 'root-1' });
+    expect(inserted[0].aiSummary).toBeUndefined();
+  });
+
+  it('does not let someone a message was forwarded to join the customer’s conversation by subject', async () => {
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: 'expert@watches.com', to: ['info@mayells.com'], cc: null, bcc: null, received_for: ['info@mayells.com'],
+        subject: 'Re: Fwd: Rolex', html: null, text: 'Looks like a 1960s Submariner', message_id: '<m4@watches>',
+        headers: { from: 'Expert <expert@watches.com>' }, attachments: [],
+      },
+      error: null,
+    });
+    selectResults.push(
+      [{ id: 'fwd-1', threadId: 'root-1' }], // subject + address match: an older forward kept in the customer's thread
+      [
+        { id: 'root-1', direction: 'inbound', fromEmail: 'jane@gmail.com', toEmail: 'info@mayells.com', subject: 'Rolex', inReplyToId: null },
+        { id: 'fwd-1', direction: 'outbound', fromEmail: 'info@mayells.com', toEmail: 'expert@watches.com', subject: 'Fwd: Rolex', inReplyToId: 'root-1' },
+      ],
+      [], // findUserByEmail
+    );
+    await POST(request(received({ from: 'Expert <expert@watches.com>', subject: 'Re: Fwd: Rolex' })) as never);
+    expect(inserted[0]).toMatchObject({ fromEmail: 'expert@watches.com', threadId: null, inReplyToId: null });
+  });
+
+  it('reads a From whose display name carries quotes or brackets', async () => {
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: '"Sales <EU>" <sales@dealer.eu>', to: ['info@mayells.com'], cc: null, bcc: null, received_for: ['info@mayells.com'],
+        subject: 'Consignment', html: null, text: 'Hi', message_id: '<m5@dealer>',
+        headers: { from: '"Sales <EU>" <sales@dealer.eu>' }, attachments: [],
+      },
+      error: null,
+    });
+    selectResults.push([], []);
+    await POST(request(received({ from: '"Sales <EU>" <sales@dealer.eu>', subject: 'Consignment' })) as never);
+    expect(inserted[0]).toMatchObject({ fromEmail: 'sales@dealer.eu', fromName: 'Sales EU' });
+    expect(inserted[0].aiSummary).toBeUndefined();
+  });
+
+  it('falls back to Reply-To when no form of From is readable, and keeps it out of conversations', async () => {
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: 'undisclosed-sender', to: ['info@mayells.com'], cc: null, bcc: null, received_for: ['info@mayells.com'],
+        reply_to: ['Jane <Jane@Gmail.com>'], subject: 'Rolex', html: null, text: 'Hi', message_id: '<m6@x>',
+        headers: { from: 'undisclosed-sender' }, attachments: [],
+      },
+      error: null,
+    });
+    selectResults.push([]); // findUserByEmail
+    await POST(request(received({ from: 'undisclosed-sender' })) as never);
+    expect(inserted[0]).toMatchObject({ fromEmail: 'jane@gmail.com', isSpam: false, threadId: null });
+    expect(String(inserted[0].aiSummary)).toMatch(/^Unverified sender: the From header could not be read/);
+  });
+
+  it('fits over-long headers to their columns instead of failing every redelivery', async () => {
+    const longSubject = `Re: ${'Rolex '.repeat(400)}`;
+    const longMessageId = `<${'x'.repeat(700)}@gmail.com>`;
+    receivingGet.mockResolvedValue({
+      data: {
+        id: 'rcv_1', from: 'jane@gmail.com', to: ['info@mayells.com'], cc: null, bcc: null, received_for: ['info@mayells.com'],
+        subject: longSubject, html: null, text: 'Hi\u0000there', message_id: longMessageId,
+        headers: { from: 'jane@gmail.com', 'message-id': longMessageId, 'in-reply-to': longMessageId }, attachments: [],
+      },
+      error: null,
+    });
+    selectResults.push([], [], []);
+    const res = await POST(request(received({ subject: longSubject, message_id: longMessageId })) as never);
+    expect(res.status).toBe(200);
+    expect(String(inserted[0].subject)).toHaveLength(1000);
+    expect(String(inserted[0].messageId)).toHaveLength(500);
+    expect(inserted[0].inReplyToMessageId).toBe(inserted[0].messageId);
+    expect(inserted[0].bodyText).toBe('Hithere');
+  });
+
   it('fails the delivery (so Resend retries) when the body cannot be fetched', async () => {
     receivingGet.mockResolvedValue({ data: null, error: { message: 'boom' } });
     const res = await POST(request(received({})) as never);

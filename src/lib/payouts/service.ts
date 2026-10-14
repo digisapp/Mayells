@@ -7,8 +7,11 @@
  * partial-unique on lot; shipment: existence check; statement:
  * statement_sent_at stamp) so webhook redeliveries and admin replays can
  * safely re-run it — and a step that failed mid-way self-heals on the next
- * delivery. It never throws: seller-side failures must not fail the buyer's
- * payment webhook.
+ * delivery. Seller-side failures never stop the other steps. The one failure
+ * that must not be swallowed is the payout row (without it the consignor is
+ * never paid): `strict` callers (the Stripe webhook) get it thrown after
+ * every other step has run, so the webhook answers 5xx and Stripe redelivers;
+ * the admin path gets it back as `payoutError` to show the admin.
  */
 
 import { db } from '@/db';
@@ -33,28 +36,36 @@ import { logger } from '@/lib/logger';
 /** Payout statuses that still represent money owed / paid for a live sale. */
 export const DEAD_PAYOUT_STATUSES = ['cancelled', 'reversed'] as const;
 
+export interface SettlementResult {
+  /** Why the payout row couldn't be recorded; null when it was (or none is due). */
+  payoutError: string | null;
+}
+
 export async function processPaidInvoice(
   invoiceId: string,
-  opts: { sendBuyerConfirmation?: boolean } = {},
-): Promise<void> {
+  opts: { sendBuyerConfirmation?: boolean; strict?: boolean } = {},
+): Promise<SettlementResult> {
   let invoice: Awaited<ReturnType<typeof loadInvoice>>;
   try {
     invoice = await loadInvoice(invoiceId);
   } catch (err) {
     logger.error('Paid-invoice settlement: could not load invoice', err, { invoiceId });
-    return;
+    if (opts.strict) throw err;
+    return { payoutError: errorText(err) };
   }
   if (!invoice) {
     logger.warn('Paid-invoice settlement: invoice not found', { invoiceId });
-    return;
+    return { payoutError: null };
   }
 
   const settings = await getSettings();
 
   let payout: Payout | null = null;
+  let payoutFailure: unknown = null;
   try {
     payout = await ensurePayoutForInvoice(invoice);
   } catch (err) {
+    payoutFailure = err;
     logger.error('Paid-invoice settlement: payout creation failed', err, { invoiceId });
   }
 
@@ -93,6 +104,13 @@ export async function processPaidInvoice(
   } catch (err) {
     logger.error('Paid-invoice settlement: buyer payment confirmation failed', err, { invoiceId });
   }
+
+  if (payoutFailure && opts.strict) throw payoutFailure;
+  return { payoutError: payoutFailure ? errorText(payoutFailure) : null };
+}
+
+function errorText(err: unknown): string {
+  return (err instanceof Error ? err.message : String(err)).slice(0, 200);
 }
 
 async function loadInvoice(invoiceId: string) {

@@ -6,6 +6,7 @@ import { estateVisits, estateVisitItems, sellerProspects, uploadLinks, uploadIte
 import { eq, asc, sql } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { formatDayOnly, formatLongDate } from '@/lib/format/dates';
 
 /**
  * Turn a finished estate appraisal into a seller prospect so the consignment
@@ -63,12 +64,11 @@ export async function POST(
       const completed = items.filter((i) => i.status === 'completed');
       const totalEstimateLow = completed.reduce((s, i) => s + (i.estimateLow ?? 0), 0);
       const totalEstimateHigh = completed.reduce((s, i) => s + (i.estimateHigh ?? 0), 0);
-      const visitLabel = (visit.visitDate ?? visit.createdAt ?? new Date()).toLocaleDateString('en-US', {
-        timeZone: 'UTC',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-      });
+      // visitDate holds a calendar day at UTC midnight; createdAt is a real
+      // moment, so it is read in the house timezone (not UTC's next day).
+      const visitLabel = visit.visitDate
+        ? formatDayOnly(visit.visitDate.toISOString(), 'long')
+        : formatLongDate(visit.createdAt ?? new Date());
       const now = new Date();
 
       const [prospect] = await tx

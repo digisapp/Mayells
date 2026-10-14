@@ -8,6 +8,8 @@ import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
+import { UUID_RE } from '@/lib/bidding/lot-resolution';
+import { liveDisplayName } from '@/lib/bidding/bidder-alias';
 
 const chatSchema = z.object({
   message: z.string().min(1).max(500),
@@ -24,6 +26,9 @@ export async function POST(
 ) {
   try {
     const { auctionId } = await params;
+    if (!UUID_RE.test(auctionId)) {
+      return NextResponse.json({ error: 'Auction not found' }, { status: 404 });
+    }
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -42,11 +47,16 @@ export async function POST(
     const { message, type } = parsed.data;
 
     const [profile] = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
+    // A suspended or banned account can't bid, so it can't talk in the room either.
+    if (!profile || profile.accountStatus !== 'active') {
+      return NextResponse.json({ error: 'Your account cannot post in this chat. Please contact us.' }, { status: 403 });
+    }
+    const isStaff = isAdminProfile(profile) || profile.role === 'auctioneer';
 
     // Only staff may broadcast system message types — anyone could otherwise
     // spoof bid_notification events to the live room. Plain chat and emoji
     // reactions remain open to all authenticated users.
-    if (type !== 'chat' && type !== 'reaction' && !isAdminProfile(profile) && profile?.role !== 'auctioneer') {
+    if (type !== 'chat' && type !== 'reaction' && !isStaff) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -62,10 +72,13 @@ export async function POST(
     await channel.send({
       type: 'broadcast',
       event: 'chat',
+      // Everyone in the room receives this: no user id, no legal name, and a
+      // role that only says whether the sender is staff.
       payload: {
-        userId: user.id,
-        displayName: profile?.displayName || profile?.fullName || 'Anonymous',
-        role: profile?.role,
+        displayName: isStaff
+          ? profile.displayName?.trim() || 'Mayells'
+          : liveDisplayName(auctionId, user.id, profile),
+        role: isStaff ? (profile.role === 'auctioneer' ? 'auctioneer' : 'admin') : 'bidder',
         message,
         messageType: type,
         timestamp: new Date().toISOString(),

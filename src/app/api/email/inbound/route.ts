@@ -13,6 +13,7 @@ import {
 } from '@/lib/email/notifications';
 import { handleResendEvent } from '@/lib/email/resend-events';
 import {
+  firstValidAddress,
   isOwnAddress,
   ownRecipient,
   parseEmailAddress,
@@ -20,7 +21,8 @@ import {
   recipientsOf,
   senderDisplayName,
 } from '@/lib/email/addresses';
-import { parseAuthResults, senderAuthenticated } from '@/lib/email/sender-auth';
+import { parseAuthResults, SENDER_WARNINGS, senderAuthenticated, senderFailedDmarc } from '@/lib/email/sender-auth';
+import { conversationCounterparts } from '@/lib/email/threading';
 import { claimWebhookEvent, finalizeWebhookLog } from '@/lib/webhooks/log';
 
 /**
@@ -74,6 +76,22 @@ function headerValue(headers: Record<string, string> | null, name: string): stri
   return key ? headers[key] : null;
 }
 
+/**
+ * A value as its column takes it: no NUL characters (Postgres refuses them
+ * in text) and no longer than a varchar(max). Without this one oversized
+ * header fails the insert on every redelivery and the mail is lost.
+ */
+function fitColumn<T extends string | null>(value: T, max?: number): T {
+  if (value === null) return value;
+  let s = value.replace(/\u0000/g, '');
+  if (max !== undefined && s.length > max) {
+    s = s.slice(0, max);
+    // Never leave half of a surrogate pair at the cut.
+    if (/[\uD800-\uDBFF]$/.test(s)) s = s.slice(0, -1);
+  }
+  return s as T;
+}
+
 // ─── User Linking ─────────────────────────────────────────────────────────────
 
 async function findUserByEmail(email: string): Promise<string | null> {
@@ -103,15 +121,23 @@ async function findThread(params: {
   // comes from that person (the thread's counterpart), however the thread
   // was found. Otherwise anyone who learns a plus tag or a Message-ID could
   // attach mail to someone else's conversation and draw replies — manual or
-  // automatic — that go to, and quote, the other person.
+  // automatic — that go to, and quote, the other person. Someone a message
+  // was forwarded to is not a counterpart of the conversation it came from.
   const me = params.fromEmail.trim().toLowerCase();
   const fromCounterpart = async (threadId: string): Promise<boolean> => {
     const members = await db
-      .select({ direction: emails.direction, fromEmail: emails.fromEmail, toEmail: emails.toEmail })
+      .select({
+        id: emails.id,
+        direction: emails.direction,
+        fromEmail: emails.fromEmail,
+        toEmail: emails.toEmail,
+        subject: emails.subject,
+        inReplyToId: emails.inReplyToId,
+      })
       .from(emails)
       .where(or(eq(emails.id, threadId), eq(emails.threadId, threadId)))
       .limit(500);
-    return members.some((m) => (m.direction === 'inbound' ? m.fromEmail : m.toEmail).trim().toLowerCase() === me);
+    return conversationCounterparts(members, threadId).has(me);
   };
 
   // 1. Plus-address tag — we set it on every outbound Reply-To, so this is
@@ -152,7 +178,9 @@ async function findThread(params: {
     }
   }
 
-  // 3. Last resort: subject (Re: prefix stripped) + counterpart address
+  // 3. Last resort: subject (Re: prefix stripped) + counterpart address.
+  //    Never onto spam: an out-of-office or a junk message with the same
+  //    subject must not become the anchor real mail threads under.
   const cleanSubject = stripReplyPrefixes(params.subject).toLowerCase();
   if (cleanSubject) {
     const fromLower = params.fromEmail.toLowerCase();
@@ -161,6 +189,7 @@ async function findThread(params: {
       .from(emails)
       .where(
         and(
+          eq(emails.isSpam, false),
           or(
             sql`lower(${emails.toEmail}) = ${fromLower}`,
             sql`lower(${emails.fromEmail}) = ${fromLower}`,
@@ -172,7 +201,10 @@ async function findThread(params: {
       )
       .orderBy(desc(emails.createdAt))
       .limit(1);
-    if (match) {
+    // The address matched one message; the conversation it sits in must be
+    // with this sender too (an older forward kept in a customer's thread
+    // matches the person it went to).
+    if (match && (await fromCounterpart(match.threadId || match.id))) {
       return { inReplyToId: match.id, threadId: match.threadId || match.id };
     }
   }
@@ -325,16 +357,21 @@ export async function POST(req: NextRequest) {
 
     // ── Inbound email ──────────────────────────────────────────────────────
     if (type === 'email.received') {
-      const { email: fromEmail } = parseEmailAddress(String(data.from ?? ''));
+      // Every stored value goes through fitColumn on its way in.
+      //
       // The address of ours they wrote to (isMayellsEvent guarantees one) —
       // not simply To[0], which is someone else when we were only Cc'd.
-      const toEmail = ownRecipient(data)!;
-      const subject = String(data.subject || '(no subject)');
-      const resendEmailId = (data.email_id as string | undefined) || (data.id as string | undefined) || null;
+      const toEmail = fitColumn(ownRecipient(data)!, 320);
+      const subject = fitColumn(String(data.subject || '(no subject)'), 1000);
+      const resendEmailId = fitColumn((data.email_id as string | undefined) || (data.id as string | undefined) || null, 255);
       let messageId = (data.message_id as string | undefined) || null;
       // Resend's `from` is often the bare address; the display name survives
       // in the raw From header, fetched below.
       let fromName = senderDisplayName(undefined, String(data.from ?? ''));
+      // Where the sender's address can be read, best first. A display name
+      // can defeat one form and not another; Reply-To is the last resort.
+      const fromSources: unknown[] = [data.from];
+      let replyToSources: unknown[] = [];
       let recipients = recipientsOf(data);
       let headers: Record<string, string> | null = null;
 
@@ -352,23 +389,35 @@ export async function POST(req: NextRequest) {
         if (fetchError || !fullEmail) {
           throw new Error(`Could not fetch inbound email ${resendEmailId} from Resend: ${fetchError?.message ?? 'empty response'}`);
         }
-        bodyHtml = fullEmail.html || null;
-        bodyText = fullEmail.text || null;
+        bodyHtml = fitColumn(fullEmail.html || null);
+        bodyText = fitColumn(fullEmail.text || null);
         headers = fullEmail.headers ?? null;
-        inReplyToHeader = fullEmail.headers?.['in-reply-to'] || fullEmail.headers?.['In-Reply-To'] || null;
-        messageId = messageId || fullEmail.headers?.['message-id'] || fullEmail.headers?.['Message-ID'] || fullEmail.message_id || null;
-        fromName = senderDisplayName(fullEmail.headers?.['from'] ?? fullEmail.headers?.['From'], fullEmail.from) ?? fromName;
+        inReplyToHeader = headerValue(headers, 'in-reply-to') || null;
+        messageId = messageId || headerValue(headers, 'message-id') || fullEmail.message_id || null;
+        fromName = senderDisplayName(headerValue(headers, 'from'), fullEmail.from) ?? fromName;
+        fromSources.push(fullEmail.from, headerValue(headers, 'from'));
+        replyToSources = [...(fullEmail.reply_to ?? []), headerValue(headers, 'reply-to')];
         recipients = [
           ...recipients,
           ...recipientsOf({ received_for: fullEmail.received_for, to: fullEmail.to, cc: fullEmail.cc, bcc: fullEmail.bcc }),
         ];
         attachmentMeta = (fullEmail.attachments ?? []).map((a) => ({
           id: a.id,
-          filename: a.filename || 'attachment',
+          filename: fitColumn(a.filename || 'attachment'),
           size: a.size,
-          contentType: a.content_type,
+          contentType: fitColumn(a.content_type),
         }));
       }
+
+      // A Message-ID is matched against later In-Reply-To headers, so both
+      // are cut at the same length and a long one still threads.
+      messageId = fitColumn(messageId, 500);
+      inReplyToHeader = fitColumn(inReplyToHeader, 500);
+      fromName = fitColumn(fromName, 255);
+      const fromHeaderAddress = firstValidAddress(fromSources);
+      const replyToAddress = fromHeaderAddress ? null : firstValidAddress(replyToSources);
+      // Nothing readable at all: keep what From said, so the mail is still filed.
+      const fromEmail = fitColumn(fromHeaderAddress ?? replyToAddress ?? parseEmailAddress(String(data.from ?? '')).email, 320);
 
       // Mail from our own sending identities is a platform notification
       // looping back (info@ is both a notify target and the inbound address).
@@ -381,12 +430,30 @@ export async function POST(req: NextRequest) {
       // server verified (an aligned DMARC pass, sender-auth.ts) counts as
       // ours; a forged one is spam, kept out of every conversation.
       const claimsOwnAddress = isOwnAddress(fromEmail);
-      const authenticated = senderAuthenticated(parseAuthResults(headerValue(headers, 'authentication-results')));
+      const auth = parseAuthResults(headerValue(headers, 'authentication-results'));
+      // The verdict is about the From header: an address only Reply-To gave
+      // us is never proven, so one of ours there counts as forged.
+      const authenticated = senderAuthenticated(auth) && !!fromHeaderAddress;
       const ownAddress = claimsOwnAddress && authenticated;
       const forged = claimsOwnAddress && !authenticated;
       const spam = forged || isSpamEmail(fromEmail, subject);
+      // A sender we have reason to doubt is filed, but on its own: an explicit
+      // DMARC fail (a spoofed customer address), or an address that only the
+      // unverified Reply-To gave us. Joining the real person's conversation
+      // would put the stranger's words in it and their replies in front of
+      // the operator as that person's.
+      const senderWarning = forged
+        ? null
+        : senderFailedDmarc(auth)
+          ? SENDER_WARNINGS.dmarcFail
+          : replyToAddress
+            ? SENDER_WARNINGS.replyToOnly
+            : null;
+      // Spam (an out-of-office, a bounce, junk) is kept on its own as well, so
+      // a real conversation never lands in the Spam folder because of it.
+      const standalone = spam || !!senderWarning;
       const threadIdHint = parseThreadIdFromAddresses(recipients);
-      const { inReplyToId, threadId } = forged
+      const { inReplyToId, threadId } = standalone
         ? { inReplyToId: null, threadId: null }
         : await findThread({ threadIdHint, inReplyToHeader, fromEmail, subject });
       const userId = forged ? null : await findUserByEmail(fromEmail);
@@ -424,6 +491,8 @@ export async function POST(req: NextRequest) {
           aiConfidence: 1,
           aiSummary: `Forged sender: claims to be ${fromEmail} but failed authentication${replyTo ? ` (replies would go to ${replyTo})` : ''}.`,
         }),
+        // The AI pass keeps this at the front of the summary it writes.
+        ...(senderWarning && { aiSummary: senderWarning }),
       }).returning({ id: emails.id });
 
       if (saved && !spam && !ownAddress) {

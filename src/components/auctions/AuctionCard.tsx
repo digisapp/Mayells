@@ -7,10 +7,11 @@ import { formatLongDate } from '@/lib/format/dates';
 
 interface AuctionCardProps {
   /**
-   * `visibleLotCount` comes from `auctionWithVisibleLotCount` — the lots the
-   * sale page will actually list, not the denormalized `lotCount`.
+   * `visibleLotCount` and `takingBids` come from `auctionWithVisibleLotCount`:
+   * the lots the sale page will actually list (not the denormalized
+   * `lotCount`), and whether a 'closed' sale still has lots open for bidding.
    */
-  auction: Auction & { visibleLotCount: number };
+  auction: Auction & { visibleLotCount: number; takingBids: boolean };
   /** Above the fold: load the cover straight away, since it is likely the LCP. */
   eager?: boolean;
   /** Override when the card is not in the standard 1/2/3-up grid (e.g. a phone rail). */
@@ -20,14 +21,21 @@ interface AuctionCardProps {
 // Badges sit on top of lot imagery — every variant needs a solid backdrop to stay legible.
 const NEUTRAL_BADGE = 'bg-charcoal text-white border-0';
 
-function getStatusLabel(status: string) {
+const OPEN_BADGE = 'bg-emerald-700 text-white border-0'; // -700: white on -600 is under 4.5:1 at 12px
+
+function getStatusLabel(status: string, takingBids: boolean) {
   switch (status) {
-    case 'open': return { label: 'Bidding Open', variant: 'default' as const, className: 'bg-emerald-700 text-white border-0' }; // -700: white on -600 is under 4.5:1 at 12px
+    case 'open': return { label: 'Bidding Open', variant: 'default' as const, className: OPEN_BADGE };
     case 'preview': return { label: 'Preview', variant: 'secondary' as const, className: NEUTRAL_BADGE };
     case 'scheduled': return { label: 'Upcoming', variant: 'outline' as const, className: NEUTRAL_BADGE };
     case 'live': return { label: 'LIVE', variant: 'destructive' as const, className: 'bg-red-600 text-white border-0 motion-safe:animate-urgency' };
-    case 'closing': return { label: 'Closing', variant: 'secondary' as const, className: NEUTRAL_BADGE };
+    // The sale's end has passed but its staggered lot closes are still running.
     case 'closed':
+      return takingBids
+        ? { label: 'Lots Closing', variant: 'default' as const, className: OPEN_BADGE }
+        : { label: 'Closed', variant: 'secondary' as const, className: NEUTRAL_BADGE };
+    // 'closing': ended early, every lot already closed, settlement pending.
+    case 'closing':
     case 'completed': return { label: 'Closed', variant: 'secondary' as const, className: NEUTRAL_BADGE };
     case 'cancelled': return { label: 'Cancelled', variant: 'secondary' as const, className: NEUTRAL_BADGE };
     default: return { label: status, variant: 'outline' as const, className: NEUTRAL_BADGE };
@@ -39,7 +47,7 @@ export function AuctionCard({
   eager,
   sizes = '(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw',
 }: AuctionCardProps) {
-  const status = getStatusLabel(auction.status);
+  const status = getStatusLabel(auction.status, auction.takingBids);
   const lotCount = auction.visibleLotCount;
 
   return (

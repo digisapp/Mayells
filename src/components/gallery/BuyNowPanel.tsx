@@ -10,7 +10,8 @@ import { MobileActionBar, scrollIntoViewBelowNav } from '@/components/lots/Mobil
 
 interface BuyNowPanelProps {
   title: string;
-  buyNowPrice: number;
+  /** null: a private sale offered without a published price — the panel asks for one instead. */
+  buyNowPrice: number | null;
   estimateLow?: number | null;
   estimateHigh?: number | null;
 }
@@ -22,6 +23,10 @@ export function BuyNowPanel({ title, buyNowPrice, estimateLow, estimateHigh }: B
   const panelRef = useRef<HTMLDivElement>(null);
   // Follows the word "Estimate", so "up to $2,000" is lower-cased.
   const estimateText = formatEstimate(estimateLow, estimateHigh)?.replace(/^Up to/, 'up to') ?? null;
+  const priceLabel = buyNowPrice ? 'Price' : 'Private sale';
+  const priceText = buyNowPrice ? formatCurrency(buyNowPrice) : 'Price on request';
+  const ctaLabel = buyNowPrice ? 'Inquire to Purchase' : 'Inquire for Price';
+  const mailSubject = `${buyNowPrice ? 'Purchase Inquiry' : 'Price Inquiry'}: ${title}`;
 
   // From the phone bar: open the contact options and bring them into view.
   const inquireFromBar = () => {
@@ -33,8 +38,8 @@ export function BuyNowPanel({ title, buyNowPrice, estimateLow, estimateHigh }: B
     <div ref={panelRef} className="bg-card border border-border/50 rounded-xl p-6 space-y-6 shadow-luxury lg:sticky lg:top-24">
       {/* Price */}
       <div>
-        <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Price</p>
-        <p className="font-display text-display-md">{formatCurrency(buyNowPrice)}</p>
+        <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">{priceLabel}</p>
+        <p className="font-display text-display-md">{priceText}</p>
         {estimateText && (
           <p className="text-sm text-muted-foreground mt-1">Estimate {estimateText}</p>
         )}
@@ -51,7 +56,7 @@ export function BuyNowPanel({ title, buyNowPrice, estimateLow, estimateHigh }: B
               onClick={() => setShowContact(true)}
             >
               <ShoppingBag className="h-5 w-5" />
-              Inquire to Purchase
+              {ctaLabel}
             </Button>
             {/* No online checkout: every sale is confirmed and invoiced by staff. */}
             <p className="mt-3 text-sm text-muted-foreground">
@@ -65,7 +70,7 @@ export function BuyNowPanel({ title, buyNowPrice, estimateLow, estimateHigh }: B
               We&apos;ll confirm availability and arrange payment and delivery.
             </p>
             <a
-              href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(`Purchase Inquiry: ${title}`)}`}
+              href={`mailto:${BUSINESS.email}?subject=${encodeURIComponent(mailSubject)}`}
               className="flex min-h-11 items-center gap-2.5 text-muted-foreground hover:text-foreground transition-colors"
             >
               <Mail className="h-4 w-4" />
@@ -97,12 +102,12 @@ export function BuyNowPanel({ title, buyNowPrice, estimateLow, estimateHigh }: B
 
       <MobileActionBar target={ctaEl} enabled label="Purchase this piece">
         <div className="min-w-0 flex-1">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">Price</p>
-          <p className="font-display text-xl leading-tight tabular-nums truncate">{formatCurrency(buyNowPrice)}</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">{priceLabel}</p>
+          <p className="font-display text-xl leading-tight tabular-nums truncate">{priceText}</p>
         </div>
         <Button type="button" variant="champagne" className="h-12 shrink-0 gap-2 rounded-lg px-5 text-[15px]" onClick={inquireFromBar}>
           <ShoppingBag className="h-4 w-4" />
-          Inquire to Purchase
+          {ctaLabel}
         </Button>
       </MobileActionBar>
     </div>
