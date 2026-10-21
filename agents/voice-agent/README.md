@@ -1,6 +1,6 @@
 # Mayells voice concierge
 
-A LiveKit Agents worker that answers the Mayells phone lines with an xAI realtime voice. It takes appraisal requests (which become prospects in the admin), emails the caller a photo upload link, transfers callers to a specialist during business hours, and writes short notes on every call to `/admin/calls` and to the caller's prospect. Calls are not recorded: no audio or transcript is stored.
+A LiveKit Agents worker that answers the Mayells phone lines with an xAI realtime voice (pinned to `grok-voice-3.0` in `agent.py`; bump the pin deliberately and place a test call). It takes appraisal requests (which become prospects in the admin), emails the caller a photo upload link, transfers callers to a specialist during business hours, and writes short notes on every call to `/admin/calls` and to the caller's prospect. Calls are not recorded: no audio or transcript is stored.
 
 ## Environment
 

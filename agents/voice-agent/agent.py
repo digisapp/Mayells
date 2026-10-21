@@ -281,7 +281,11 @@ async def entrypoint(ctx: agents.JobContext):
     )
     concierge.caller = caller
 
-    session = AgentSession(llm=xai.realtime.RealtimeModel(voice="Sal"))
+    # Pinned so xAI alias moves (grok-voice-latest) do not change the phone line
+    # underneath us. Bump deliberately after a test call.
+    session = AgentSession(
+        llm=xai.realtime.RealtimeModel(model="grok-voice-3.0", voice="Sal")
+    )
 
     async def finish(_reason: str) -> None:
         if call_id:
