@@ -4,6 +4,7 @@ import { db } from '@/db';
 import { lots, auctionLots, auctions } from '@/db/schema';
 import { eq, desc, asc, and, ilike, sql, inArray, isNull, notExists } from 'drizzle-orm';
 import { createClient } from '@/lib/supabase/server';
+import { onlineCheckoutBlockers } from '@/lib/gallery/purchase-state';
 import { lotSchema } from '@/lib/validation/schemas';
 import { PUBLIC_LOT_STATUSES, toPublicLot } from '@/lib/lots/visibility';
 import { logger } from '@/lib/logger';
@@ -168,6 +169,18 @@ export async function POST(req: NextRequest) {
     const parsed = lotSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues[0].message }, { status: 400 });
+    }
+
+    if (parsed.data.onlineCheckout) {
+      const blockers = onlineCheckoutBlockers({
+        saleType: parsed.data.saleType,
+        status: 'draft',
+        buyNowPrice: parsed.data.buyNowPrice ?? null,
+        shippingPrice: parsed.data.shippingPrice ?? null,
+      });
+      if (blockers.length > 0) {
+        return NextResponse.json({ error: `Online checkout can't be switched on yet: ${blockers.join(' ')}` }, { status: 409 });
+      }
     }
 
     const slug = parsed.data.title

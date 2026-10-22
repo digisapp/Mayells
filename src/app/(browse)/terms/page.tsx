@@ -15,13 +15,15 @@ const LINK = 'font-medium text-champagne-deep underline decoration-champagne/60 
 // venue per sale (lib/bidding/venue.ts), the bidder tiers in
 // lib/bidding/verification.ts, the per-sale buyer's premium, the invoice due
 // period in automation settings (7 days by default) and the anti-snipe
-// extension. Change the text with the code.
+// extension, and the gallery checkout in lib/gallery (the hold, US-only
+// online delivery, Stripe Tax, the as-described guarantee window in
+// GALLERY_CHECKOUT). Change the text with the code.
 export default function TermsPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20">
       <h1 className="font-display text-display-lg">Terms of Service</h1>
       {/* The date of this file's last substantive change — update with the text. */}
-      <p className="mt-3 mb-6 sm:mb-8 text-sm text-muted-foreground">Last updated September 29, 2026</p>
+      <p className="mt-3 mb-6 sm:mb-8 text-sm text-muted-foreground">Last updated October 22, 2026</p>
 
       <div className="space-y-4 text-[15px] sm:text-base leading-relaxed text-muted-foreground break-words [&_h2]:pt-6 [&_h2]:font-display [&_h2]:text-2xl [&_h2]:leading-snug [&_h2]:text-foreground [&_h3]:pt-3 [&_h3]:font-medium [&_h3]:text-foreground [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-5 [&_section]:scroll-mt-24 [&_section]:space-y-4">
         <p>
@@ -172,7 +174,8 @@ export default function TermsPage() {
             Ownership passes to the buyer once we have received payment in full in cleared funds. Until
             then the lot is not released. Risk of loss or damage passes to the buyer when the lot is
             collected or handed to the buyer&rsquo;s shipper, or fourteen (14) days after payment,
-            whichever comes first.
+            whichever comes first. When Mayells ships a gallery piece to you with shipping bought at
+            checkout, risk passes to you on delivery.
           </p>
 
           <h3>2.14 Collection and shipping</h3>
@@ -185,19 +188,56 @@ export default function TermsPage() {
             doesn&rsquo;t cancel the sale or delay payment.
           </p>
 
-          <h3>2.15 Fixed-price (Gallery) purchases</h3>
-          <p>
-            Gallery pieces are offered at the price shown. A purchase is agreed with a Mayells specialist,
-            who confirms availability and sends an invoice. The price shown is payable plus any tax and
-            shipping, with no buyer&rsquo;s premium unless the listing says otherwise. Sections 2.8 and
-            2.10&ndash;2.14 apply to Gallery purchases too.
-          </p>
+          <section id="gallery" className="space-y-4">
+            <h3>2.15 Fixed-price (Gallery) purchases</h3>
+            <p>
+              Gallery pieces are offered at the price shown, with no buyer&rsquo;s premium unless the
+              listing says otherwise.
+            </p>
+            <ul>
+              <li>
+                <strong className="font-medium text-foreground">Buy Now.</strong> Pieces marked Buy Now can be
+                bought online by a registered buyer. Starting checkout reserves the piece for you for about
+                30 minutes while you pay by card on our secure checkout, operated by Stripe. Your purchase is
+                agreed when your payment is accepted, and we email you a confirmation. If you don&rsquo;t
+                complete payment in that time, the reservation ends and the piece goes back on sale.
+              </li>
+              <li>
+                <strong className="font-medium text-foreground">Delivery.</strong> Online checkout delivers to
+                addresses in the United States. The shipping charge shown on the piece&rsquo;s page covers
+                packing and fully insured shipping arranged by Mayells, and we email tracking details once it
+                ships. For international delivery or collection in person, contact a specialist.
+              </li>
+              <li>
+                <strong className="font-medium text-foreground">Tax.</strong> Where we are required to collect
+                sales tax, it is calculated at checkout from the delivery address and shown before you pay.
+              </li>
+              <li>
+                <strong className="font-medium text-foreground">Through a specialist.</strong> Any gallery or
+                private-sale piece can also be bought through a Mayells specialist, who confirms availability
+                and sends an invoice payable by card or bank wire within the time it states. The piece is
+                reserved for you until then.
+              </li>
+            </ul>
+            <p>
+              Sections 2.8 and 2.10&ndash;2.14 apply to gallery purchases too, except that shipping bought
+              at checkout is arranged by Mayells as described above.
+            </p>
 
-          <h3>2.16 Returns</h3>
-          <p>
-            All sales are final, except where the law requires otherwise. If there&rsquo;s a problem with
-            a lot you bought, contact us promptly and we&rsquo;ll look into it.
-          </p>
+            <h3>2.16 Final sale and our as-described guarantee</h3>
+            <p>
+              Sales are final: a piece can&rsquo;t be returned because you have changed your mind. Gallery
+              purchases carry our as-described guarantee instead. If a gallery piece arrives damaged, or is
+              materially different from its catalogue description, tell us within seven (7) days of delivery,
+              with photographs. We will arrange its return at our cost and, once it is back with us in the
+              condition it arrived in, refund everything you paid for it, including shipping and tax. Please
+              don&rsquo;t send anything back until we have agreed the return with you.
+            </p>
+            <p>
+              Otherwise, except where the law requires otherwise, all sales are final. If there&rsquo;s a
+              problem with a lot you bought at auction, contact us promptly and we&rsquo;ll look into it.
+            </p>
+          </section>
         </section>
 
         <section id="consigning">

@@ -8,9 +8,11 @@ import { useHideChatLauncher } from '@/components/chat/use-hide-chat-launcher';
 interface PayButtonProps {
   token: string;
   amountLabel: string;
+  /** Replaces "Pay {amount}", e.g. "Complete purchase" for a Buy Now order. */
+  label?: string;
 }
 
-export function PayButton({ token, amountLabel }: PayButtonProps) {
+export function PayButton({ token, amountLabel, label }: PayButtonProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -55,7 +57,7 @@ export function PayButton({ token, amountLabel }: PayButtonProps) {
             <Loader2 className="h-4 w-4 animate-spin" /> Redirecting to secure checkout…
           </>
         ) : (
-          `Pay ${amountLabel}`
+          label ?? `Pay ${amountLabel}`
         )}
       </Button>
       {notice && (

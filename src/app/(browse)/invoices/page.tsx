@@ -6,12 +6,12 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { db } from '@/db';
 import { invoices, lots } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc, isNull, ne, or } from 'drizzle-orm';
 import { Receipt } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AccountShell } from '@/components/account/AccountShell';
-import { invoiceStatusBadge } from '@/components/account/invoice-status';
+import { buyerInvoiceBadge } from '@/components/account/invoice-status';
 import { formatShortDate } from '@/lib/format/dates';
 import { formatCurrencyWithCents } from '@/types';
 
@@ -34,7 +34,11 @@ export default async function MyInvoicesPage() {
     })
     .from(invoices)
     .leftJoin(lots, eq(lots.id, invoices.lotId))
-    .where(eq(invoices.buyerId, user.id))
+    // A Buy Now checkout that ended unpaid was never a bill: leave it out.
+    .where(and(
+      eq(invoices.buyerId, user.id),
+      or(isNull(invoices.holdExpiresAt), ne(invoices.status, 'cancelled')),
+    ))
     .orderBy(desc(invoices.createdAt));
 
   return (
@@ -42,7 +46,7 @@ export default async function MyInvoicesPage() {
       {rows.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-muted-foreground mb-5">
-            You don&apos;t have any invoices yet. Lots you win will appear here.
+            You don&apos;t have any invoices yet. Lots you win and pieces you buy will appear here.
           </p>
           <Button asChild size="lg" variant="champagne">
             <Link href="/auctions">Browse auctions</Link>
@@ -51,7 +55,8 @@ export default async function MyInvoicesPage() {
       ) : (
         <div className="space-y-3">
           {rows.map(({ invoice, lotTitle }) => {
-            const badge = invoiceStatusBadge(invoice.status);
+            const badge = buyerInvoiceBadge(invoice);
+            const buyNow = !!invoice.holdExpiresAt;
             return (
               <Link
                 key={invoice.id}
@@ -61,7 +66,10 @@ export default async function MyInvoicesPage() {
                 <div className="min-w-0">
                   <p className="font-medium truncate">{lotTitle || invoice.invoiceNumber}</p>
                   <p className="text-sm text-muted-foreground">
-                    {invoice.invoiceNumber} · Due {formatShortDate(invoice.dueDate)}
+                    {invoice.invoiceNumber} ·{' '}
+                    {buyNow || invoice.status === 'paid'
+                      ? `${invoice.source === 'gallery' ? 'Gallery' : 'Auction'} · ${formatShortDate(invoice.paidAt ?? invoice.createdAt ?? invoice.dueDate)}`
+                      : `Due ${formatShortDate(invoice.dueDate)}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">

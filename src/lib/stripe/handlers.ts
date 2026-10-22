@@ -15,6 +15,8 @@ import { strayPaymentAction } from '@/lib/stripe/reconcile';
 import { logger } from '@/lib/logger';
 import { ensurePaddleNumber } from '@/lib/bidding/verification';
 import { formatCurrencyWithCents } from '@/types';
+import { applyCheckoutTotalsToHold } from '@/lib/gallery/settle';
+import { releaseHoldForExpiredSession } from '@/lib/gallery/holds';
 
 export interface HandlerResult {
   status: 'success' | 'ignored';
@@ -42,6 +44,8 @@ export async function handleStripeEvent(event: Stripe.Event): Promise<HandlerRes
       return handleChargeDispute(event.data.object as Stripe.Dispute, event.type);
     case 'checkout.session.completed':
       return handleCheckoutSessionCompleted(event.data.object as Stripe.Checkout.Session);
+    case 'checkout.session.expired':
+      return handleCheckoutSessionExpired(event.data.object as Stripe.Checkout.Session);
     case 'identity.verification_session.verified':
       return handleIdentityVerified(event.data.object as Stripe.Identity.VerificationSession);
     default:
@@ -132,6 +136,22 @@ async function handleCheckoutSessionCompleted(
   await ensurePaddleNumber(userId);
 
   return { status: 'success', relatedType: 'user', relatedId: userId };
+}
+
+/**
+ * A Checkout session lapsed unpaid. For a Buy Now hold that is the end of
+ * the reservation: cancel the hold invoice so the piece is on sale again.
+ * Matched on the hold's own session id, so an old session expiring can never
+ * cancel a newer checkout. Invoice sessions expiring needs no action.
+ */
+async function handleCheckoutSessionExpired(session: Stripe.Checkout.Session): Promise<HandlerResult> {
+  const invoiceId = session.metadata?.invoiceId;
+  if (session.mode !== 'payment' || session.metadata?.source !== 'gallery' || !invoiceId) {
+    return { status: 'ignored' };
+  }
+  const released = await releaseHoldForExpiredSession(invoiceId, session.id);
+  if (released) logger.info('Buy Now hold released: checkout expired unpaid', { invoiceId, sessionId: session.id });
+  return { status: 'success', relatedType: 'invoice', relatedId: invoiceId };
 }
 
 function shippingAddressFromSession(session: Stripe.Checkout.Session): StructuredShippingAddress | null {
@@ -252,7 +272,7 @@ async function handleChargeDispute(
       .update(invoices)
       .set({
         disputedAt: now,
-        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Dispute opened', label)})`,
+        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Dispute opened', label)}::text)`,
         updatedAt: now,
       })
       .where(and(eq(invoices.id, invoice.id), isNull(invoices.disputedAt)));
@@ -265,7 +285,7 @@ async function handleChargeDispute(
       .update(invoices)
       .set({
         disputedAt: null,
-        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Dispute won', label)})`,
+        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Dispute won', label)}::text)`,
         updatedAt: now,
       })
       .where(and(eq(invoices.id, invoice.id), isNotNull(invoices.disputedAt)));
@@ -305,10 +325,16 @@ async function handlePaymentIntentSucceeded(
 
   const result: HandlerResult = { status: 'success', relatedType: 'invoice', relatedId: invoiceId };
 
-  const [invoice] = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
-  if (!invoice) {
+  const [stored] = await db.select().from(invoices).where(eq(invoices.id, invoiceId)).limit(1);
+  if (!stored) {
     throw new Error(`Invoice ${invoiceId} not found for payment intent ${paymentIntent.id}`);
   }
+  // Buy Now: the hold was priced before the buyer gave an address, so the
+  // tax Stripe calculated on its page is copied on before the amount check.
+  const invoice =
+    stored.source === 'gallery' && stored.holdExpiresAt && (stored.status === 'pending' || stored.status === 'overdue')
+      ? await applyCheckoutTotalsToHold(stored, paymentIntent.id)
+      : stored;
 
   const chargeId = (paymentIntent.latest_charge as string) ?? null;
 
@@ -362,7 +388,7 @@ async function handlePaymentIntentSucceeded(
       await db
         .update(invoices)
         .set({
-          notes: sql`concat_ws(chr(10), ${invoices.notes}, ${mismatchNote})`,
+          notes: sql`concat_ws(chr(10), ${invoices.notes}, ${mismatchNote}::text)`,
           // The session that took the short payment is now complete. Clearing
           // it lets the buyer's pay link mint a fresh one instead of answering
           // "payment is being processed" forever.
@@ -383,7 +409,7 @@ async function handlePaymentIntentSucceeded(
       paidAt: new Date(),
       stripePaymentIntentId: paymentIntent.id,
       stripeChargeId: chargeId,
-      ...(mismatchNote ? { notes: sql`concat_ws(chr(10), ${invoices.notes}, ${mismatchNote})` } : {}),
+      ...(mismatchNote ? { notes: sql`concat_ws(chr(10), ${invoices.notes}, ${mismatchNote}::text)` } : {}),
       updatedAt: new Date(),
     })
     .where(and(eq(invoices.id, invoiceId), inArray(invoices.status, ['pending', 'overdue'])))
@@ -504,7 +530,7 @@ async function holdCardPaymentOnManuallyPaidInvoice(
   );
   await db
     .update(invoices)
-    .set({ notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note})`, updatedAt: new Date() })
+    .set({ notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note}::text)`, updatedAt: new Date() })
     .where(eq(invoices.id, invoice.id));
 }
 
@@ -791,7 +817,7 @@ async function recordRefundedAmount(invoiceId: string, paymentIntentId: string, 
             notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote(
               'Partially refunded',
               `${formatCurrencyWithCents(amount)} of ${formatCurrencyWithCents(charge.amount)} via Stripe (${charge.id})`,
-            )})`,
+            )}::text)`,
           }
         : {}),
       updatedAt: new Date(),

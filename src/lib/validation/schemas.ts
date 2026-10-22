@@ -63,6 +63,10 @@ const lotBaseSchema = z.object({
   // a status-only PATCH would silently rewrite them. Defaults live on create.
   saleType: z.enum(['auction', 'gallery', 'private']).optional(),
   buyNowPrice: money().nullable().optional(),
+  // Gallery Buy Now (lib/gallery): the per-piece switch, and what insured US
+  // shipping costs the buyer in cents (0 = complimentary; null = not set).
+  onlineCheckout: z.boolean().optional(),
+  shippingPrice: z.number().int().min(0).max(MAX_MONEY_CENTS, 'Amount is too large').nullable().optional(),
   isFeatured: z.boolean().optional(),
   isHighlight: z.boolean().optional(),
 });

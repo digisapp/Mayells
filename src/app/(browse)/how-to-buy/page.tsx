@@ -6,6 +6,7 @@ import { Monitor, Phone, FileText, ArrowRight } from 'lucide-react';
 import { BUSINESS } from '@/lib/config';
 import { Button } from '@/components/ui/button';
 import { serializeJsonLd } from '@/lib/seo/structured-data';
+import { GALLERY_CHECKOUT } from '@/lib/gallery/config';
 
 export const metadata = {
   title: 'How to Buy',
@@ -19,7 +20,8 @@ const faqData = [
   { q: 'Where do I bid?', a: 'Each sale is bid in one place: here on mayells.com, or on LiveAuctioneers. The sale page says which, and links you straight there. The same lot is never open for bidding in both places at once.' },
   { q: 'Is there a buyer\'s premium?', a: 'Yes. A buyer\'s premium is added to the hammer price: 25% unless the sale page states a different rate. Sales bid on LiveAuctioneers may also carry LiveAuctioneers\' own fees, shown on its site.' },
   { q: 'Can I preview items in person?', a: 'Preview dates, when a sale has them, are listed on its auction page. Contact us to arrange a private viewing.' },
-  { q: 'Do you ship internationally?', a: 'We ship worldwide through trusted fine art and antique shipping partners. Shipping costs are calculated after the sale. Local pickup is also available by appointment.' },
+  { q: 'Can I buy without bidding?', a: `Yes. The Gallery offers pieces at a fixed price, with no buyer's premium. Pieces marked Buy Now can be bought online: the piece is reserved for you while you pay by card on our secure checkout, with fully insured US shipping and any sales tax shown before you pay. Gallery sales are final, with our ${GALLERY_CHECKOUT.guaranteeDays}-day as-described guarantee. A specialist can arrange any other gallery purchase.` },
+  { q: 'Do you ship internationally?', a: 'We ship worldwide through trusted fine art and antique shipping partners. For auction lots, shipping costs are calculated after the sale; gallery pieces bought online ship to US addresses for the charge shown on the piece. Local pickup is also available by appointment.' },
   { q: 'Can I request a condition report?', a: 'Absolutely. Contact us for detailed condition reports and additional photographs on any lot. We\'re happy to provide as much information as you need.' },
   { q: 'What if I can\'t bid live?', a: 'Leave a maximum bid in advance wherever the sale is bid (mayells.com or LiveAuctioneers) and it will bid for you only as high as needed. You can also call or email us to arrange phone bidding or an absentee bid.' },
 ];

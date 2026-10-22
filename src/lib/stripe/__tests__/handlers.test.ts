@@ -45,6 +45,8 @@ const h = vi.hoisted(() => {
       paymentIntents: { retrieve: vi.fn() },
     },
     processPaidInvoice: vi.fn(),
+    applyCheckoutTotalsToHold: vi.fn(),
+    releaseHoldForExpiredSession: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   };
 });
@@ -65,6 +67,8 @@ vi.mock('@/lib/invoicing/unwind', () => ({
 }));
 vi.mock('@/lib/bidding/verification', () => ({ ensurePaddleNumber: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ logger: h.logger }));
+vi.mock('@/lib/gallery/settle', () => ({ applyCheckoutTotalsToHold: h.applyCheckoutTotalsToHold }));
+vi.mock('@/lib/gallery/holds', () => ({ releaseHoldForExpiredSession: h.releaseHoldForExpiredSession }));
 
 import { handleStripeEvent } from '../handlers';
 
@@ -245,5 +249,54 @@ describe('payment_intent.payment_failed', () => {
     await handleStripeEvent(failed());
 
     expect(updates).toHaveLength(0);
+  });
+});
+
+describe('Buy Now (gallery hold) payments', () => {
+  it('copies Stripe’s tax onto the hold before checking the amount, then settles without a reconcile note', async () => {
+    const hold = invoice({
+      status: 'pending',
+      source: 'gallery',
+      holdExpiresAt: new Date('2026-10-22T15:32:00Z'),
+      hammerPrice: 92_000,
+      shippingCost: 8_000,
+      totalAmount: 100_000 - 7_000,
+    });
+    selectResults.push([hold]);
+    // Stripe charged price + shipping + tax: 100,000.
+    h.applyCheckoutTotalsToHold.mockImplementation(async (inv: Record<string, unknown>) => ({ ...inv, taxAmount: 7_000, totalAmount: 100_000 }));
+    updateReturning.push([{ id: 'inv-1' }]);
+
+    await handleStripeEvent(succeeded('pi_buy'));
+
+    expect(h.applyCheckoutTotalsToHold).toHaveBeenCalledWith(expect.objectContaining({ id: 'inv-1' }), 'pi_buy');
+    expect(updates.some((u) => u.status === 'paid')).toBe(true);
+    expect(hasNote()).toBe(false);
+    expect(processPaidInvoice).toHaveBeenCalledWith('inv-1', expect.objectContaining({ sendBuyerConfirmation: true, strict: true }));
+  });
+
+  it('leaves auction invoices alone', async () => {
+    selectResults.push([invoice({ status: 'pending' })]);
+    updateReturning.push([{ id: 'inv-1' }]);
+    await handleStripeEvent(succeeded('pi_auction'));
+    expect(h.applyCheckoutTotalsToHold).not.toHaveBeenCalled();
+  });
+});
+
+describe('checkout.session.expired', () => {
+  const expired = (metadata: Record<string, string>, mode = 'payment') =>
+    ({ id: 'evt_x', type: 'checkout.session.expired', data: { object: { id: 'cs_9', mode, metadata } } }) as unknown as Stripe.Event;
+
+  it('releases the Buy Now hold the session belonged to', async () => {
+    h.releaseHoldForExpiredSession.mockResolvedValue(true);
+    const result = await handleStripeEvent(expired({ invoiceId: 'inv-1', lotId: 'lot-1', source: 'gallery' }));
+    expect(h.releaseHoldForExpiredSession).toHaveBeenCalledWith('inv-1', 'cs_9');
+    expect(result).toEqual({ status: 'success', relatedType: 'invoice', relatedId: 'inv-1' });
+  });
+
+  it('ignores an expired invoice-payment or card-verification session', async () => {
+    await expect(handleStripeEvent(expired({ invoiceId: 'inv-1', lotId: 'lot-1' }))).resolves.toEqual({ status: 'ignored' });
+    await expect(handleStripeEvent(expired({ purpose: 'bidder_card_verification' }, 'setup'))).resolves.toEqual({ status: 'ignored' });
+    expect(h.releaseHoldForExpiredSession).not.toHaveBeenCalled();
   });
 });

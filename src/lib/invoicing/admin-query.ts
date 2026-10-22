@@ -81,6 +81,9 @@ export const invoiceListColumns = {
   emailSentAt: invoices.emailSentAt,
   createdAt: invoices.createdAt,
   notes: invoices.notes,
+  source: invoices.source,
+  // Set on a Buy Now checkout hold (see lib/gallery/holds.ts).
+  holdExpiresAt: invoices.holdExpiresAt,
   hasStripePayment: invoices.stripePaymentIntentId,
   // Cumulative Stripe partial refunds (cents) — "Partially refunded $X" pill.
   refundedAmount: invoices.refundedAmount,

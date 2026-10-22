@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { auctions, auctionLots, lots, bids, maxBids } from '@/db/schema';
 import { eq, asc, gt, and, inArray, isNull, ne, notInArray, sql } from 'drizzle-orm';
+import { findLiveInvoiceForLot } from '@/lib/invoicing/generate-invoice';
 import { initializeLotBidStates, settlingKeyFor } from './bid-engine';
 import { isOnSiteBiddingSale } from './venue';
 import { ACTIVE_SALE_STATUSES } from '@/lib/lots/placement';
@@ -355,6 +356,17 @@ export async function withdrawLot(
   }
 
   const retractedBids = await db.transaction(async (tx) => {
+    // A gallery piece reserved by a live invoice (a Buy Now checkout or a
+    // client's invoice) must not be pulled from under it. Checked under the
+    // lot's row lock, which the checkout takes too.
+    await tx.select({ id: lots.id }).from(lots).where(eq(lots.id, lotId)).for('update');
+    const live = await findLiveInvoiceForLot(tx, lotId);
+    if (live) {
+      throw new LotWithdrawBlockedError(
+        `This piece is reserved by invoice ${live.invoiceNumber} (${live.holdExpiresAt ? 'an online checkout in progress' : 'awaiting a client’s payment'}). Cancel that invoice first.`,
+      );
+    }
+
     let retracted = 0;
     for (const placement of placements) {
       const rows = await tx

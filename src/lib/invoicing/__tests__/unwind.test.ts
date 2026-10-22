@@ -30,6 +30,7 @@ const h = vi.hoisted(() => {
     table,
     db: { ...tx, transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) },
     relistUnsoldLot: vi.fn(),
+    relistDirectSaleLot: vi.fn(),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 });
@@ -43,14 +44,14 @@ vi.mock('@/db/schema', () => ({
   users: h.table(),
   consignments: h.table(),
 }));
-vi.mock('@/lib/lots/relist', () => ({ relistUnsoldLot: h.relistUnsoldLot }));
+vi.mock('@/lib/lots/relist', () => ({ relistUnsoldLot: h.relistUnsoldLot, relistDirectSaleLot: h.relistDirectSaleLot }));
 vi.mock('@/lib/payouts/service', () => ({ cancelPayoutForRefundedInvoice: vi.fn(async () => 'cancelled') }));
 vi.mock('@/lib/stripe/config', () => ({ stripe: { checkout: { sessions: { expire: vi.fn() } } } }));
 vi.mock('@/lib/email/notifications', () => ({ sendInvoiceRefundedNotification: vi.fn() }));
 vi.mock('@/lib/revalidate', () => ({ revalidatePublicCatalog: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ logger: h.logger }));
 
-import { unwindPaidInvoice } from '../unwind';
+import { unwindPaidInvoice, cancelPendingInvoice } from '../unwind';
 
 const refundedInvoice = {
   id: 'inv-1',
@@ -105,5 +106,32 @@ describe('unwindPaidInvoice — releasing the lot', () => {
 
     expect(result.lot).toBe('held');
     expect(h.sets).toContainEqual(expect.objectContaining({ status: 'approved' }));
+  });
+});
+
+describe('cancelPendingInvoice — a gallery invoice', () => {
+  it('only voids the reservation: the piece was never taken off sale', async () => {
+    h.returningResults.push([{ ...refundedInvoice, source: 'gallery', status: 'cancelled' }]);
+    h.selectResults.push([{ id: 'lot-1', status: 'for_sale', winnerId: null, saleType: 'gallery', buyNowPrice: 450_000 }]);
+
+    const result = await cancelPendingInvoice('inv-1', 'client backed out');
+
+    expect(result).toEqual({ cancelled: true, status: 'cancelled', lot: 'relisted' });
+    expect(h.relistUnsoldLot).not.toHaveBeenCalled();
+    expect(h.logger.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('unwindPaidInvoice — a refunded gallery or private sale', () => {
+  it('puts the piece back on sale as listed instead of re-pricing it from its reserve', async () => {
+    h.returningResults.push([{ ...refundedInvoice, source: 'gallery' }]);
+    h.selectResults.push([], [{ ...soldLot, saleType: 'private', buyNowPrice: null }]);
+    h.relistDirectSaleLot.mockResolvedValue('relisted');
+
+    const result = await unwindPaidInvoice('inv-1', 'test', { notifyBuyer: false });
+
+    expect(result.lot).toBe('relisted');
+    expect(h.relistDirectSaleLot).toHaveBeenCalledTimes(1);
+    expect(h.relistUnsoldLot).not.toHaveBeenCalled();
   });
 });

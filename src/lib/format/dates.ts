@@ -79,6 +79,11 @@ export function formatShortDateTime(d: DateInput): string {
   return `${p.monthShort} ${p.day}, ${p.year}, ${p.time} ET`;
 }
 
+/** "7:00 PM ET" — a time later today, e.g. when a checkout hold lapses. */
+export function formatClockTime(d: DateInput): string {
+  return `${partsOf(toDate(d)).time} ET`;
+}
+
 /**
  * "Thu, November 5 at 7:00 PM ET" — sale opening/closing lines. The year is
  * added only when it isn't the current one ("Mon, January 4, 2027 at …").

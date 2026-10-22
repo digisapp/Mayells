@@ -29,6 +29,9 @@ const h = vi.hoisted(() => {
       query: { invoices: { findFirst: (...args: unknown[]) => h.findInvoice(...args) } },
     },
     sendPaymentConfirmation: vi.fn(),
+    sendGalleryOrderConfirmation: vi.fn(),
+    sendGallerySaleAdminNotification: vi.fn(),
+    markGalleryLotSold: vi.fn(),
     createShipmentForInvoice: vi.fn(),
   };
 });
@@ -46,7 +49,10 @@ vi.mock('@/lib/shipping/service', () => ({ createShipmentForInvoice: h.createShi
 vi.mock('@/lib/email/notifications', () => ({
   sendSellerStatementNotification: vi.fn(),
   sendPaymentConfirmation: h.sendPaymentConfirmation,
+  sendGalleryOrderConfirmation: h.sendGalleryOrderConfirmation,
+  sendGallerySaleAdminNotification: h.sendGallerySaleAdminNotification,
 }));
+vi.mock('@/lib/gallery/settle', () => ({ markGalleryLotSold: h.markGalleryLotSold }));
 vi.mock('@/lib/sellers/shadow', () => ({ isSentinelEmail: () => false }));
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -54,6 +60,7 @@ import { processPaidInvoice } from '../service';
 
 const loadedInvoice = {
   id: 'inv-1',
+  status: 'paid',
   lotId: 'lot-1',
   hammerPrice: 100_000,
   invoiceNumber: 'INV-1',
@@ -100,5 +107,71 @@ describe('processPaidInvoice — payout failure', () => {
     h.findInvoice.mockRejectedValue(new Error('connection reset'));
 
     await expect(processPaidInvoice('inv-1', { strict: true })).rejects.toThrow('connection reset');
+  });
+});
+
+describe('processPaidInvoice — a gallery sale', () => {
+  const galleryInvoice = {
+    ...loadedInvoice,
+    source: 'gallery',
+    holdExpiresAt: new Date('2026-10-22T15:32:00Z'),
+    accessToken: 'tok-1',
+    shippingCost: 7_500,
+    taxAmount: 7_000,
+    totalAmount: 114_500,
+    shippingAddress: JSON.stringify({ name: 'A Collector', line1: '1 Worth Ave', city: 'Palm Beach', state: 'FL', postalCode: '33480', country: 'US' }),
+    buyer: { email: 'buyer@example.com', fullName: 'A Collector' },
+  };
+
+  it('marks the piece sold, sends the order confirmation and alerts staff', async () => {
+    h.findInvoice.mockResolvedValue(galleryInvoice);
+    h.markGalleryLotSold.mockResolvedValue('sold');
+    queueSelects();
+
+    await processPaidInvoice('inv-1', { sendBuyerConfirmation: true });
+
+    expect(h.markGalleryLotSold).toHaveBeenCalledWith(galleryInvoice);
+    expect(h.sendPaymentConfirmation).not.toHaveBeenCalled();
+    expect(h.sendGalleryOrderConfirmation).toHaveBeenCalledWith(expect.objectContaining({
+      price: 100_000,
+      shippingCost: 7_500,
+      taxAmount: 7_000,
+      totalAmount: 114_500,
+      accessToken: 'tok-1',
+      shipTo: ['A Collector', '1 Worth Ave', 'Palm Beach, FL 33480'],
+      guaranteeDays: 7,
+    }));
+    expect(h.sendGallerySaleAdminNotification).toHaveBeenCalledWith(expect.objectContaining({ online: true, hasSeller: true }));
+  });
+
+  it('on a webhook redelivery (no confirmation) re-marks the piece sold but emails nobody', async () => {
+    h.findInvoice.mockResolvedValue(galleryInvoice);
+    h.markGalleryLotSold.mockResolvedValue('sold');
+    queueSelects();
+
+    await processPaidInvoice('inv-1');
+
+    expect(h.markGalleryLotSold).toHaveBeenCalledTimes(1);
+    expect(h.sendGalleryOrderConfirmation).not.toHaveBeenCalled();
+    expect(h.sendGallerySaleAdminNotification).not.toHaveBeenCalled();
+  });
+
+  it('strict: a failure to mark the piece sold is thrown so Stripe redelivers', async () => {
+    h.findInvoice.mockResolvedValue(galleryInvoice);
+    h.markGalleryLotSold.mockRejectedValue(new Error('lot update failed'));
+    queueSelects();
+
+    await expect(processPaidInvoice('inv-1', { strict: true })).rejects.toThrow(/lot update failed|payout insert failed/);
+  });
+});
+
+describe('processPaidInvoice — an invoice that is no longer paid', () => {
+  it('settles nothing (a stale redelivery racing a refund)', async () => {
+    h.findInvoice.mockResolvedValue({ ...loadedInvoice, source: 'gallery', status: 'refunded' });
+
+    await expect(processPaidInvoice('inv-1', { sendBuyerConfirmation: true, strict: true })).resolves.toEqual({ payoutError: null });
+    expect(h.markGalleryLotSold).not.toHaveBeenCalled();
+    expect(h.sendGalleryOrderConfirmation).not.toHaveBeenCalled();
+    expect(h.createShipmentForInvoice).not.toHaveBeenCalled();
   });
 });

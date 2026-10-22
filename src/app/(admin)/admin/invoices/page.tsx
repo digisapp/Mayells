@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
-import { addDaysToDay, formatDayOnly, formatShortDate, formatShortDateTime, todayInHouseTz } from '@/lib/format/dates';
+import { addDaysToDay, formatClockTime, formatDayOnly, formatShortDate, formatShortDateTime, todayInHouseTz } from '@/lib/format/dates';
 import { INVOICE_STATUS, statusBadge } from '@/lib/admin/status/money';
 import { FilterChip } from '../_components/FilterChips';
 import { Pager } from '../_components/Pager';
@@ -44,6 +44,8 @@ interface InvoiceRow {
   emailSentAt: string | null;
   createdAt: string | null;
   notes: string | null;
+  source: 'auction' | 'gallery';
+  holdExpiresAt: string | null;
   hasStripePayment: string | null;
   refundedAmount: number;
   disputedAt: string | null;
@@ -472,6 +474,8 @@ export default function AdminInvoicesPage() {
                       <Link href={`/admin/auctions/${invoice.auctionId}`} className="hover:underline">
                         {invoice.auctionTitle}
                       </Link>
+                    ) : invoice.source === 'gallery' ? (
+                      <span>{invoice.holdExpiresAt ? 'Gallery · Buy Now' : 'Gallery'}</span>
                     ) : '—'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{formatCurrencyWithCents(invoice.hammerPrice)}</TableCell>
@@ -479,9 +483,24 @@ export default function AdminInvoicesPage() {
                   <TableCell className="text-right tabular-nums font-medium">{formatCurrencyWithCents(invoice.totalAmount)}</TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-1">
-                      <Badge className={statusBadge(INVOICE_STATUS, invoice.status).className}>
-                        {statusBadge(INVOICE_STATUS, invoice.status).label}
-                      </Badge>
+                      {invoice.holdExpiresAt && invoice.status === 'pending' ? (
+                        <Badge
+                          className="bg-amber-100 text-amber-800"
+                          title="The buyer is on Stripe's checkout page. The piece is held until then; if unpaid, the hold is released automatically."
+                        >
+                          {new Date(invoice.holdExpiresAt).getTime() > Date.now()
+                            ? `Checkout until ${formatClockTime(invoice.holdExpiresAt)}`
+                            : 'Checkout lapsed'}
+                        </Badge>
+                      ) : invoice.holdExpiresAt && invoice.status === 'cancelled' ? (
+                        <Badge className="bg-muted text-muted-foreground" title="A Buy Now checkout that ended without payment">
+                          Checkout abandoned
+                        </Badge>
+                      ) : (
+                        <Badge className={statusBadge(INVOICE_STATUS, invoice.status).className}>
+                          {statusBadge(INVOICE_STATUS, invoice.status).label}
+                        </Badge>
+                      )}
                       {invoice.disputedAt && (
                         <Badge
                           className="bg-red-100 text-red-800"
@@ -510,7 +529,9 @@ export default function AdminInvoicesPage() {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{fmtDate(invoice.paidAt)}</TableCell>
                   <TableCell>
-                    {invoice.emailSentAt ? (
+                    {invoice.holdExpiresAt && !invoice.emailSentAt ? (
+                      <span className="text-xs text-muted-foreground" title="Bought online: the buyer pays on Stripe's page, so no invoice email is sent">Online</span>
+                    ) : invoice.emailSentAt ? (
                       <span className="inline-flex items-center gap-1 text-xs text-green-700" title={`Sent ${formatShortDateTime(invoice.emailSentAt)}`}>
                         <CheckCircle className="h-3.5 w-3.5" /> Sent
                       </span>
@@ -536,7 +557,7 @@ export default function AdminInvoicesPage() {
                           <DropdownMenuItem onClick={() => copyPayLink(invoice)}>
                             <Link2 className="h-3.5 w-3.5" /> Copy pay link
                           </DropdownMenuItem>
-                          {isPayable(invoice.status) && (
+                          {isPayable(invoice.status) && !invoice.holdExpiresAt && (
                             <DropdownMenuItem onClick={() => resendEmail(invoice)}>
                               <Mail className="h-3.5 w-3.5" /> Resend invoice email
                             </DropdownMenuItem>
@@ -547,7 +568,7 @@ export default function AdminInvoicesPage() {
                               <CheckCircle className="h-3.5 w-3.5 text-green-600" /> Mark paid (wire/check)
                             </DropdownMenuItem>
                           )}
-                          {isPayable(invoice.status) && (
+                          {isPayable(invoice.status) && !invoice.holdExpiresAt && (
                             <DropdownMenuItem onClick={() => openAction({ kind: 'extend', invoice })}>
                               <CalendarPlus className="h-3.5 w-3.5" /> {invoice.status === 'overdue' ? 'Extend due date' : 'Change due date'}
                             </DropdownMenuItem>
@@ -683,7 +704,9 @@ export default function AdminInvoicesPage() {
             <p>
               Void {pending.invoice.invoiceNumber} for <strong>{formatCurrencyWithCents(pending.invoice.totalAmount)}</strong> owed by{' '}
               <strong>{buyerLabel(pending.invoice)}</strong>. Any open Stripe checkout is expired and{' '}
-              <em>{pending.invoice.lotTitle}</em> is relisted in the gallery (or marked unsold).
+              {pending.invoice.source === 'gallery'
+                ? <><em>{pending.invoice.lotTitle}</em> is no longer reserved: it stays on sale in the gallery.</>
+                : <><em>{pending.invoice.lotTitle}</em> is relisted in the gallery (or marked unsold).</>}
             </p>
             <div className="space-y-1.5">
               <Label htmlFor="reason">Reason (internal)</Label>

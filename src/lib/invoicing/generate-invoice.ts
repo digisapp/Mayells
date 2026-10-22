@@ -1,6 +1,7 @@
 import { db } from '@/db';
 import { invoices, auctions, automationSettings } from '@/db/schema';
 import { eq, and, notInArray } from 'drizzle-orm';
+import { isUniqueViolation } from '@/lib/auctions/db-errors';
 
 // Either the base db or an open transaction — both expose the same query API,
 // so settlement can generate the invoice inside the same atomic unit as the
@@ -10,7 +11,7 @@ type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Statuses that no longer occupy the lot's one-live-invoice slot. */
 export const DEAD_INVOICE_STATUSES = ['cancelled', 'refunded'] as const;
 
-function generateInvoiceNumber(): string {
+export function generateInvoiceNumber(): string {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -19,15 +20,6 @@ function generateInvoiceNumber(): string {
   // the settlement transaction (see below).
   const random = Math.random().toString(36).substring(2, 10).toUpperCase().padEnd(8, '0');
   return `INV-${year}${month}-${random}`;
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code?: unknown }).code === '23505'
-  );
 }
 
 /** Buyer's premium in cents, rounded half-up to the nearest cent. */

@@ -46,6 +46,9 @@ export function generateLotJsonLd(lot: {
   estimateHigh?: number | null;
   currentBidAmount?: number | null;
   buyNowPrice?: number | null;
+  /** Gallery Buy Now: insured US shipping charged at checkout, when the piece can be bought online. */
+  onlineCheckout?: boolean | null;
+  shippingPrice?: number | null;
   hammerPrice?: number | null;
   bidCount?: number | null;
   status: string;
@@ -107,16 +110,33 @@ export function generateLotJsonLd(lot: {
 
   // Add offers
   if (lot.saleType === 'gallery' && lot.buyNowPrice) {
-    product.offers = {
+    const offer: Record<string, unknown> = {
       '@type': 'Offer',
+      url,
       price: (lot.buyNowPrice / 100).toFixed(2),
       priceCurrency: 'USD',
       availability,
+      itemCondition: lot.condition ? conditionMap[lot.condition] : undefined,
       seller: {
         '@type': 'Organization',
         name: 'Mayells',
       },
     };
+    // Bought online: the delivery charge and the (final-sale) return policy
+    // are fixed, so search engines can show them (Terms 2.15–2.16).
+    if (lot.onlineCheckout && lot.shippingPrice != null) {
+      offer.shippingDetails = {
+        '@type': 'OfferShippingDetails',
+        shippingRate: { '@type': 'MonetaryAmount', value: (lot.shippingPrice / 100).toFixed(2), currency: 'USD' },
+        shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'US' },
+      };
+      offer.hasMerchantReturnPolicy = {
+        '@type': 'MerchantReturnPolicy',
+        applicableCountry: 'US',
+        returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+      };
+    }
+    product.offers = offer;
   } else if (lot.saleType === 'auction') {
     product.offers = {
       '@type': 'AggregateOffer',

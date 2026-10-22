@@ -59,6 +59,9 @@ export interface LotFormData {
   reservePrice: string;
   startingBid: string;
   buyNowPrice: string;
+  /** Dollars; '0' = complimentary, '' = not set. */
+  shippingPrice: string;
+  onlineCheckout: boolean;
   sellerId: string;
   isFeatured: boolean;
   isHighlight: boolean;
@@ -113,6 +116,8 @@ const defaultFormData: LotFormData = {
   reservePrice: '',
   startingBid: '',
   buyNowPrice: '',
+  shippingPrice: '',
+  onlineCheckout: false,
   sellerId: '',
   isFeatured: false,
   isHighlight: false,
@@ -410,6 +415,19 @@ export function LotForm({
         return;
       }
     }
+    const shippingRaw = form.shippingPrice.trim();
+    if (shippingRaw !== '') {
+      const n = parseFloat(shippingRaw);
+      if (!Number.isFinite(n) || n < 0) {
+        showError('US shipping charge must be 0 (complimentary) or more.');
+        return;
+      }
+    }
+    const buyOnline = form.saleType === 'gallery' && form.onlineCheckout;
+    if (buyOnline && (!form.buyNowPrice.trim() || shippingRaw === '')) {
+      showError('Online checkout needs a Buy Now price and a US shipping charge (enter 0 for complimentary shipping).');
+      return;
+    }
     if (form.estimateLow.trim() && form.estimateHigh.trim()) {
       if (parseFloat(form.estimateHigh) < parseFloat(form.estimateLow)) {
         showError('High estimate must be at least the low estimate.');
@@ -417,7 +435,8 @@ export function LotForm({
       }
     }
 
-    const { isFeatured, isHighlight, sellerId, ...textFields } = form;
+    const { isFeatured, isHighlight, sellerId, onlineCheckout: _online, shippingPrice: _shipping, ...textFields } = form;
+    void _online; void _shipping;
 
     try {
       await onSubmit({
@@ -427,6 +446,10 @@ export function LotForm({
         reservePrice: toCents(form.reservePrice),
         startingBid: toCents(form.startingBid),
         buyNowPrice: toCents(form.buyNowPrice),
+        // 0 is a real value here (complimentary shipping), unlike the prices.
+        shippingPrice: shippingRaw === '' ? (lotId ? null : undefined) : Math.round(parseFloat(shippingRaw) * 100),
+        // Online checkout only exists for gallery pieces.
+        onlineCheckout: buyOnline,
         condition: form.condition || (lotId ? null : undefined),
         sellerId: sellerId || (lotId ? null : undefined),
         subcategoryId: form.subcategoryId || (lotId ? null : undefined),
@@ -646,10 +669,45 @@ export function LotForm({
             </Select>
           </div>
           {form.saleType === 'gallery' && (
-            <div className="space-y-2">
-              <Label htmlFor="lot-buyNowPrice">Buy Now Price (USD) *</Label>
-              <Input id="lot-buyNowPrice" type="number" min="0" step="0.01" value={form.buyNowPrice} onChange={(e) => update('buyNowPrice', e.target.value)} placeholder="$" required />
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="lot-buyNowPrice">Buy Now Price (USD) *</Label>
+                  <Input id="lot-buyNowPrice" type="number" min="0" step="0.01" value={form.buyNowPrice} onChange={(e) => update('buyNowPrice', e.target.value)} placeholder="$" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lot-shippingPrice">US Shipping Charge (USD)</Label>
+                  <Input
+                    id="lot-shippingPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.shippingPrice}
+                    onChange={(e) => update('shippingPrice', e.target.value)}
+                    placeholder="0 = complimentary"
+                    aria-describedby="lot-shippingPrice-help"
+                  />
+                  <p id="lot-shippingPrice-help" className="text-xs text-muted-foreground">
+                    Insured delivery to a US address, added at checkout. International buyers go through a specialist.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-md border p-3">
+                <Checkbox
+                  id="lot-onlineCheckout"
+                  checked={form.onlineCheckout}
+                  onCheckedChange={(v) => update('onlineCheckout', v === true)}
+                  aria-describedby="lot-onlineCheckout-help"
+                  className="mt-0.5"
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="lot-onlineCheckout">Buyers can purchase this piece online</Label>
+                  <p id="lot-onlineCheckout-help" className="text-xs text-muted-foreground">
+                    Shows a Buy Now button: the buyer pays by card on a secure Stripe page, with sales tax worked out from their address, and the piece is held for them while they pay. Switch on only for a real piece that is in hand, ready to ship, at its final price. Off, the page asks buyers to contact a specialist.
+                  </p>
+                </div>
+              </div>
+            </>
           )}
           {form.saleType === 'private' && (
             <p className="text-sm text-muted-foreground">Price will not be shown publicly. The lot page invites buyers to email info@mayells.com; replies land in the Inbox.</p>

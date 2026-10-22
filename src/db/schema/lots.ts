@@ -65,6 +65,14 @@ export const lots = pgTable('lots', {
   reservePrice: integer('reserve_price'),
   startingBid: integer('starting_bid'),
 
+  // Gallery online checkout. Off by default: staff switch it on per piece
+  // once the item is real, in hand and priced, so a placeholder or an
+  // inquiry-only piece can never be bought online. The Buy Now flow also
+  // needs shippingPrice: what insured delivery to a US address costs the
+  // buyer, charged at checkout (0 = complimentary).
+  onlineCheckout: boolean('online_checkout').default(false).notNull(),
+  shippingPrice: integer('shipping_price'),
+
   // Ownership
   sellerId: uuid('seller_id').references(() => users.id),
   consignmentId: uuid('consignment_id'),

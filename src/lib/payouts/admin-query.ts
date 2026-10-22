@@ -71,7 +71,21 @@ export const payoutListColumns = {
   seller: { id: users.id, fullName: users.fullName, email: users.email },
   lot: { id: lots.id, title: lots.title },
   // disputedAt: an open chargeback — "Disputed" pill, and mark-paid refuses.
-  invoice: { id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status, disputedAt: invoices.disputedAt },
+  invoice: {
+    id: invoices.id,
+    invoiceNumber: invoices.invoiceNumber,
+    status: invoices.status,
+    disputedAt: invoices.disputedAt,
+    source: invoices.source,
+    // Gallery sales: when the piece was delivered, which starts the
+    // as-described guarantee window (lib/gallery/config.ts). The outer
+    // reference is literal — an interpolated column renders unqualified here.
+    deliveredAt: sql<string | null>`(
+      select to_char(max(s.delivered_at), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      from shipments s
+      where s.invoice_id = "invoices"."id" and s.status = 'delivered'
+    )`,
+  },
   auction: { id: auctions.id, title: auctions.title },
 };
 

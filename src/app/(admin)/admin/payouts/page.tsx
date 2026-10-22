@@ -14,11 +14,34 @@ import { CircleDollarSign, Search, Download } from 'lucide-react';
 import { formatCurrencyWithCents } from '@/types';
 import { toast } from 'sonner';
 import { formatShortDate, todayInHouseTz } from '@/lib/format/dates';
+import { GALLERY_CHECKOUT } from '@/lib/gallery/config';
 import { PAYOUT_STATUS, statusBadge } from '@/lib/admin/status/money';
 import { FilterChip } from '../_components/FilterChips';
 import { Pager } from '../_components/Pager';
 
 type PayoutStatus = 'pending' | 'paid' | 'cancelled' | 'reversed';
+
+/**
+ * A gallery buyer may claim under the as-described guarantee until a few days
+ * after delivery; paying the consignor before then risks a clawback.
+ */
+function GuaranteeNote({ deliveredAt }: { deliveredAt: string | null }) {
+  if (!deliveredAt) {
+    return (
+      <div className="text-[11px] text-amber-700 mt-1" title="Gallery sale: the as-described guarantee runs from delivery">
+        Gallery · pay after delivery + {GALLERY_CHECKOUT.guaranteeDays} days
+      </div>
+    );
+  }
+  const ends = new Date(new Date(deliveredAt).getTime() + GALLERY_CHECKOUT.guaranteeDays * 24 * 60 * 60 * 1000);
+  return ends > new Date() ? (
+    <div className="text-[11px] text-amber-700 mt-1" title="The buyer can still claim under the as-described guarantee">
+      Guarantee open until {formatShortDate(ends)}
+    </div>
+  ) : (
+    <div className="text-[11px] text-green-700 mt-1">Guarantee window closed</div>
+  );
+}
 
 interface PayoutRow {
   payout: {
@@ -38,7 +61,14 @@ interface PayoutRow {
   };
   seller: { id: string; fullName: string | null; email: string };
   lot: { id: string; title: string };
-  invoice: { id: string; invoiceNumber: string; status: string; disputedAt: string | null };
+  invoice: {
+    id: string;
+    invoiceNumber: string;
+    status: string;
+    disputedAt: string | null;
+    source: 'auction' | 'gallery';
+    deliveredAt: string | null;
+  };
   auction: { id: string; title: string } | null;
 }
 
@@ -455,6 +485,9 @@ export default function AdminPayoutsPage() {
                         </div>
                         {payout.status === 'pending' && invoice.status !== 'paid' && (
                           <div className="text-[11px] text-red-600 mt-1">invoice {invoice.status}</div>
+                        )}
+                        {payout.status === 'pending' && invoice.status === 'paid' && invoice.source === 'gallery' && (
+                          <GuaranteeNote deliveredAt={invoice.deliveredAt} />
                         )}
                       </td>
                       <td className="px-4 py-3">

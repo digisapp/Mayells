@@ -7,6 +7,7 @@ import { invoices, payments, auctions } from '@/db/schema';
 import { eq, and, sql, inArray, asc, isNull, isNotNull } from 'drizzle-orm';
 import { processPaidInvoice } from '@/lib/payouts/service';
 import { unwindPaidInvoice, cancelPendingInvoice, expireCheckoutSession } from '@/lib/invoicing/unwind';
+import { releaseGalleryHold } from '@/lib/gallery/holds';
 import {
   parseInvoiceFilters,
   invoiceWhere,
@@ -78,8 +79,9 @@ export async function GET(req: NextRequest) {
       // Global (not page- or filter-scoped) numbers for the header summary
       db
         .select({
-          outstandingCount: sql<number>`count(*) filter (where ${invoices.status} in ('pending', 'overdue'))::int`,
-          outstandingAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} in ('pending', 'overdue')), 0)::float8`,
+          // A Buy Now checkout hold isn't money owed: the buyer is paying now or not at all.
+          outstandingCount: sql<number>`count(*) filter (where ${invoices.status} in ('pending', 'overdue') and ${invoices.holdExpiresAt} is null)::int`,
+          outstandingAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} in ('pending', 'overdue') and ${invoices.holdExpiresAt} is null), 0)::float8`,
           overdueCount: sql<number>`count(*) filter (where ${invoices.status} = 'overdue')::int`,
           overdueAmount: sql<number>`coalesce(sum(${invoices.totalAmount}) filter (where ${invoices.status} = 'overdue'), 0)::float8`,
           collectedAllTimeCount: sql<number>`count(*) filter (where ${invoices.status} = 'paid')::int`,
@@ -135,6 +137,15 @@ export async function PATCH(req: NextRequest) {
 
     const [existing] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
     if (!existing) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+
+    // A Buy Now hold lives exactly as long as its Stripe session; its "due
+    // date" is the hold's end and can't be moved.
+    if (existing.holdExpiresAt && (dueDate || status === 'pending' || status === 'overdue')) {
+      return NextResponse.json(
+        { error: 'This is a Buy Now checkout hold: it completes or lapses with its Stripe session. Cancel it to release the piece.' },
+        { status: 409 },
+      );
+    }
 
     // Due-date-only edit (no status change)
     if (!status) {
@@ -236,7 +247,7 @@ export async function PATCH(req: NextRequest) {
           .set({
             status: 'paid',
             paidAt: paidDate,
-            notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note})`,
+            notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note}::text)`,
             updatedAt: new Date(),
           })
           .where(and(eq(invoices.id, id), eq(invoices.status, existing.status)))
@@ -271,6 +282,28 @@ export async function PATCH(req: NextRequest) {
 
       // ---- Cancel an unpaid invoice ---------------------------------------
       case 'cancelled': {
+        // A Buy Now hold is released only once Stripe confirms its session
+        // can't take money: a buyer may have paid a moment ago with the
+        // webhook still on its way, and cancelling first would refund a
+        // real sale as a stray payment.
+        if (existing.holdExpiresAt) {
+          const outcome = await releaseGalleryHold(existing, reason || `released by ${adminLabel}`, { force: true });
+          if (outcome === 'paying') {
+            return NextResponse.json(
+              { error: 'The buyer has paid (or a payment is settling) on this checkout — it will show as paid shortly. If it doesn’t, replay its webhook from the System log.' },
+              { status: 409 },
+            );
+          }
+          if (outcome === 'unknown') {
+            return NextResponse.json(
+              { error: 'Couldn’t confirm with Stripe that this checkout is unpaid — try again in a minute.' },
+              { status: 502 },
+            );
+          }
+          if (outcome === 'not_held') return conflict();
+          const [released] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
+          return NextResponse.json({ data: released, lot: 'relisted' });
+        }
         const result = await cancelPendingInvoice(id, reason || `cancelled by ${adminLabel}`);
         if (!result.cancelled) return conflict();
         const [updated] = await db.select().from(invoices).where(eq(invoices.id, id)).limit(1);
@@ -293,7 +326,7 @@ export async function PATCH(req: NextRequest) {
             const note = `${new Date().toISOString().slice(0, 10)} Refund requested via Stripe by ${adminLabel} (${refund.id}): ${refundReason}`;
             await db
               .update(invoices)
-              .set({ notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note})`, updatedAt: new Date() })
+              .set({ notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note}::text)`, updatedAt: new Date() })
               .where(eq(invoices.id, id));
             return NextResponse.json(
               {
@@ -383,7 +416,7 @@ export async function PATCH(req: NextRequest) {
             dueDate: newDue,
             // A fresh due date earns a fresh reminder if it lapses again.
             reminderSentAt: null,
-            notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note})`,
+            notes: sql`concat_ws(chr(10), ${invoices.notes}, ${note}::text)`,
             updatedAt: new Date(),
           })
           .where(and(eq(invoices.id, id), eq(invoices.status, existing.status)))

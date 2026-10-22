@@ -5,9 +5,13 @@ import { redirect } from 'next/navigation';
 import { db } from '@/db';
 import { lots, categories } from '@/db/schema';
 import { eq, and, desc, asc, ilike, inArray, sql } from 'drizzle-orm';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Lock, ShieldCheck, Truck } from 'lucide-react';
 import { LotGrid } from '@/components/lots/LotGrid';
 import { Button } from '@/components/ui/button';
+import { lotReservedSql } from '@/lib/gallery/sql';
+import { isOnlinePurchasable } from '@/lib/gallery/purchase-state';
+import { GALLERY_CHECKOUT } from '@/lib/gallery/config';
+import { isStripeConfigured } from '@/lib/stripe/config';
 
 const PAGE_SIZE = 48;
 
@@ -21,7 +25,7 @@ const DEFAULT_SORT = 'newest';
 export const metadata = {
   title: 'Gallery',
   alternates: { canonical: '/gallery' },
-  description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices from Mayells.',
+  description: 'Buy fine art, antiques, jewelry and collectibles at fixed prices from Mayells, with insured shipping and secure online checkout.',
   openGraph: {
     title: 'Gallery | Mayells',
     description: 'Browse and buy luxury art, antiques, and collectibles at fixed prices.',
@@ -60,6 +64,16 @@ export default async function GalleryPage({
     );
   }
 
+  // Departments with something in the gallery, for the filter row. Counted
+  // without the department filter so every chip stays visible.
+  const departmentRows = await db
+    .select({ slug: categories.slug, name: categories.name, count: sql<number>`count(*)`.mapWith(Number) })
+    .from(lots)
+    .innerJoin(categories, eq(categories.id, lots.categoryId))
+    .where(and(eq(lots.saleType, 'gallery'), eq(lots.status, 'for_sale')))
+    .groupBy(categories.slug, categories.name)
+    .orderBy(asc(categories.name));
+
   const orderBy = sort === 'price_asc'
     ? asc(lots.buyNowPrice)
     : sort === 'price_desc'
@@ -78,12 +92,13 @@ export default async function GalleryPage({
 
   // Links keep the current sort and filters. Defaults (newest, page 1) are
   // left out, so each view has exactly one URL.
-  const hrefFor = (next: { sort?: string; page?: number }) => {
+  const hrefFor = (next: { sort?: string; page?: number; category?: string | null }) => {
     const qs = new URLSearchParams();
     const nextSort = next.sort ?? sort;
+    const nextCategory = next.category === undefined ? categorySlug : next.category;
     if (nextSort !== DEFAULT_SORT) qs.set('sort', nextSort);
     if (search) qs.set('q', search);
-    if (categorySlug) qs.set('category', categorySlug);
+    if (nextCategory) qs.set('category', nextCategory);
     if (next.page && next.page > 1) qs.set('page', String(next.page));
     const query = qs.toString();
     return query ? `/gallery?${query}` : '/gallery';
@@ -96,9 +111,9 @@ export default async function GalleryPage({
     redirect(hrefFor({ page }));
   }
 
-  const galleryLots = total > 0
+  const rows = total > 0
     ? await db
-        .select()
+        .select({ lot: lots, reserved: lotReservedSql })
         .from(lots)
         .where(and(...conditions))
         // id breaks ties so a page boundary never repeats or skips an item.
@@ -106,6 +121,12 @@ export default async function GalleryPage({
         .limit(PAGE_SIZE)
         .offset((page - 1) * PAGE_SIZE)
     : [];
+  // Buy Now on a card only when the piece's page really offers it.
+  const checkoutLive = isStripeConfigured();
+  const galleryLots = rows.map(({ lot, reserved }) => ({
+    ...lot,
+    purchase: reserved ? ('reserved' as const) : checkoutLive && isOnlinePurchasable(lot) ? ('buy' as const) : null,
+  }));
 
   const firstShown = (page - 1) * PAGE_SIZE + 1;
   const lastShown = firstShown + galleryLots.length - 1;
@@ -113,12 +134,54 @@ export default async function GalleryPage({
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-12 sm:py-12">
       {/* Header */}
-      <div className="text-center mb-8 sm:mb-12">
+      <div className="text-center mb-8 sm:mb-10">
         <h1 className="font-display text-display-lg mb-3">Gallery</h1>
         <p className="text-muted-foreground max-w-xl mx-auto">
-          Curated pieces at a fixed price. Inquire about any work and a specialist will arrange the purchase.
+          Curated pieces at a fixed price, ready to buy now.{' '}
+          {checkoutLive
+            ? 'Pieces marked Buy Now can be bought online in a few minutes; for anything else, a specialist arranges the purchase.'
+            : 'A specialist confirms availability and arranges payment and delivery with you.'}
         </p>
+        <ul className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+          <li className="flex items-center gap-2"><Truck className="h-4 w-4 text-champagne-deep" aria-hidden /> Fully insured shipping</li>
+          {checkoutLive && (
+            <li className="flex items-center gap-2"><Lock className="h-4 w-4 text-champagne-deep" aria-hidden /> Secure checkout</li>
+          )}
+          <li className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-champagne-deep" aria-hidden />
+            <Link href="/terms#gallery" className="underline-offset-4 hover:underline hover:text-foreground">
+              {GALLERY_CHECKOUT.guaranteeDays}-day as-described guarantee
+            </Link>
+          </li>
+        </ul>
       </div>
+
+      {departmentRows.length > 1 && (
+        <nav aria-label="Filter by department" className="-mx-4 px-4 sm:mx-0 sm:px-0 mb-6 overflow-x-auto">
+          <ul className="flex sm:flex-wrap sm:justify-center gap-2 w-max sm:w-auto">
+            {[{ slug: null as string | null, name: 'All', count: null as number | null }, ...departmentRows].map((d) => {
+              const current = (d.slug ?? null) === (categorySlug ?? null);
+              return (
+                <li key={d.slug ?? 'all'}>
+                  <Link
+                    href={hrefFor({ category: d.slug, page: 1 })}
+                    scroll={false}
+                    aria-current={current ? 'true' : undefined}
+                    className={`inline-flex items-center h-10 sm:h-9 whitespace-nowrap rounded-full border px-4 text-[13px] transition-colors ${
+                      current
+                        ? 'border-charcoal bg-charcoal text-white dark:border-champagne dark:bg-champagne dark:text-charcoal'
+                        : 'border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground'
+                    }`}
+                  >
+                    {d.name}
+                    {d.count != null && <span className="ml-1.5 tabular-nums opacity-70">{d.count}</span>}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      )}
 
       {/* Sort controls */}
       {galleryLots.length > 0 && (

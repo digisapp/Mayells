@@ -9,6 +9,7 @@ import { invoices, lots, users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { logger } from '@/lib/logger';
 import { rateLimit } from '@/lib/rate-limit';
+import { startGalleryCheckout } from '@/lib/gallery/checkout';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mayells.com';
@@ -70,6 +71,23 @@ export async function POST(
         },
         { status: 503 },
       );
+    }
+
+    // A Buy Now hold is paid through its own checkout (shipping options,
+    // Stripe Tax, expiry with the hold): send the buyer back into it.
+    if (invoice.holdExpiresAt) {
+      const [holder] = await db
+        .select({ id: users.id, email: users.email, stripeCustomerId: users.stripeCustomerId })
+        .from(users)
+        .where(eq(users.id, invoice.buyerId))
+        .limit(1);
+      if (!holder) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+      const result = await startGalleryCheckout(invoice.lotId, holder);
+      if (result.ok) return NextResponse.json({ url: result.url });
+      if (result.code === 'PROCESSING') {
+        return NextResponse.json({ processing: true, message: result.error }, { status: 202 });
+      }
+      return NextResponse.json({ error: result.error, code: result.code }, { status: result.status });
     }
 
     // If a Checkout session was already created for this invoice, reuse it

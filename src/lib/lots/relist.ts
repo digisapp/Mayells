@@ -28,6 +28,18 @@ export interface RelistableLot {
   estimateLow?: number | null;
   reservePrice?: number | null;
   consignmentId?: string | null;
+  saleType?: string | null;
+  buyNowPrice?: number | null;
+}
+
+/**
+ * The price a released lot goes back on sale at. A gallery piece whose sale
+ * was undone keeps the asking price it was bought at; an auction lot is
+ * offered at its reserve, else its low estimate.
+ */
+export function relistPrice(lot: RelistableLot): number | null {
+  if (lot.saleType === 'gallery' && lot.buyNowPrice && lot.buyNowPrice > 0) return lot.buyNowPrice;
+  return lot.reservePrice || lot.estimateLow || null;
 }
 
 export async function relistUnsoldLot(
@@ -35,7 +47,7 @@ export async function relistUnsoldLot(
   now: Date,
   executor: Executor = db,
 ): Promise<'relisted' | 'returned'> {
-  const buyNowPrice = lot.reservePrice || lot.estimateLow;
+  const buyNowPrice = relistPrice(lot);
 
   if (buyNowPrice && buyNowPrice > 0) {
     // Relist as gallery item (buy-now) at reserve or low estimate
@@ -60,7 +72,9 @@ export async function relistUnsoldLot(
     if (lot.consignmentId) {
       await executor.update(consignments).set({
         status: 'listed',
-        reviewNotes: `Unsold at auction — relisted in gallery at $${(buyNowPrice / 100).toLocaleString()}`,
+        reviewNotes: lot.saleType === 'gallery'
+          ? `Gallery sale undone — back on sale at $${(buyNowPrice / 100).toLocaleString()}`
+          : `Unsold at auction — relisted in gallery at $${(buyNowPrice / 100).toLocaleString()}`,
         updatedAt: now,
       }).where(eq(consignments.id, lot.consignmentId));
     }
@@ -70,6 +84,39 @@ export async function relistUnsoldLot(
 
   // No price to relist at — mark as unsold, return to seller.
   return returnUnsoldLot(lot, now, executor);
+}
+
+/**
+ * A gallery or private-sale piece whose sale was undone (refunded before it
+ * left us) goes straight back on sale as it was listed: same sale type, same
+ * asking price, or still price-on-request. Unlike an unsold auction lot it is
+ * never re-priced from its reserve or returned to the consignor.
+ */
+export async function relistDirectSaleLot(
+  lot: RelistableLot,
+  now: Date,
+  executor: Executor = db,
+): Promise<'relisted'> {
+  await executor.update(lots).set({
+    status: 'for_sale',
+    currentBidAmount: 0,
+    currentBidderId: null,
+    bidCount: 0,
+    winnerId: null,
+    hammerPrice: null,
+    updatedAt: now,
+  }).where(eq(lots.id, lot.id));
+
+  if (lot.consignmentId) {
+    await executor.update(consignments).set({
+      status: 'listed',
+      reviewNotes: 'Gallery sale undone — back on sale',
+      updatedAt: now,
+    }).where(eq(consignments.id, lot.consignmentId));
+  }
+
+  logger.info('Gallery sale undone — piece back on sale', { lotId: lot.id });
+  return 'relisted';
 }
 
 /**

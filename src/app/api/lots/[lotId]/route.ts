@@ -13,6 +13,10 @@ import { bestAuctionSlugSql } from '@/lib/lots/auction-slug';
 import { UUID_RE } from '@/lib/bidding/lot-resolution';
 import { withdrawLot, LotWithdrawBlockedError } from '@/lib/bidding/lifecycle';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
+import { findLiveInvoiceForLot } from '@/lib/invoicing/generate-invoice';
+import { onlineCheckoutBlockers } from '@/lib/gallery/purchase-state';
+import { getCheckoutReadiness } from '@/lib/gallery/readiness';
+import { formatClockTime } from '@/lib/format/dates';
 import { logger } from '@/lib/logger';
 import type { Bid } from '@/db/schema';
 
@@ -33,6 +37,24 @@ function toPublicBidHistory(bidRows: Bid[]) {
     createdAt: bid.createdAt,
     bidder: labels.get(bid.bidderId) ?? 'Bidder',
   }));
+}
+
+class ReservationRefusal extends Error {}
+
+type DbOrTx = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Why the lot's price, shipping, sale type or status can't change right now:
+ * a live invoice (a Buy Now checkout hold, or a client's invoice) has it
+ * reserved on those terms. Null when nothing reserves it.
+ */
+async function reservationRefusal(executor: DbOrTx, lotId: string): Promise<string | null> {
+  const live = await findLiveInvoiceForLot(executor, lotId);
+  if (!live) return null;
+  const what = live.holdExpiresAt
+    ? `a buyer's online checkout (held until ${formatClockTime(live.holdExpiresAt)})`
+    : `invoice ${live.invoiceNumber}, awaiting payment`;
+  return `This piece is reserved by ${what}. Cancel invoice ${live.invoiceNumber} in Invoices first${live.holdExpiresAt ? ', or wait for the hold to lapse' : ''}.`;
 }
 
 const userSummaryColumns = {
@@ -96,7 +118,8 @@ export async function GET(
 
     if (isAdmin) {
       const bidderIds = [...new Set(bidRows.map((b) => b.bidderId))];
-      const [placements, seller, highBidder, winner, invoiceRows, bidders] = await Promise.all([
+      const directSale = lot.saleType === 'gallery' || lot.saleType === 'private';
+      const [placements, seller, highBidder, winner, invoiceRows, bidders, reservationRows, checkout] = await Promise.all([
         getLotPlacements(lot.id),
         loadUserSummary(lot.sellerId),
         loadUserSummary(lot.currentBidderId),
@@ -111,6 +134,25 @@ export async function GET(
         bidderIds.length > 0
           ? db.select(userSummaryColumns).from(users).where(inArray(users.id, bidderIds))
           : Promise.resolve([]),
+        // A gallery piece's live invoice: a Buy Now hold or a client's invoice.
+        directSale && lot.status !== 'sold'
+          ? db
+              .select({
+                id: invoices.id,
+                invoiceNumber: invoices.invoiceNumber,
+                status: invoices.status,
+                totalAmount: invoices.totalAmount,
+                holdExpiresAt: invoices.holdExpiresAt,
+                dueDate: invoices.dueDate,
+                buyerName: users.fullName,
+                buyerEmail: users.email,
+              })
+              .from(invoices)
+              .innerJoin(users, eq(users.id, invoices.buyerId))
+              .where(and(eq(invoices.lotId, lot.id), inArray(invoices.status, ['pending', 'overdue'])))
+              .limit(1)
+          : Promise.resolve([]),
+        directSale ? getCheckoutReadiness() : Promise.resolve(null),
       ]);
 
       const bidderById = new Map(bidders.map((b) => [b.id, b]));
@@ -137,6 +179,8 @@ export async function GET(
             : null,
           winner: winner ? { id: winner.id, fullName: winner.fullName, paddleNumber: winner.paddleNumber } : null,
           invoice: invoiceRows[0] ?? null,
+          reservation: reservationRows[0] ?? null,
+          checkout,
           publicPath,
         },
       }, { headers: noStore });
@@ -230,6 +274,39 @@ export async function PATCH(
       }
     }
 
+    // Buy Now can only be switched on (or stay on) for a gallery piece with a
+    // price and a shipping charge; the public page and checkout rely on it.
+    const effectiveOnline = fieldUpdates.onlineCheckout ?? existing.onlineCheckout;
+    if (effectiveOnline) {
+      const blockers = onlineCheckoutBlockers({
+        saleType: fieldUpdates.saleType ?? existing.saleType,
+        status: nextStatus ?? existing.status,
+        buyNowPrice: fieldUpdates.buyNowPrice !== undefined ? fieldUpdates.buyNowPrice : existing.buyNowPrice,
+        shippingPrice: fieldUpdates.shippingPrice !== undefined ? fieldUpdates.shippingPrice : existing.shippingPrice,
+      });
+      if (blockers.length > 0) {
+        return NextResponse.json(
+          { error: `Online checkout needs this first: ${blockers.join(' ')} Or switch online checkout off.` },
+          { status: 409 },
+        );
+      }
+    }
+
+    // A live invoice (a Buy Now checkout hold, or a client's invoice) has the
+    // piece reserved at its current price and shipping. Changing those, its
+    // sale type or its status would leave that invoice selling something
+    // else — or something no longer on sale.
+    // Checked here for a quick answer, and again under the lot's row lock in
+    // the update below: a checkout can start in between (it takes the same lock).
+    const changes = <K extends keyof typeof fieldUpdates>(key: K) =>
+      fieldUpdates[key] !== undefined && fieldUpdates[key] !== existing[key as keyof typeof existing];
+    const touchesReservation =
+      existing.status !== 'sold' && (changesStatus || changes('saleType') || changes('buyNowPrice') || changes('shippingPrice'));
+    if (touchesReservation) {
+      const refusal = await reservationRefusal(db, lotId);
+      if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
+    }
+
     // A lot placed in an unfinished sale takes its status and sale type from
     // that sale (catalogued → in_auction → sold/unsold). Changing either by
     // hand would desync the catalogue, so take it out of the sale first.
@@ -268,7 +345,15 @@ export async function PATCH(
       ? { ...fieldUpdates, status: nextStatus }
       : fieldUpdates;
 
-    const updated = await db.transaction(async (tx) => {
+    let updated: typeof existing | undefined;
+    try {
+      updated = await db.transaction(async (tx) => {
+      if (touchesReservation && !withdrawing) {
+        await tx.select({ id: lots.id }).from(lots).where(eq(lots.id, lotId)).for('update');
+        const refusal = await reservationRefusal(tx, lotId);
+        if (refusal) throw new ReservationRefusal(refusal);
+      }
+
       const [row] = await tx
         .update(lots)
         .set({ ...setValues, updatedAt: sql`now()` })
@@ -285,7 +370,11 @@ export async function PATCH(
       }
 
       return row;
-    });
+      });
+    } catch (err) {
+      if (err instanceof ReservationRefusal) return NextResponse.json({ error: err.message }, { status: 409 });
+      throw err;
+    }
 
     if (!updated) {
       return NextResponse.json({ error: 'Lot not found' }, { status: 404 });
@@ -334,6 +423,16 @@ export async function DELETE(
     if (Number(bidCount) > 0) {
       return NextResponse.json(
         { error: 'This lot has bid history and cannot be deleted. Withdraw it instead.' },
+        { status: 409 },
+      );
+    }
+
+    // Invoices are financial records too (invoices → lots has no cascade):
+    // even an abandoned Buy Now checkout leaves one.
+    const [invoiceRef] = await db.select({ id: invoices.id }).from(invoices).where(eq(invoices.lotId, lotId)).limit(1);
+    if (invoiceRef) {
+      return NextResponse.json(
+        { error: 'This lot has invoice history (a sale or a checkout) and cannot be deleted. Withdraw it instead.' },
         { status: 409 },
       );
     }

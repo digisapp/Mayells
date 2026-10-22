@@ -15,3 +15,22 @@ export function invoiceStatusBadge(status: string): { label: string; className: 
     }
   );
 }
+
+/**
+ * The badge for a buyer's invoice, aware of Buy Now orders: while the
+ * checkout hold is live it reads "Reserved", and a checkout that ended unpaid
+ * (cancelled, or lapsed and not yet swept) reads "Not completed" — it was
+ * never a bill the buyer owed.
+ */
+export function buyerInvoiceBadge(
+  invoice: { status: string; holdExpiresAt: Date | null },
+  now: Date = new Date(),
+): { label: string; className: string } {
+  if (invoice.holdExpiresAt && (invoice.status === 'pending' || invoice.status === 'overdue' || invoice.status === 'cancelled')) {
+    const live = invoice.status !== 'cancelled' && invoice.holdExpiresAt.getTime() > now.getTime();
+    return live
+      ? { label: 'Reserved', className: 'bg-amber-500 text-white' }
+      : { label: 'Not completed', className: 'bg-zinc-500 text-white' };
+  }
+  return invoiceStatusBadge(invoice.status);
+}

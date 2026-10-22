@@ -39,6 +39,8 @@ vi.mock('@/db/schema', () => ({
   shipments: h.table(),
   payouts: h.table(),
   sellerProspects: h.table(),
+  invoices: h.table(),
+  payments: h.table(),
 }));
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ auth: { admin: { getUserById: h.getUserById } } }),

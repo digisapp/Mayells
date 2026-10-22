@@ -30,7 +30,7 @@
 import { db } from '@/db';
 import { invoices, lots, shipments, auctions, users, consignments } from '@/db/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { relistUnsoldLot, type Executor } from '@/lib/lots/relist';
+import { relistUnsoldLot, relistDirectSaleLot, type Executor } from '@/lib/lots/relist';
 import { cancelPayoutForRefundedInvoice } from '@/lib/payouts/service';
 import { OPEN_SHIPMENT_STATUSES, IN_FLIGHT_SHIPMENT_STATUSES, type ShipmentStatus } from '@/lib/shipping/transitions';
 import { stripe } from '@/lib/stripe/config';
@@ -91,12 +91,15 @@ export async function expireCheckoutSession(sessionId: string | null | undefined
  */
 async function releaseLotForInvoice(
   tx: Executor,
-  invoice: { id: string; lotId: string; buyerId: string },
+  invoice: { id: string; lotId: string; buyerId: string; source?: string },
   now: Date,
   opts: { hold?: boolean } = {},
 ): Promise<LotRelease> {
   const [lot] = await tx.select().from(lots).where(eq(lots.id, invoice.lotId)).for('update');
   if (!lot) return 'left';
+  // An unpaid gallery invoice only reserved the piece, which never stopped
+  // being for sale: voiding the invoice is the whole release.
+  if (invoice.source === 'gallery' && lot.status === 'for_sale') return 'relisted';
   if (lot.status !== 'sold' || (lot.winnerId && lot.winnerId !== invoice.buyerId)) {
     logger.warn('Unwind: lot not released — it is no longer this buyer\'s sold lot', {
       invoiceId: invoice.id,
@@ -127,6 +130,8 @@ async function releaseLotForInvoice(
     }
     return 'held';
   }
+  // A gallery or private sale goes back on sale as it was listed.
+  if (invoice.source === 'gallery') return relistDirectSaleLot(lot, now, tx);
   return relistUnsoldLot(lot, now, tx);
 }
 
@@ -166,7 +171,7 @@ export async function unwindPaidInvoice(
       .update(invoices)
       .set({
         status: 'refunded',
-        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Refunded', reason)})`,
+        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Refunded', reason)}::text)`,
         updatedAt: now,
       })
       .where(and(eq(invoices.id, invoiceId), eq(invoices.status, 'paid')))
@@ -185,7 +190,7 @@ export async function unwindPaidInvoice(
       await tx
         .update(invoices)
         .set({
-          notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('ATTENTION', `lot held as unsold, NOT relisted — its shipment is ${statuses}, so the item may be with the buyer or carrier. Recover it before relisting`)})`,
+          notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('ATTENTION', `lot held as unsold, NOT relisted — its shipment is ${statuses}, so the item may be with the buyer or carrier. Recover it before relisting`)}::text)`,
         })
         .where(eq(invoices.id, invoiceId));
     }
@@ -198,7 +203,7 @@ export async function unwindPaidInvoice(
       .update(shipments)
       .set({
         status: 'cancelled',
-        internalNotes: sql`concat_ws(chr(10), ${shipments.internalNotes}, ${stampNote('Cancelled', `sale unwound — ${reason}`)})`,
+        internalNotes: sql`concat_ws(chr(10), ${shipments.internalNotes}, ${stampNote('Cancelled', `sale unwound — ${reason}`)}::text)`,
         updatedAt: now,
       })
       .where(and(eq(shipments.invoiceId, invoiceId), inArray(shipments.status, [...OPEN_SHIPMENT_STATUSES])))
@@ -207,7 +212,7 @@ export async function unwindPaidInvoice(
     const inFlight = await tx
       .update(shipments)
       .set({
-        internalNotes: sql`concat_ws(chr(10), ${shipments.internalNotes}, ${stampNote('ATTENTION', `sale refunded while shipment is in transit — recall/return required (${reason})`)})`,
+        internalNotes: sql`concat_ws(chr(10), ${shipments.internalNotes}, ${stampNote('ATTENTION', `sale refunded while shipment is in transit — recall/return required (${reason})`)}::text)`,
         updatedAt: now,
       })
       .where(and(eq(shipments.invoiceId, invoiceId), inArray(shipments.status, [...IN_FLIGHT_SHIPMENT_STATUSES])))
@@ -300,7 +305,7 @@ export async function cancelPendingInvoice(invoiceId: string, reason: string): P
       .update(invoices)
       .set({
         status: 'cancelled',
-        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Cancelled', reason)})`,
+        notes: sql`concat_ws(chr(10), ${invoices.notes}, ${stampNote('Cancelled', reason)}::text)`,
         updatedAt: now,
       })
       .where(and(eq(invoices.id, invoiceId), inArray(invoices.status, ['pending', 'overdue'])))

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { LotForm, type LotFormData, type SellerSummary } from '@/components/admin/LotForm';
+import { GallerySaleCard, type GalleryReservationSummary, type CheckoutReadinessSummary } from '@/components/admin/GallerySaleCard';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,8 @@ interface AdminLot {
   reservePrice: number | null;
   startingBid: number | null;
   buyNowPrice: number | null;
+  shippingPrice: number | null;
+  onlineCheckout: boolean;
   sellerId: string | null;
   currentBidAmount: number;
   bidCount: number;
@@ -92,6 +95,10 @@ interface AdminLot {
   highBidder: BidderSummary | null;
   winner: BidderSummary | null;
   invoice: { id: string; invoiceNumber: string; status: string } | null;
+  /** Gallery/private pieces: the live invoice reserving it, if any. */
+  reservation?: GalleryReservationSummary | null;
+  /** Gallery/private pieces: whether Stripe can take a Buy Now payment. */
+  checkout?: CheckoutReadinessSummary | null;
   publicPath: string | null;
 }
 
@@ -154,7 +161,7 @@ function actionsFor(lot: AdminLot): LotAction[] {
           confirm: {
             title: 'List this lot for sale now?',
             description: lot.saleType === 'gallery'
-              ? `It appears in the public gallery immediately at ${lot.buyNowPrice ? formatCurrency(lot.buyNowPrice) : 'its Buy Now price'} and can be purchased at once.`
+              ? `It appears in the public gallery immediately at ${lot.buyNowPrice ? formatCurrency(lot.buyNowPrice) : 'its Buy Now price'}${lot.onlineCheckout ? ' and can be bought online at once.' : '. Online checkout is off, so buyers are asked to contact a specialist.'}`
               : 'It appears in the public gallery immediately as a private-sale lot (price on inquiry).',
             confirmLabel: 'List for sale',
             variant: 'default',
@@ -223,7 +230,7 @@ const statusHints: Partial<Record<LotStatus, string>> = {
   draft: 'Not visible to the public. Send it for review or approve it directly.',
   pending_review: 'Waiting for a second pair of eyes before it can be catalogued.',
   approved: 'Ready to be assigned to a sale. Auction lots become visible when their sale is scheduled; gallery and private lots must be listed.',
-  for_sale: 'Live in the public gallery.',
+  for_sale: 'Live in the public gallery. While an invoice or an online checkout reserves it, its price, shipping and status are locked.',
   in_auction: 'Bidding is open. Field edits are still allowed, but the only status change is a withdrawal.',
   unsold: 'The sale ended without meeting the reserve or without bids.',
   withdrawn: 'Removed from sale. Restore it to draft to start over.',
@@ -398,6 +405,8 @@ export default function EditLotPage() {
     reservePrice: lot.reservePrice ? String(lot.reservePrice / 100) : '',
     startingBid: lot.startingBid ? String(lot.startingBid / 100) : '',
     buyNowPrice: lot.buyNowPrice ? String(lot.buyNowPrice / 100) : '',
+    shippingPrice: lot.shippingPrice != null ? String(lot.shippingPrice / 100) : '',
+    onlineCheckout: !!lot.onlineCheckout,
     sellerId: lot.sellerId || '',
     isFeatured: !!lot.isFeatured,
     isHighlight: !!lot.isHighlight,
@@ -577,6 +586,20 @@ export default function EditLotPage() {
         </CardContent>
       </Card>
 
+      {(lot.saleType === 'gallery' || lot.saleType === 'private') && !isSold && (
+        <GallerySaleCard
+          lotId={lot.id}
+          saleType={lot.saleType}
+          status={status}
+          buyNowPrice={lot.buyNowPrice}
+          shippingPrice={lot.shippingPrice}
+          onlineCheckout={lot.onlineCheckout}
+          reservation={lot.reservation ?? null}
+          checkout={lot.checkout ?? null}
+          onChanged={refreshLot}
+        />
+      )}
+
       <Card className="mb-6">
         <CardHeader><CardTitle className="text-sm">Actions</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -623,7 +646,7 @@ export default function EditLotPage() {
             <Trash2 className="h-4 w-4 mr-2" />
             Delete Lot
           </Button>
-          <p className="text-xs text-muted-foreground mt-2">Only possible for lots that never took a bid. Prefer Withdraw to keep a record.</p>
+          <p className="text-xs text-muted-foreground mt-2">Only possible for lots that never took a bid or an invoice (including an online checkout). Prefer Withdraw to keep a record.</p>
         </div>
       )}
 

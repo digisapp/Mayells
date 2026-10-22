@@ -51,6 +51,8 @@ export async function sendOverdueInvoiceReminders(
       and(
         eq(invoices.status, 'overdue'),
         isNull(invoices.reminderSentAt),
+        // Buy Now holds never go overdue; belt and braces.
+        isNull(invoices.holdExpiresAt),
         // The buyer must have received the invoice itself first.
         isNotNull(invoices.emailSentAt),
         lte(invoices.dueDate, new Date(now.getTime() - REMINDER_GRACE_HOURS * 60 * 60 * 1000)),

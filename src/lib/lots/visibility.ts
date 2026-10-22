@@ -69,6 +69,8 @@ export function toPublicLot(lot: Lot) {
     status: lot.status,
     saleType: lot.saleType,
     buyNowPrice: lot.buyNowPrice,
+    onlineCheckout: lot.onlineCheckout,
+    shippingPrice: lot.shippingPrice,
     estimateLow: lot.estimateLow,
     estimateHigh: lot.estimateHigh,
     startingBid: lot.startingBid,

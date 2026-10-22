@@ -12,6 +12,7 @@ import { sealLotForSettlement, settlingKeyFor } from '@/lib/bidding/bid-engine';
 import { notifyWatchersOfEndingLots } from '@/lib/bidding/ending-soon';
 import { sendInvoiceNotification } from '@/lib/email/notifications';
 import { sendOverdueInvoiceReminders } from '@/lib/invoicing/reminders';
+import { releaseLapsedGalleryHolds } from '@/lib/gallery/holds';
 import { redis } from '@/lib/redis';
 import { revalidatePublicCatalog } from '@/lib/revalidate';
 import { broadcastLotEvent, broadcastLiveAuctionEvent } from '@/lib/realtime/broadcast';
@@ -82,6 +83,7 @@ async function runLifecycle() {
     markedOverdue: 0,
     invoiceEmailsRetried: 0,
     invoiceRemindersSent: 0,
+    galleryHoldsReleased: 0,
     endingSoonEmailed: 0,
     errors: [] as string[],
   };
@@ -459,12 +461,14 @@ async function runLifecycle() {
 
     await Promise.allSettled(broadcasts);
 
-    // 3. Flip unpaid invoices past their due date to 'overdue'.
+    // 3. Flip unpaid invoices past their due date to 'overdue'. A Buy Now
+    // checkout hold is not a bill the buyer owes: it lapses (3d), never
+    // goes overdue.
     try {
       const overdue = await db
         .update(invoices)
         .set({ status: 'overdue', updatedAt: now })
-        .where(and(eq(invoices.status, 'pending'), lte(invoices.dueDate, now)))
+        .where(and(eq(invoices.status, 'pending'), lte(invoices.dueDate, now), isNull(invoices.holdExpiresAt)))
         .returning({ id: invoices.id });
       results.markedOverdue = overdue.length;
     } catch (err) {
@@ -483,13 +487,15 @@ async function runLifecycle() {
           totalAmount: invoices.totalAmount,
           dueDate: invoices.dueDate,
           accessToken: invoices.accessToken,
+          source: invoices.source,
           buyerEmail: users.email,
           lotTitle: lots.title,
         })
         .from(invoices)
         .innerJoin(users, eq(users.id, invoices.buyerId))
         .innerJoin(lots, eq(lots.id, invoices.lotId))
-        .where(and(inArray(invoices.status, ['pending', 'overdue']), isNull(invoices.emailSentAt)))
+        // Holds are paid on Stripe's page there and then; never email them.
+        .where(and(inArray(invoices.status, ['pending', 'overdue']), isNull(invoices.emailSentAt), isNull(invoices.holdExpiresAt)))
         .limit(50);
 
       for (const inv of unsent) {
@@ -502,6 +508,7 @@ async function runLifecycle() {
               totalAmount: inv.totalAmount,
               dueDate: inv.dueDate,
               accessToken: inv.accessToken,
+              source: inv.source,
             });
           }
           await db
@@ -525,6 +532,16 @@ async function runLifecycle() {
       results.errors.push(...reminders.errors);
     } catch (err) {
       results.errors.push(`Failed to send overdue invoice reminders: ${err}`);
+    }
+
+    // 3d. Release Buy Now holds whose checkout lapsed unpaid (the backstop
+    // for a missed checkout.session.expired webhook). Each is cancelled only
+    // once Stripe confirms its session can't take a payment.
+    try {
+      const holds = await releaseLapsedGalleryHolds(now);
+      results.galleryHoldsReleased = holds.released;
+    } catch (err) {
+      results.errors.push(`Failed to release lapsed gallery holds: ${err}`);
     }
 
     // 4. Email watchlist "closing soon" alerts (once per watched lot).

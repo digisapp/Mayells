@@ -4,11 +4,15 @@ import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { db } from '@/db';
-import { lots, lotImages } from '@/db/schema';
-import { eq, or } from 'drizzle-orm';
+import { lots, lotImages, invoices } from '@/db/schema';
+import { and, eq, inArray, or } from 'drizzle-orm';
 import { isPubliclyVisibleLot } from '@/lib/lots/visibility';
 import { isLotInPublicAuction } from '@/lib/lots/placement';
-import { BuyNowPanel } from '@/components/gallery/BuyNowPanel';
+import { BuyNowPanel, type BuyNowPanelState } from '@/components/gallery/BuyNowPanel';
+import { galleryPurchaseState, type GalleryReservation } from '@/lib/gallery/purchase-state';
+import { GALLERY_CHECKOUT, isGallerySalesTaxEnabled } from '@/lib/gallery/config';
+import { isStripeConfigured } from '@/lib/stripe/config';
+import { createClient } from '@/lib/supabase/server';
 import { LotImageGallery } from '@/components/lots/LotImageGallery';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -76,24 +80,78 @@ export async function generateMetadata({ params }: { params: Promise<{ lotId: st
   };
 }
 
+/** The lot's live invoice — a Buy Now hold or a client's invoice — if one reserves it. */
+async function getReservation(lotId: string): Promise<GalleryReservation | null> {
+  const [row] = await db
+    .select({ buyerId: invoices.buyerId, holdExpiresAt: invoices.holdExpiresAt, accessToken: invoices.accessToken })
+    .from(invoices)
+    .where(and(eq(invoices.lotId, lotId), inArray(invoices.status, ['pending', 'overdue'])))
+    .limit(1);
+  return row ?? null;
+}
+
+async function getViewerId(): Promise<string | null> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id ?? null;
+  } catch {
+    // Auth unavailable: the page still renders, as for a signed-out visitor.
+    return null;
+  }
+}
+
+/** The panel's state, without anything (like another buyer's invoice link) the viewer mustn't see. */
+function panelState(state: ReturnType<typeof galleryPurchaseState>): BuyNowPanelState | null {
+  switch (state.kind) {
+    case 'held_for_you':
+    case 'on_hold':
+      return { kind: state.kind, until: state.until.toISOString() };
+    case 'invoiced_to_you':
+      return { kind: 'invoiced_to_you', accessToken: state.accessToken };
+    case 'buy':
+    case 'reserved':
+    case 'inquire':
+      return { kind: state.kind };
+    default:
+      return null;
+  }
+}
+
 export default async function GalleryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ lotId: string }>;
+  searchParams: Promise<{ buy?: string; checkout?: string }>;
 }) {
   const { lotId } = await params;
+  const { buy, checkout } = await searchParams;
 
   const lot = await getLot(lotId);
   if (!lot) notFound();
 
   void track('gallery_item_viewed', { lotId: lot.id, status: lot.status });
 
-  // Get images
-  const images = await db
-    .select()
-    .from(lotImages)
-    .where(eq(lotImages.lotId, lot.id))
-    .orderBy(lotImages.sortOrder);
+  const [images, reservation, viewerId] = await Promise.all([
+    db
+      .select()
+      .from(lotImages)
+      .where(eq(lotImages.lotId, lot.id))
+      .orderBy(lotImages.sortOrder),
+    lot.status === 'for_sale' ? getReservation(lot.id) : Promise.resolve(null),
+    getViewerId(),
+  ]);
+
+  const purchase = galleryPurchaseState({
+    lot,
+    reservation,
+    viewerId,
+    checkoutConfigured: isStripeConfigured(),
+    now: new Date(),
+  });
+  const panel = panelState(purchase);
+  const lotPath = `/gallery/${lot.slug || lot.id}`;
 
   const jsonLd = generateLotJsonLd({
     ...lot,
@@ -156,14 +214,23 @@ export default async function GalleryDetailPage({
             under the title so the purchase CTA never requires scrolling past
             the full catalog entry */}
         <div className="lg:row-span-2">
-          {/* A private sale may be offered without a published price: the
-              same panel, as a price inquiry (the card reads "Inquire for Price"). */}
-          {lot.status === 'for_sale' && (lot.buyNowPrice || lot.saleType === 'private') ? (
+          {/* Buy Now, a hold, or an inquiry (lib/gallery/purchase-state.ts). A
+              private sale may be offered without a published price: the same
+              panel, as a price inquiry. */}
+          {panel ? (
             <BuyNowPanel
+              lotId={lot.id}
+              lotPath={lotPath}
               title={lot.title}
               buyNowPrice={lot.buyNowPrice || null}
               estimateLow={lot.estimateLow}
               estimateHigh={lot.estimateHigh}
+              shippingPrice={lot.onlineCheckout ? lot.shippingPrice : null}
+              state={panel}
+              signedIn={!!viewerId}
+              salesTax={isGallerySalesTaxEnabled()}
+              guaranteeDays={GALLERY_CHECKOUT.guaranteeDays}
+              intent={buy === '1' ? 'buy' : checkout === 'cancelled' ? 'cancelled' : null}
             />
           ) : (
             <div className="bg-card border border-border/50 rounded-xl p-6 shadow-luxury">

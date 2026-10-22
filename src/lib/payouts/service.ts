@@ -28,7 +28,15 @@ import { eq, and, ne, notInArray, isNotNull, isNull, desc, sql } from 'drizzle-o
 import type { Executor } from '@/lib/lots/relist';
 import { resolveCommission, computePayoutAmounts } from './commission';
 import { createShipmentForInvoice } from '@/lib/shipping/service';
-import { sendSellerStatementNotification, sendPaymentConfirmation } from '@/lib/email/notifications';
+import {
+  sendSellerStatementNotification,
+  sendPaymentConfirmation,
+  sendGalleryOrderConfirmation,
+  sendGallerySaleAdminNotification,
+} from '@/lib/email/notifications';
+import { markGalleryLotSold } from '@/lib/gallery/settle';
+import { GALLERY_CHECKOUT } from '@/lib/gallery/config';
+import { parseStoredShippingAddress, formatAddressLines } from '@/lib/shipping/address';
 import { isSentinelEmail } from '@/lib/sellers/shadow';
 import { portalUrl } from '@/lib/sellers/portal';
 import { logger } from '@/lib/logger';
@@ -57,8 +65,29 @@ export async function processPaidInvoice(
     logger.warn('Paid-invoice settlement: invoice not found', { invoiceId });
     return { payoutError: null };
   }
+  // Re-read, not trusted from the caller: a webhook redelivery holding a
+  // stale "paid" snapshot can race a refund. Settling a refunded invoice
+  // would re-sell the piece and owe the consignor a new payout.
+  if (invoice.status !== 'paid') {
+    logger.warn('Paid-invoice settlement skipped: the invoice is no longer paid', { invoiceId, status: invoice.status });
+    return { payoutError: null };
+  }
 
   const settings = await getSettings();
+  const gallery = invoice.source === 'gallery';
+
+  // A gallery piece stays on sale until it is paid for; this is the moment
+  // it becomes sold. Must not be lost (the piece would stay listed), so a
+  // strict caller gets the failure thrown, like the payout below.
+  let galleryFailure: unknown = null;
+  if (gallery) {
+    try {
+      await markGalleryLotSold(invoice);
+    } catch (err) {
+      galleryFailure = err;
+      logger.error('Paid-invoice settlement: could not mark the gallery piece sold', err, { invoiceId });
+    }
+  }
 
   let payout: Payout | null = null;
   let payoutFailure: unknown = null;
@@ -92,19 +121,61 @@ export async function processPaidInvoice(
     logger.error('Paid-invoice settlement: shipment creation failed', err, { invoiceId });
   }
 
+  // The address the buyer gave at checkout (the payment webhook stores it
+  // before settling).
+  const shipTo = gallery ? formatAddressLines(parseStoredShippingAddress(invoice.shippingAddress)) : [];
+
   try {
     if (opts.sendBuyerConfirmation && invoice.buyer?.email && !isSentinelEmail(invoice.buyer.email)) {
-      await sendPaymentConfirmation({
-        email: invoice.buyer.email,
-        lotTitle: invoice.lot.title,
-        invoiceNumber: invoice.invoiceNumber,
-        totalAmount: invoice.totalAmount,
-      });
+      if (gallery) {
+        await sendGalleryOrderConfirmation({
+          email: invoice.buyer.email,
+          lotTitle: invoice.lot.title,
+          invoiceNumber: invoice.invoiceNumber,
+          price: invoice.hammerPrice,
+          shippingCost: invoice.shippingCost ?? 0,
+          taxAmount: invoice.taxAmount ?? 0,
+          totalAmount: invoice.totalAmount,
+          accessToken: invoice.accessToken,
+          shipTo,
+          guaranteeDays: GALLERY_CHECKOUT.guaranteeDays,
+        });
+      } else {
+        await sendPaymentConfirmation({
+          email: invoice.buyer.email,
+          lotTitle: invoice.lot.title,
+          invoiceNumber: invoice.invoiceNumber,
+          totalAmount: invoice.totalAmount,
+        });
+      }
     }
   } catch (err) {
     logger.error('Paid-invoice settlement: buyer payment confirmation failed', err, { invoiceId });
   }
 
+  // Staff hear about a gallery sale at once: nobody is watching a sale close.
+  // Sent with the buyer's confirmation, so only on the first settlement.
+  try {
+    if (gallery && opts.sendBuyerConfirmation && invoice.buyer) {
+      await sendGallerySaleAdminNotification({
+        lotTitle: invoice.lot.title,
+        invoiceNumber: invoice.invoiceNumber,
+        buyerName: invoice.buyer.fullName,
+        buyerEmail: invoice.buyer.email,
+        totalAmount: invoice.totalAmount,
+        price: invoice.hammerPrice,
+        shippingCost: invoice.shippingCost ?? 0,
+        taxAmount: invoice.taxAmount ?? 0,
+        shipTo,
+        online: !!invoice.holdExpiresAt,
+        hasSeller: !!invoice.lot.sellerId,
+      });
+    }
+  } catch (err) {
+    logger.error('Paid-invoice settlement: gallery sale staff alert failed', err, { invoiceId });
+  }
+
+  if (galleryFailure && opts.strict) throw galleryFailure;
   if (payoutFailure && opts.strict) throw payoutFailure;
   return { payoutError: payoutFailure ? errorText(payoutFailure) : null };
 }
@@ -267,7 +338,7 @@ async function runPayoutCancellation(
       .update(payouts)
       .set({
         status: 'cancelled',
-        notes: sql`concat_ws(chr(10), ${payouts.notes}, ${`Cancelled — ${note}`})`,
+        notes: sql`concat_ws(chr(10), ${payouts.notes}, ${`Cancelled — ${note}`}::text)`,
         updatedAt: new Date(),
       })
       .where(and(eq(payouts.invoiceId, invoiceId), eq(payouts.status, 'pending')))
@@ -278,7 +349,7 @@ async function runPayoutCancellation(
       .update(payouts)
       .set({
         status: 'reversed',
-        notes: sql`concat_ws(chr(10), ${payouts.notes}, ${`Reversed — ${note}. Consignor was already paid: clawback required.`})`,
+        notes: sql`concat_ws(chr(10), ${payouts.notes}, ${`Reversed — ${note}. Consignor was already paid: clawback required.`}::text)`,
         updatedAt: new Date(),
       })
       .where(and(eq(payouts.invoiceId, invoiceId), eq(payouts.status, 'paid')))

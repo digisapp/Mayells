@@ -13,7 +13,7 @@ import { randomUUID } from 'crypto';
 import { eq, sql, and, ne } from 'drizzle-orm';
 import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { db } from '@/db';
-import { users, lots, consignments, shipments, payouts, sellerProspects, type SellerProspect } from '@/db/schema';
+import { users, lots, consignments, shipments, payouts, sellerProspects, invoices, payments, type SellerProspect } from '@/db/schema';
 import { logger } from '@/lib/logger';
 import { supabaseUrl } from '@/lib/supabase/env';
 
@@ -162,8 +162,14 @@ export async function claimShadowUserByEmail(params: {
     await tx.update(shipments).set({ sellerId: authUserId }).where(eq(shipments.sellerId, shadow.id));
     await tx.update(payouts).set({ sellerId: authUserId }).where(eq(payouts.sellerId, shadow.id));
     await tx.update(sellerProspects).set({ userId: authUserId }).where(eq(sellerProspects.userId, shadow.id));
+    // Buyer-side references: a client a specialist invoiced for a gallery
+    // piece before they had an account (see /api/admin/lots/[lotId]/invoice).
+    await tx.update(invoices).set({ buyerId: authUserId }).where(eq(invoices.buyerId, shadow.id));
+    await tx.update(payments).set({ buyerId: authUserId }).where(eq(payments.buyerId, shadow.id));
+    await tx.update(shipments).set({ buyerId: authUserId }).where(eq(shipments.buyerId, shadow.id));
+    await tx.update(lots).set({ winnerId: authUserId }).where(eq(lots.winnerId, shadow.id));
 
-    logger.info('Shadow seller claimed by new account', { shadowId: shadow.id, authUserId });
+    logger.info('Shadow account claimed by new account', { shadowId: shadow.id, authUserId, role: shadow.role });
     return true;
   });
 }

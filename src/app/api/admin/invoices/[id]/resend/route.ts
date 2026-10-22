@@ -29,6 +29,8 @@ export async function POST(
         totalAmount: invoices.totalAmount,
         dueDate: invoices.dueDate,
         accessToken: invoices.accessToken,
+        source: invoices.source,
+        holdExpiresAt: invoices.holdExpiresAt,
         buyerEmail: users.email,
         lotTitle: lots.title,
       })
@@ -42,6 +44,12 @@ export async function POST(
     if (row.status !== 'pending' && row.status !== 'overdue') {
       return NextResponse.json({ error: `Cannot resend a ${row.status} invoice` }, { status: 409 });
     }
+    if (row.holdExpiresAt) {
+      return NextResponse.json(
+        { error: 'This is a Buy Now checkout in progress, not an emailed invoice. It completes or lapses on its own.' },
+        { status: 409 },
+      );
+    }
     if (!row.buyerEmail || isSentinelEmail(row.buyerEmail)) {
       return NextResponse.json({ error: 'The buyer has no reachable email address' }, { status: 409 });
     }
@@ -54,6 +62,7 @@ export async function POST(
         totalAmount: row.totalAmount,
         dueDate: row.dueDate,
         accessToken: row.accessToken,
+        source: row.source,
       });
     } catch (err) {
       logger.error('Invoice resend failed', err, { invoiceId: id });

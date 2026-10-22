@@ -31,6 +31,11 @@ export type LotCardLot = Pick<
   auctionSlug?: string | null;
   /** Shown as "Sold · $X" once the lot has sold; optional so subset callers can omit it. */
   hammerPrice?: Lot['hammerPrice'];
+  /**
+   * Gallery grid only: 'buy' when the piece can be bought online right now,
+   * 'reserved' while an online checkout or a client's invoice holds it.
+   */
+  purchase?: 'buy' | 'reserved' | null;
 };
 
 interface LotCardProps {
@@ -84,7 +89,13 @@ export function LotCard({
     footer = (
       <>
         <p className="text-[13px] sm:text-sm font-semibold tracking-tight">{formatCurrency(lot.buyNowPrice)}</p>
-        <p className={`${TAG} text-champagne-deep`}>{lot.saleType === 'private' ? 'Private sale' : 'Fixed price'}</p>
+        <p className={`${TAG} ${lot.purchase === 'reserved' ? 'text-muted-foreground' : 'text-champagne-deep'}`}>
+          {lot.purchase === 'reserved'
+            ? 'Reserved'
+            : lot.purchase === 'buy'
+              ? 'Buy Now'
+              : lot.saleType === 'private' ? 'Private sale' : 'Fixed price'}
+        </p>
       </>
     );
   } else if (showBidInfo && lot.status === 'in_auction' && lot.currentBidAmount > 0) {
@@ -123,6 +134,12 @@ export function LotCard({
             <div className="w-full h-full bg-gradient-to-br from-muted to-muted/60 flex items-center justify-center">
               <span className="font-logo text-lg text-muted-foreground/40">MAYELLS</span>
             </div>
+          )}
+
+          {lot.purchase === 'reserved' && lot.status !== 'sold' && (
+            <span className="absolute top-2.5 right-2.5 sm:top-3 sm:right-3 rounded-md bg-black/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
+              Reserved
+            </span>
           )}
 
           {lot.isFeatured && (

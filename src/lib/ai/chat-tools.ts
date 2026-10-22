@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { db } from '@/db';
 import { auctions, lots, categories } from '@/db/schema';
 import { eq, and, gte, ilike, or, desc, asc, sql } from 'drizzle-orm';
+import { lotReservedSql } from '@/lib/gallery/sql';
+import { isOnlinePurchasable } from '@/lib/gallery/purchase-state';
+import { isStripeConfigured } from '@/lib/stripe/config';
 
 function formatPrice(cents: number | null): string {
   if (!cents) return 'Price not available';
@@ -203,12 +206,18 @@ export const chatTools = {
             buyNowPrice: lots.buyNowPrice,
             categoryName: categories.name,
             slug: lots.slug,
+            saleType: lots.saleType,
+            status: lots.status,
+            onlineCheckout: lots.onlineCheckout,
+            shippingPrice: lots.shippingPrice,
+            reserved: lotReservedSql,
           })
           .from(lots)
           .leftJoin(categories, eq(lots.categoryId, categories.id))
           .where(and(...conditions))
           .orderBy(desc(lots.isFeatured), desc(lots.createdAt))
           .limit(safeLimit);
+        const checkoutLive = isStripeConfigured();
 
         if (results.length === 0) {
           return { message: 'No gallery items available right now. Check our auctions for current lots.' };
@@ -221,6 +230,11 @@ export const chatTools = {
             category: l.categoryName,
             price: formatPrice(l.buyNowPrice),
             url: `/gallery/${l.slug}`,
+            howToBuy: l.reserved
+              ? 'Reserved for another buyer right now'
+              : checkoutLive && isOnlinePurchasable(l)
+                ? 'Buy Now online on its page'
+                : 'Through a specialist (call or email)',
           })),
         };
       } catch {

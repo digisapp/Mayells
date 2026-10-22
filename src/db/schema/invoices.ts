@@ -12,6 +12,10 @@ export const invoiceStatusEnum = pgEnum('invoice_status', [
   'refunded',
 ]);
 
+// Where the sale came from: a won auction lot, or a fixed-price gallery
+// purchase (Buy Now online checkout, or a sale a specialist invoices).
+export const invoiceSourceEnum = pgEnum('invoice_source', ['auction', 'gallery']);
+
 export const invoices = pgTable('invoices', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   invoiceNumber: text('invoice_number').unique().notNull(),
@@ -21,6 +25,14 @@ export const invoices = pgTable('invoices', {
   buyerId: uuid('buyer_id').references(() => users.id).notNull(),
   auctionId: uuid('auction_id').references(() => auctions.id),
   lotId: uuid('lot_id').references(() => lots.id).notNull(),
+  source: invoiceSourceEnum('source').default('auction').notNull(),
+
+  // Set only on a Buy Now checkout hold: the gallery invoice created when a
+  // buyer starts checkout, which reserves the piece until this time (the
+  // Stripe session's expiry). An unpaid hold is cancelled once its session
+  // has expired, putting the piece back on sale. Holds are never chased as
+  // overdue and never emailed as invoices — the buyer is on Stripe's page.
+  holdExpiresAt: timestamp('hold_expires_at'),
 
   // Pricing (all in cents)
   hammerPrice: integer('hammer_price').notNull(),
@@ -77,6 +89,8 @@ export const invoices = pgTable('invoices', {
   uniqueIndex('invoices_lot_unique_idx').on(table.lotId).where(sql`status not in ('cancelled', 'refunded')`),
   index('invoices_due_date_idx').on(table.dueDate),
   index('invoices_stripe_pi_idx').on(table.stripePaymentIntentId).where(sql`stripe_payment_intent_id is not null`),
+  // The lifecycle cron's sweep of lapsed Buy Now holds.
+  index('invoices_hold_expires_idx').on(table.holdExpiresAt).where(sql`hold_expires_at is not null and status = 'pending'`),
 ]).enableRLS();
 
 export const invoicesRelations = relations(invoices, ({ one }) => ({

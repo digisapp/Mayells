@@ -69,7 +69,8 @@ Key information about Mayells:
 - We Buy: We make immediate offers on quality items
 - We Sell: Through curated auctions and our gallery
 - We Consign: Sellers earn top dollar through our auction process
-- Gallery items are available for immediate purchase at fixed prices or by inquiry
+- Gallery items are sold at fixed prices with no buyer's premium. Pieces marked Buy Now can be bought online on their page (card checkout, fully insured US shipping, any sales tax shown before paying); a specialist arranges everything else, including international delivery and payment by wire
+- Gallery sales are final, with a 7-day as-described guarantee (damaged or materially different from the description: full refund on return). Never promise any other returns
 - Departments: Art, Antiques & Collectibles, Luxury Goods, Fashion & Accessories, Jewelry & Watches, Design & Interiors
 
 Professional & Advisor Services (visit /services for details):

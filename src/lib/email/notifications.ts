@@ -301,12 +301,19 @@ export async function sendInvoiceNotification(params: {
   totalAmount: number;
   dueDate: Date;
   accessToken: string;
+  /** A gallery sale a specialist invoiced: nothing was "won". */
+  source?: 'auction' | 'gallery';
 }) {
+  const gallery = params.source === 'gallery';
   await sendAndLog({
     to: params.email,
-    subject: `Invoice ${params.invoiceNumber} — Congratulations on your purchase!`,
+    subject: gallery
+      ? `Invoice ${params.invoiceNumber} — ${params.lotTitle}`
+      : `Invoice ${params.invoiceNumber} — Congratulations on your purchase!`,
     html: emailLayout(`
-        <p>You've won <strong>${escapeHtml(params.lotTitle)}</strong>. Your invoice is ready.</p>
+        ${gallery
+          ? `<p>Thank you for choosing <strong>${escapeHtml(params.lotTitle)}</strong> from Mayells Gallery. The piece is reserved for you and your invoice is ready.</p>`
+          : `<p>You've won <strong>${escapeHtml(params.lotTitle)}</strong>. Your invoice is ready.</p>`}
         <table style="margin: 20px 0; border-collapse: collapse;">
           <tr>
             <td style="padding: 8px 16px; color: #666;">Invoice:</td>
@@ -322,7 +329,7 @@ export async function sendInvoiceNotification(params: {
           </tr>
         </table>
         ${ctaButton(`${process.env.NEXT_PUBLIC_APP_URL}/invoices/${params.accessToken}`, 'View & Pay Invoice')}
-    `, 'Congratulations!'),
+    `, gallery ? 'Your Invoice' : 'Congratulations!'),
   });
 }
 
@@ -379,6 +386,89 @@ export async function sendPaymentConfirmation(params: {
         <p>Thank you! We've received your payment of <strong>${formatCurrencyWithCents(params.totalAmount)}</strong> for <strong>${escapeHtml(params.lotTitle)}</strong>.</p>
         <p>We'll begin preparing your item for shipment. You'll receive tracking information once it ships.</p>
     `, 'Payment Confirmed'),
+  });
+}
+
+function moneyRow(label: string, value: string, strong = false): string {
+  return `<tr>
+            <td style="padding: 6px 16px 6px 0; color: #666;">${label}</td>
+            <td style="padding: 6px 0; text-align: right;${strong ? ' font-weight: bold; font-size: 18px;' : ''}">${value}</td>
+          </tr>`;
+}
+
+export interface GalleryOrderEmail {
+  email: string;
+  lotTitle: string;
+  invoiceNumber: string;
+  price: number;
+  shippingCost: number;
+  taxAmount: number;
+  totalAmount: number;
+  accessToken: string;
+  /** Delivery address lines, as formatAddressLines() gives them. */
+  shipTo: string[];
+  guaranteeDays: number;
+}
+
+/** Buy Now (or a paid gallery invoice): the buyer's order confirmation. */
+export async function sendGalleryOrderConfirmation(params: GalleryOrderEmail) {
+  const orderUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invoices/${params.accessToken}`;
+  await sendAndLog({
+    to: params.email,
+    subject: `Your Mayells purchase is confirmed — ${params.lotTitle}`,
+    html: emailLayout(`
+        <p>Thank you. Your purchase of <strong>${escapeHtml(params.lotTitle)}</strong> is confirmed and paid.</p>
+        <table style="margin: 20px 0; border-collapse: collapse; min-width: 280px;">
+          ${moneyRow('Order', params.invoiceNumber)}
+          ${moneyRow('Price', formatCurrencyWithCents(params.price))}
+          ${moneyRow('Insured shipping', params.shippingCost > 0 ? formatCurrencyWithCents(params.shippingCost) : 'Complimentary')}
+          ${params.taxAmount > 0 ? moneyRow('Sales tax', formatCurrencyWithCents(params.taxAmount)) : ''}
+          ${moneyRow('Total paid', formatCurrencyWithCents(params.totalAmount), true)}
+        </table>
+        ${params.shipTo.length
+          ? `<p style="margin-bottom: 4px; color: #666;">Shipping to</p>
+        <p style="margin-top: 0;">${params.shipTo.map(escapeHtml).join('<br>')}</p>`
+          : ''}
+        <p><strong>What happens next.</strong> Our team prepares your piece for fully insured shipping and emails you the tracking details as soon as it is on its way.</p>
+        <p style="font-size: 14px; color: #666;">Gallery sales are final, with our as-described guarantee: if the piece arrives damaged, or materially different from its description, tell us within ${params.guaranteeDays} days of delivery and we will arrange its return and refund you in full.</p>
+        ${ctaButton(orderUrl, 'View your order')}
+        <p style="margin-top: 20px; font-size: 14px; color: #666;">Questions? Reply to this email or call us at ${BUSINESS.phone}.</p>
+    `, 'Thank You for Your Purchase'),
+  });
+}
+
+/** Staff alert for a paid gallery sale: the piece now has to be packed and shipped. */
+export async function sendGallerySaleAdminNotification(params: {
+  lotTitle: string;
+  invoiceNumber: string;
+  buyerName: string | null;
+  buyerEmail: string;
+  totalAmount: number;
+  price: number;
+  shippingCost: number;
+  taxAmount: number;
+  shipTo: string[];
+  online: boolean;
+  /** False when the lot has no seller-of-record (payout and shipment need setting up by hand). */
+  hasSeller: boolean;
+}) {
+  const adminUrl = `${process.env.NEXT_PUBLIC_APP_URL}/admin/invoices?q=${encodeURIComponent(params.invoiceNumber)}`;
+  await sendAndLog({
+    to: ADMIN_EMAIL,
+    subject: `Gallery sale: ${params.lotTitle} — ${formatCurrencyWithCents(params.totalAmount)}`,
+    html: adminEmailLayout(`
+        <p><strong>${escapeHtml(params.lotTitle)}</strong> was ${params.online ? 'bought online (Buy Now)' : 'paid for'} by ${escapeHtml(params.buyerName || params.buyerEmail)} (${escapeHtml(params.buyerEmail)}).</p>
+        <table style="margin: 16px 0; border-collapse: collapse; min-width: 280px;">
+          ${moneyRow('Invoice', params.invoiceNumber)}
+          ${moneyRow('Price', formatCurrencyWithCents(params.price))}
+          ${moneyRow('Shipping charged', formatCurrencyWithCents(params.shippingCost))}
+          ${moneyRow('Sales tax', formatCurrencyWithCents(params.taxAmount))}
+          ${moneyRow('Total', formatCurrencyWithCents(params.totalAmount), true)}
+        </table>
+        ${params.shipTo.length ? `<p>Ship to:<br>${params.shipTo.map(escapeHtml).join('<br>')}</p>` : '<p><strong>No delivery address yet</strong> — check the invoice.</p>'}
+        ${params.hasSeller ? '' : '<p><strong>This piece has no seller of record</strong>, so no payout or shipment was created automatically. Set them up by hand.</p>'}
+        ${ctaButton(adminUrl, 'Open the invoice')}
+    `, 'New Gallery Sale'),
   });
 }
 
